@@ -123,7 +123,7 @@ const config: Config = {
       ],
     },
     footer: {
-      style: 'dark',
+      style: 'light',
       links: [
         {
           title: 'Documentation',
@@ -151,6 +151,15 @@ const config: Config = {
         },
       ],
       copyright: `© ${new Date().getFullYear()} Zebra Technologies Corporation and/or its affiliates. All rights reserved.`,
+    },
+    // Algolia DocSearch — replace these values after applying at
+    // https://docsearch.algolia.com/apply/
+    algolia: {
+      appId: process.env.ALGOLIA_APP_ID ?? 'PLACEHOLDER_APP_ID',
+      apiKey: process.env.ALGOLIA_SEARCH_API_KEY ?? 'PLACEHOLDER_SEARCH_KEY',
+      indexName: process.env.ALGOLIA_INDEX_NAME ?? 'zebra-iotc-devportal',
+      contextualSearch: true,
+      searchParameters: {},
     },
     prism: {
       additionalLanguages: ['bash', 'json', 'yaml'],
