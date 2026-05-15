@@ -6,10 +6,10 @@ const config: Config = {
   tagline: 'MQTT API Documentation for RFD40 / RFD90 Series Handheld RFID Readers',
   favicon: 'img/zebra-favicon.ico',
 
-  url: 'https://al1913-zebra.github.io',
+  url: 'https://latheef.github.io',
   baseUrl: '/zebra-iotc-devportal/',
 
-  organizationName: 'al1913-zebra',
+  organizationName: 'latheef',
   projectName: 'zebra-iotc-devportal',
   deploymentBranch: 'gh-pages',
   trailingSlash: false,
@@ -37,7 +37,7 @@ const config: Config = {
           path: 'products/handheld',
           routeBasePath: 'docs',
           editUrl:
-            'https://github.com/al1913-zebra/zebra-iotc-devportal/tree/main/',
+            'https://github.com/latheef/zebra-iotc-devportal/tree/main/',
           breadcrumbs: true,
         },
         blog: false,
@@ -144,7 +144,7 @@ const config: Config = {
         {
           title: 'Connect',
           items: [
-            { label: 'GitHub', href: 'https://github.com/al1913-zebra/zebra-iotc-devportal' },
+            { label: 'GitHub', href: 'https://github.com/latheef/zebra-iotc-devportal' },
             { label: 'LinkedIn', href: 'https://www.linkedin.com/company/zebra-technologies' },
             { label: 'YouTube', href: 'https://www.youtube.com/@ZebraTechnologies' },
             { label: 'X / Twitter', href: 'https://x.com/ZebraTechnology' },
