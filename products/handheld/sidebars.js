@@ -98,7 +98,7 @@ const sidebars = {
       type: 'category',
       label: 'Part III: Infrastructure',
       collapsible: true,
-      collapsed: true,
+      collapsed: false,
       className: 'sidebar-section-header',
       items: [
         {
@@ -144,7 +144,7 @@ const sidebars = {
       type: 'category',
       label: 'Part IV: RFID Operations',
       collapsible: true,
-      collapsed: true,
+      collapsed: false,
       className: 'sidebar-section-header',
       items: [
         {
@@ -181,7 +181,7 @@ const sidebars = {
       type: 'category',
       label: 'Part V: Observability & Events',
       collapsible: true,
-      collapsed: true,
+      collapsed: false,
       className: 'sidebar-section-header',
       items: [
         {
@@ -218,7 +218,7 @@ const sidebars = {
       type: 'category',
       label: 'Part VI: Fleet Operations',
       collapsible: true,
-      collapsed: true,
+      collapsed: false,
       className: 'sidebar-section-header',
       items: [
         {
