@@ -1,0 +1,160 @@
+---
+sidebar_position: 4
+title: "How to Build a Fleet Health Dashboard"
+description: "Guide to building a fleet health dashboard using MQTT wildcard subscriptions, event aggregation, and visualization tools."
+---
+
+# How to Build a Fleet Health Dashboard
+
+This guide walks you through building a fleet health dashboard for monitoring multiple RFD40/RFD90 devices. You will use MQTT wildcard subscriptions to collect events from all devices, aggregate the data, and visualize key metrics.
+
+## Architecture Overview
+
+```
+RFD40/RFD90 Fleet → MQTT Broker → Event Collector → Time-Series DB → Dashboard
+```
+
+1. **Event Collector**: Subscribes to fleet-wide MQTT topics, normalizes events, writes to storage
+2. **Time-Series Database**: Stores heartbeat, alert, and connection data with timestamps
+3. **Dashboard**: Visualizes aggregated metrics (Grafana, Azure IoT Central, or custom)
+
+## Step 1: Subscribe to Fleet-Wide Topics
+
+Use MQTT wildcard subscriptions to receive events from all devices without subscribing individually.
+
+### Essential Subscriptions
+
+```
+{tenantId}/DATA/clients/heartbeat/+
+{tenantId}/DATA/clients/alerts/+
+{tenantId}/DATA/clients/alert_short/+
+{tenantId}/DATA/clients/exceptions/+
+{tenantId}/DATA/clients/connection/+
+```
+
+The `+` wildcard matches any single topic level, capturing all device serials.
+
+> **Note**: Do not subscribe to `data1event/+` or `data2event/+` for the fleet dashboard unless you need real-time tag counts. These are high-volume topics that can overwhelm a dashboard collector.
+
+## Step 2: Build the Event Collector
+
+The collector receives MQTT messages, extracts the device serial from the topic, and writes structured records to your storage backend.
+
+```javascript
+const mqtt = require('mqtt');
+const client = mqtt.connect('mqtts://broker.example.com:8883');
+
+const TENANT = 'your-tenant-id';
+
+client.on('connect', () => {
+  client.subscribe(`${TENANT}/DATA/clients/heartbeat/+`);
+  client.subscribe(`${TENANT}/DATA/clients/alerts/+`);
+  client.subscribe(`${TENANT}/DATA/clients/connection/+`);
+  client.subscribe(`${TENANT}/DATA/clients/exceptions/+`);
+});
+
+client.on('message', (topic, message) => {
+  const payload = JSON.parse(message.toString());
+  const deviceSerial = topic.split('/').pop();
+
+  writeToDatabase({
+    device_serial: deviceSerial,
+    event_type: payload.event_type,
+    timestamp: payload.timestamp,
+    data: payload
+  });
+});
+```
+
+## Step 3: Define Key Metrics
+
+### Fleet Status Summary
+
+| Metric | Source | Calculation |
+|---|---|---|
+| Devices online | `mqttConnEVT` | Count where last state = CONNECTED |
+| Devices offline | `mqttConnEVT` | Count where last state = DISCONNECTED or no heartbeat for 2× interval |
+| Average battery | `heartBeatEVT` | Mean of latest `battery_level` per device |
+| Low battery count | `heartBeatEVT` | Count where `battery_level` < 20% |
+| Active alerts | `alerts` | Count of unresolved alert events |
+| Exception rate | `exceptionEVT` | Exceptions per hour across fleet |
+
+### Per-Device Health
+
+| Metric | Source | Dashboard Widget |
+|---|---|---|
+| Battery level | `heartBeatEVT` | Gauge (0–100%) |
+| Temperature | `heartBeatEVT` | Gauge with color thresholds |
+| Wi-Fi signal | `heartBeatEVT` | Signal strength indicator |
+| Operating state | `heartBeatEVT` | Status badge (IDLE/READING/ERROR) |
+| Uptime | `heartBeatEVT` | Duration display |
+| Reconnection count | `mqttConnEVT` | Counter per time window |
+
+## Step 4: Set Up Grafana (Example)
+
+### Data Source
+
+Configure Grafana to connect to your time-series database (InfluxDB, Prometheus, Azure Data Explorer, or TimescaleDB).
+
+### Dashboard Panels
+
+**Panel 1: Fleet Overview**
+- Type: Stat panel
+- Queries: Online count, offline count, average battery
+
+**Panel 2: Battery Distribution**
+- Type: Histogram
+- Query: Latest `battery_level` for all devices
+- Buckets: 0–10, 10–20, 20–40, 40–60, 60–80, 80–100
+
+**Panel 3: Device Status Table**
+- Type: Table
+- Columns: Serial, State, Battery, Temperature, Wi-Fi RSSI, Last Heartbeat
+- Sort: By battery level ascending (lowest first)
+
+**Panel 4: Alert Timeline**
+- Type: Annotations/timeline
+- Query: Alert events over the last 24 hours
+- Color by severity: WARNING = yellow, CRITICAL = red
+
+**Panel 5: Connection Stability**
+- Type: Time series
+- Query: Reconnection events per hour
+- Alert: Trigger if fleet-wide reconnections exceed threshold
+
+## Step 5: Set Up Azure IoT Central (Alternative)
+
+If you use Azure IoT Central as your MQTT broker, fleet dashboards are built in:
+
+1. Define a **device template** matching the `heartBeatEVT` and `alerts` schemas
+2. Configure **telemetry mappings** for battery, temperature, Wi-Fi RSSI
+3. Create **dashboard views** with built-in widgets for fleet aggregation
+4. Set up **rules** that trigger on alert conditions (email, webhook, Logic App)
+
+## Alerting Rules
+
+Configure dashboard-level alerts for fleet-wide conditions:
+
+| Rule | Condition | Action |
+|---|---|---|
+| Fleet battery critical | > 10% of devices below 15% | Notify shift supervisor |
+| Mass disconnection | > 20% devices offline in 5 min | Page network operations |
+| Temperature spike | Any device > 50°C | Create maintenance ticket |
+| High exception rate | > 10 exceptions per hour fleet-wide | Notify engineering |
+
+## Scaling Considerations
+
+| Fleet Size | Heartbeat Interval | Events/Minute | Storage/Day |
+|---|---|---|---|
+| 50 devices | 60 sec | ~50 | ~70 MB |
+| 500 devices | 60 sec | ~500 | ~700 MB |
+| 5,000 devices | 300 sec | ~1,000 | ~1.4 GB |
+
+For large fleets, increase the heartbeat interval and use data retention policies to manage storage growth.
+
+## Related Topics
+
+- [About Heartbeat Events](../events/about-heartbeat-events.mdx): heartbeat data contents
+- [About Alert Events](../events/about-alert-events.mdx): alert types and severity
+- [About MQTT Connection Events](../events/about-mqtt-connection-events.mdx): connection tracking
+- [How to Check Device Status & Health](./check-device-health.mdx): on-demand checks

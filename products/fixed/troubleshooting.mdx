@@ -1,0 +1,43 @@
+---
+sidebar_position: 8
+title: Troubleshooting
+---
+
+# Troubleshooting
+
+Common issues and solutions for Zebra fixed RFID readers.
+
+## REST API Issues
+
+### Cannot reach the reader's REST API
+
+- Verify the reader's IP address and that it is on the same network.
+- Check that HTTPS is enabled (port 443).
+- Verify credentials (default: `admin` / `password`; change immediately in production).
+
+### API returns 401 Unauthorized
+
+- Verify your Basic Authentication credentials.
+- Ensure the `Authorization` header is correctly formatted.
+
+## MQTT Connectivity
+
+### Reader does not connect to the MQTT broker
+
+- Verify the broker URI configured via REST (`GET /api/v1/mqtt/config`).
+- Check TLS certificate configuration if using `ssl://`.
+- Ensure the broker allows connections from the reader's IP.
+
+### No tag data on MQTT
+
+- Verify inventory is running (check via REST `GET /api/v1/inventory/status`).
+- Verify telemetry mode is configured (`GET /api/v1/mqtt/telemetry`).
+- Check MQTT topic subscriptions match the reader's tenant ID and serial number.
+
+## Hardware Issues
+
+### Antenna "disconnected" in heartbeat
+
+- Check the physical antenna cable connection.
+- Verify the antenna port is enabled in the RF configuration.
+- Try a different antenna cable to rule out cable faults.

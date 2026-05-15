@@ -1,0 +1,55 @@
+---
+sidebar_position: 5
+title: MQTT Telemetry
+---
+
+# MQTT Telemetry
+
+Gen2x fixed readers stream tag data with extended metadata over MQTT.
+
+## Tag Read Format (Gen2x Extended)
+
+```json
+{
+  "type": "TAG_READ",
+  "timestamp": "2026-04-13T10:30:00.000Z",
+  "readerSerial": "FX9700-654321",
+  "reads": [
+    {
+      "epc": "300833B2DDD9014000000000",
+      "rssi": -50,
+      "antennaPort": 1,
+      "channel": 5,
+      "readCount": 3,
+      "firstSeen": "2026-04-13T10:29:58.000Z",
+      "lastSeen": "2026-04-13T10:30:00.000Z",
+      "gen2x": {
+        "authenticated": true,
+        "cryptoSuite": "AES-128",
+        "extendedTid": "E280681020005000",
+        "extendedUserMemory": "48656C6C6F"
+      }
+    }
+  ]
+}
+```
+
+## Gen2x-Specific Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `gen2x.authenticated` | boolean | Whether the tag passed cryptographic authentication |
+| `gen2x.cryptoSuite` | string | Cryptographic algorithm used (e.g., `AES-128`) |
+| `gen2x.extendedTid` | string | Extended Tag Identifier data |
+| `gen2x.extendedUserMemory` | string | Data from extended user memory bank |
+
+## Telemetry Configuration
+
+Configure via REST API, same as standard fixed readers:
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v2/mqtt/telemetry \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "batch", "batchIntervalMs": 500, "includeGen2xData": true}'
+```

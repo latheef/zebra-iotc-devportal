@@ -1,0 +1,117 @@
+---
+sidebar_position: 3
+title: "About QoS Levels & Delivery Guarantees"
+---
+
+# About QoS Levels & Delivery Guarantees
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+Quality of Service (QoS) levels in MQTT define the delivery guarantee between a publisher and the broker, and between the broker and each subscriber. IOTC uses QoS 0 and QoS 1 strategically across its interfaces, balancing reliability against throughput. QoS 2 is not used.
+
+Understanding which QoS level applies to each message type is critical for building integrations that correctly handle message loss, duplication, and ordering.
+
+## QoS 0: At Most Once
+
+QoS 0 is the simplest and fastest delivery mode. The publisher sends the message once with no acknowledgment. The message is either delivered or lost; there is no retry.
+
+### Message Flow
+
+```
+Publisher  ──PUBLISH──▶  Broker  ──PUBLISH──▶  Subscriber
+            (no ACK)               (no ACK)
+```
+
+### Characteristics
+
+- **Fastest**: No handshake overhead, minimal latency
+- **Lowest bandwidth**: No acknowledgment packets
+- **Unreliable**: Messages can be lost if the network is congested or the subscriber is temporarily disconnected
+- **No duplicates**: Since there are no retries, a message is never delivered more than once
+
+### IOTC Usage
+
+QoS 0 is used for **tag data streaming** on the DATA interface. This is appropriate because:
+
+- Tag reads are inherently redundant; the same tag is typically read multiple times per second during inventory
+- A single lost tag observation is compensated by subsequent reads in the next batch
+- The high volume of tag data (potentially hundreds of messages per second) makes QoS 1 acknowledgments impractical from a performance standpoint
+- Latency is critical for real-time tag tracking; QoS 0 eliminates the acknowledgment round-trip
+
+## QoS 1: At Least Once
+
+QoS 1 guarantees that a message is delivered at least once. The publisher sends the message, and the recipient (broker or subscriber) responds with a PUBACK acknowledgment. If the publisher does not receive PUBACK within a timeout, it retransmits the message.
+
+### Message Flow
+
+```
+Publisher  ──PUBLISH──▶  Broker  ──PUBACK──▶  Publisher
+                         Broker  ──PUBLISH──▶  Subscriber  ──PUBACK──▶  Broker
+```
+
+### Characteristics
+
+- **Reliable**: Messages are guaranteed to be delivered
+- **Possible duplicates**: If a PUBACK is lost, the publisher retransmits, potentially resulting in duplicate delivery
+- **Higher latency**: Each message requires an acknowledgment round-trip
+- **Higher bandwidth**: Acknowledgment packets consume additional bandwidth
+
+### IOTC Usage
+
+QoS 1 is used for all **MGMT**, **CTRL**, and **MDM** messages. This is appropriate because:
+
+- Configuration commands must not be silently lost; a `set_config` that never arrives leaves the reader in an unknown state
+- Command responses confirm execution, if the response is lost, the application cannot determine whether the command succeeded
+- Events (battery warnings, errors) are critical operational signals that must reach the application
+- The command rate is typically low (a few messages per minute), so QoS 1 overhead is negligible
+
+### Handling Duplicates
+
+Since QoS 1 can deliver duplicate messages, your application should be **idempotent** when processing commands and responses:
+
+- Use the `requestId` field in command/response pairs to detect duplicates
+- If you receive two responses with the same `requestId`, discard the second one
+- Configuration commands like `set_config` are naturally idempotent; applying the same configuration twice has no adverse effect
+
+## QoS by Interface
+
+| Interface | Direction | QoS | Rationale |
+|-----------|-----------|-----|-----------|
+| **MGMT** command | App → Reader | QoS 1 | Commands must be reliably delivered |
+| **MGMT** response | Reader → App | QoS 1 | Responses confirm command execution |
+| **MGMT** event | Reader → App | QoS 0 or 1 | Critical events (battery, errors) use QoS 1; informational events (trigger) use QoS 0 |
+| **CTRL** command | App → Reader | QoS 1 | Operational commands (start/stop inventory) must be reliable |
+| **CTRL** response | Reader → App | QoS 1 | Responses confirm operational state changes |
+| **DATA** | Reader → App | QoS 0 | High-volume tag data with natural redundancy |
+| **MDM** command | MDM → Reader | QoS 1 | Device management operations must be reliable |
+| **MDM** response | Reader → MDM | QoS 1 | MDM acknowledgments must be reliable |
+
+## Practical Implications
+
+### Tag Data (QoS 0)
+
+- Expect occasional gaps in tag data during network congestion or Bluetooth interference
+- Do not build business logic that depends on receiving every single tag read
+- Use read count and batch sequence numbers to detect gaps if needed
+- Design your application to work with "most of the data most of the time" rather than "all of the data all of the time"
+
+### Commands and Responses (QoS 1)
+
+- Implement a timeout for command responses (recommended: 10 seconds)
+- If no response is received within the timeout, retry the command (up to 3 retries)
+- Check the `requestId` in responses to correlate with outstanding commands
+- Implement a request queue to avoid sending a new command before the previous one completes
+
+### Broker Configuration
+
+Ensure your MQTT broker is configured to support both QoS levels:
+
+| Broker Setting | Recommended Value |
+|----------------|-------------------|
+| Max QoS | 1 (minimum) |
+| Message queue size (per client) | 1,000+ messages |
+| Max inflight messages | 10–20 |
+| Message retry interval | 5 seconds |
+| Session expiry | 3,600 seconds (1 hour) |

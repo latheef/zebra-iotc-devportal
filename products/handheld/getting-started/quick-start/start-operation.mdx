@@ -1,0 +1,118 @@
+---
+sidebar_position: 5
+title: "Step 4: Start an RFID Read Operation"
+description: "Configure the operating mode for simple inventory and start an RFID read operation via MQTT."
+---
+
+# Step 4: Start an RFID Read Operation
+
+📗 **TUTORIAL**: In this step, you configure the reader for a simple inventory operating mode and start the RFID read operation.
+
+## What You Will Do
+
+1. Publish a `set_operating_mode` command to configure simple inventory
+2. Verify the operating mode response
+3. Publish a `control_operation` command to start the inventory
+4. Verify the operation started successfully
+
+## Step 4a: Set the Operating Mode
+
+Before starting inventory, configure the reader for **simple inventory** mode. In your publisher terminal, send the following command to the CTRL command topic:
+
+```bash
+mosquitto_pub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/CTRL/clients/cmnd/<DEVICE_SERIAL>" \
+  -m '{"command":"set_operating_mode","requestId":"2","payload":{"mode":"SIMPLE_INVENTORY"}}'
+```
+
+### `set_operating_mode` Payload
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "2",
+  "payload": {
+    "mode": "SIMPLE_INVENTORY"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Command name |
+| `requestId` | string | Client-generated request correlator |
+| `payload.mode` | string | Operating mode; `SIMPLE_INVENTORY` reads all tags in range |
+
+### Expected Response (CTRL resp topic)
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "2",
+  "status": "OK"
+}
+```
+
+## Step 4b: Start the Inventory Operation
+
+Now start the read operation by publishing a `control_operation` command:
+
+```bash
+mosquitto_pub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/CTRL/clients/cmnd/<DEVICE_SERIAL>" \
+  -m '{"command":"control_operation","requestId":"3","payload":{"action":"START"}}'
+```
+
+### `control_operation` Start Payload
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "3",
+  "payload": {
+    "action": "START"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Command name |
+| `requestId` | string | Client-generated request correlator |
+| `payload.action` | string | `START` begins the inventory operation |
+
+### Expected Response (CTRL resp topic)
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "3",
+  "status": "OK",
+  "payload": {
+    "action": "START",
+    "operationState": "RUNNING"
+  }
+}
+```
+
+## Verifying Success
+
+If you received `"status": "OK"` and `"operationState": "RUNNING"`, the reader is now actively scanning for RFID tags.
+
+> **Note:** Hold or place UHF RFID tags within the reader's antenna range (typically 1–5 meters for the RFD40, up to 9 meters for the RFD90). Tag data events will begin appearing in your data subscriber terminal (Terminal 3).
+
+## Troubleshooting
+
+| Issue | Cause | Resolution |
+|-------|-------|------------|
+| `"status": "ERROR"` on `set_operating_mode` | Invalid mode value | Ensure `mode` is exactly `SIMPLE_INVENTORY` (case-sensitive) |
+| `"status": "ERROR"` on `control_operation` | Operating mode not set | Send `set_operating_mode` before `control_operation` |
+| Operation starts but no tag data | No tags in range | Bring UHF RFID tags closer to the reader antenna |
+
+## Next Step
+
+The reader is now scanning. Proceed to [Step 5: Read Your First Tags](./read-tags.mdx) to observe tag data.

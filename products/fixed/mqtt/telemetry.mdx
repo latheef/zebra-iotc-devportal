@@ -1,0 +1,57 @@
+---
+sidebar_position: 5
+title: MQTT Telemetry
+---
+
+# MQTT Telemetry
+
+Fixed readers stream real-time tag data over MQTT. This guide covers how to subscribe to and process telemetry data.
+
+## Topic Structure
+
+```
+<TENANT_ID>/<DEVICE_SERIAL>/data/tagReads
+```
+
+## Tag Read Format
+
+```json
+{
+  "type": "TAG_READ",
+  "timestamp": "2026-04-13T10:30:00.000Z",
+  "readerSerial": "FX9600-123456",
+  "reads": [
+    {
+      "epc": "300833B2DDD9014000000000",
+      "rssi": -55,
+      "antennaPort": 1,
+      "channel": 5,
+      "readCount": 3,
+      "firstSeen": "2026-04-13T10:29:58.000Z",
+      "lastSeen": "2026-04-13T10:30:00.000Z"
+    }
+  ]
+}
+```
+
+## Batch vs. Individual Reads
+
+Fixed readers support two telemetry modes:
+
+| Mode | Description | Use Case |
+|------|-------------|----------|
+| **Individual** | One MQTT message per tag read | Low-latency applications |
+| **Batch** | Periodic reports with multiple reads | High-throughput, bandwidth-constrained |
+
+Configure via REST API:
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v1/mqtt/telemetry \
+  -H "Content-Type: application/json" \
+  -d '{"mode": "batch", "batchIntervalMs": 1000}'
+```
+
+## Filtering
+
+Use REST API endpoints to configure server-side tag filters so only relevant tags are reported over MQTT, reducing bandwidth.

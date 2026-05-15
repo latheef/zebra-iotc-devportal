@@ -1,0 +1,167 @@
+---
+sidebar_position: 5
+title: "About Authentication & Authorization"
+---
+
+# About Authentication & Authorization
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+Securing MQTT communication is essential for any production IOTC deployment. This page explains the authentication and authorization mechanisms available for IOTC handheld RFID connections, including credential-based authentication, TLS encryption, client certificate authentication, and the tenant-scoped access model.
+
+## Authentication Methods
+
+IOTC supports two primary authentication methods for MQTT connections. The method you use depends on your broker configuration and security requirements.
+
+### Method 1: Username and Password
+
+The simplest authentication method. The MQTT CONNECT packet includes a username and password, which the broker validates against its credential store.
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| Username | Tenant-scoped identity | `acme-corp/reader-23044501500123` |
+| Password | Shared secret or token | `eyJhbGciOiJIUzI1NiIs...` |
+
+**How it works:**
+1. Credentials are configured on the host device's MQTT proxy service
+2. The proxy includes them in every MQTT CONNECT packet
+3. The broker validates credentials against its authentication backend (internal database, LDAP, OAuth token endpoint)
+4. Connection is accepted or rejected based on the validation result
+
+**Credential formats by broker:**
+
+| Broker | Username Format | Password Format |
+|--------|----------------|-----------------|
+| HiveMQ | Free-form or LDAP DN | Password or JWT |
+| Mosquitto | Free-form | Password (hashed in `passwd` file) |
+| AWS IoT Core | Not used (certificate auth) | Not used |
+| Azure IoT Hub | `{hubName}.azure-devices.net/{deviceId}` | SAS token |
+| EMQX | Free-form | Password, JWT, or SCRAM |
+
+### Method 2: TLS Client Certificates (Mutual TLS)
+
+Mutual TLS (mTLS) provides the strongest authentication by requiring both the broker and the client to present X.509 certificates. The broker validates the client's certificate against a trusted Certificate Authority (CA).
+
+**How it works:**
+1. Each reader (or host device) is provisioned with a unique X.509 client certificate and private key
+2. The MQTT proxy on the host device presents this certificate during the TLS handshake
+3. The broker validates the certificate chain against its trusted CA
+4. The Common Name (CN) or Subject Alternative Name (SAN) in the certificate is used as the client identity
+
+**Certificate fields for IOTC:**
+
+| Certificate Field | Value | Purpose |
+|-------------------|-------|---------|
+| Common Name (CN) | `{deviceSerial}` | Identifies the specific reader |
+| Organization (O) | `{tenantId}` | Associates the reader with a tenant |
+| Organizational Unit (OU) | `iotc-handheld` | Distinguishes reader type |
+| Validity period | 1–3 years | Certificate expiration |
+
+**Advantages over username/password:**
+- No shared secrets to manage or rotate
+- Stronger cryptographic identity verification
+- Enables per-device revocation via Certificate Revocation Lists (CRL) or OCSP
+- Credentials cannot be intercepted even if TLS is compromised (unlike passwords in CONNECT packets)
+
+## Transport Layer Security (TLS)
+
+Regardless of the authentication method, all production IOTC deployments should encrypt MQTT traffic using TLS 1.2 or TLS 1.3.
+
+### TLS Configuration
+
+| Setting | Recommended Value | Notes |
+|---------|-------------------|-------|
+| TLS version | 1.2 or 1.3 | TLS 1.0 and 1.1 are deprecated |
+| Cipher suites | AES-256-GCM, ChaCha20-Poly1305 | Avoid CBC-mode ciphers |
+| Server certificate | Signed by a trusted public or private CA | Self-signed certificates are acceptable for development only |
+| Client certificate | Optional (required for mTLS) | See Method 2 above |
+| MQTT port | 8883 (TLS) | Port 1883 is unencrypted and should not be used in production |
+
+### Certificate Chain
+
+The TLS certificate chain for IOTC deployments typically looks like:
+
+```
+Root CA (enterprise or public)
+  └── Intermediate CA (optional)
+       ├── Broker Server Certificate
+       ├── Reader Client Certificate (for mTLS)
+       └── Application Client Certificate (for mTLS)
+```
+
+## Tenant-Scoped Access Model
+
+IOTC uses a **tenant-scoped** access model where all MQTT topics are prefixed with a `{tenantId}` segment. This provides logical isolation between different organizations or deployments sharing the same broker infrastructure.
+
+### How Tenant Isolation Works
+
+1. Each organization is assigned a unique `{tenantId}` (e.g., `acme-corp`, `globex-retail`)
+2. All readers belonging to that organization publish and subscribe to topics under their tenant prefix
+3. The broker's ACL (Access Control List) restricts each client to topics under its own tenant prefix
+4. A client authenticated as `acme-corp` cannot publish to or subscribe to topics under `globex-retail`
+
+### ACL Rules Example
+
+For a reader with serial `23044501500123` belonging to tenant `acme-corp`:
+
+```
+# Allow publishing to own response, event, and data topics
+allow publish acme-corp/mgmt/clients/+/23044501500123/response
+allow publish acme-corp/mgmt/clients/+/23044501500123/event
+allow publish acme-corp/ctrl/clients/+/23044501500123/response
+allow publish acme-corp/data/clients/+/23044501500123
+
+# Allow subscribing to own command topics
+allow subscribe acme-corp/mgmt/clients/+/23044501500123/command
+allow subscribe acme-corp/ctrl/clients/+/23044501500123/command
+
+# Deny everything else
+deny all
+```
+
+For an application client belonging to tenant `acme-corp`:
+
+```
+# Allow publishing commands to any reader in the tenant
+allow publish acme-corp/mgmt/clients/{channel}/+/command
+allow publish acme-corp/ctrl/clients/{channel}/+/command
+
+# Allow subscribing to responses, events, and data from any reader
+allow subscribe acme-corp/mgmt/clients/{channel}/+/response
+allow subscribe acme-corp/mgmt/clients/{channel}/+/event
+allow subscribe acme-corp/ctrl/clients/{channel}/+/response
+allow subscribe acme-corp/data/clients/{channel}/+
+
+# Deny everything else
+deny all
+```
+
+## Credential Provisioning
+
+### Reader Credentials
+
+Reader credentials are typically provisioned through one of these methods:
+
+| Method | Description | Best For |
+|--------|-------------|----------|
+| **Pre-configured** | Credentials are embedded in the host device's MQTT proxy configuration during device setup | Small deployments (< 50 readers) |
+| **MDM-pushed** | SOTI Connect or another MDM platform pushes credentials to the host device as part of a configuration profile | Enterprise fleet deployments |
+| **Certificate enrollment** | EST (Enrollment over Secure Transport) or SCEP protocol provisions per-device certificates automatically | High-security environments |
+
+### Credential Rotation
+
+- **Passwords**: Rotate every 90 days; use MDM to push new credentials fleet-wide
+- **Client certificates**: Issue with 1–3 year validity; plan for renewal 30 days before expiration
+- **SAS tokens** (Azure IoT Hub): Generate with appropriate expiry and refresh before expiration
+
+## Security Best Practices
+
+1. **Always use TLS**: never deploy IOTC with unencrypted MQTT (port 1883) in production
+2. **Use unique credentials per device**: avoid shared credentials across readers
+3. **Implement broker ACLs**: restrict each client to its own tenant and device topics
+4. **Monitor authentication failures**: alert on repeated failed connection attempts (potential credential stuffing)
+5. **Disable anonymous access**: ensure the broker requires authentication for all connections
+6. **Use short-lived tokens**: if using JWT or SAS tokens, set appropriate expiration times
+7. **Store credentials securely**: use Android Keystore on the host device; never store credentials in plaintext configuration files

@@ -1,0 +1,148 @@
+asyncapi: 2.6.0
+info:
+  title: Zebra Gen2x Fixed RFID Reader IoT Connector MQTT API
+  version: 2.0.0
+  description: |
+    MQTT API for real-time telemetry and event streaming from
+    Zebra Gen2x fixed RFID readers. Extends standard telemetry
+    with Gen2x metadata (cryptographic authentication, extended memory).
+  contact:
+    name: Zebra Technologies Developer Support
+    url: https://developer.zebra.com
+  license:
+    name: Proprietary
+
+servers:
+  production:
+    url: mqtt.example.com:8883
+    protocol: mqtt
+    protocolVersion: "3.1.1"
+
+channels:
+  "{tenantId}/{deviceSerial}/command":
+    description: Send commands to the reader
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    publish:
+      operationId: sendCommand
+      message:
+        contentType: application/json
+        payload:
+          type: object
+          required:
+            - command
+          properties:
+            command:
+              type: string
+
+  "{tenantId}/{deviceSerial}/response":
+    description: Receive command responses
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveResponse
+      message:
+        contentType: application/json
+        payload:
+          type: object
+
+  "{tenantId}/{deviceSerial}/data/tagReads":
+    description: Real-time tag read telemetry with Gen2x metadata
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveTagReads
+      message:
+        contentType: application/json
+        payload:
+          type: object
+          properties:
+            type:
+              type: string
+              const: TAG_READ
+            timestamp:
+              type: string
+              format: date-time
+            readerSerial:
+              type: string
+            reads:
+              type: array
+              items:
+                type: object
+                properties:
+                  epc:
+                    type: string
+                  rssi:
+                    type: number
+                  antennaPort:
+                    type: integer
+                  channel:
+                    type: integer
+                  readCount:
+                    type: integer
+                  firstSeen:
+                    type: string
+                    format: date-time
+                  lastSeen:
+                    type: string
+                    format: date-time
+                  gen2x:
+                    type: object
+                    properties:
+                      authenticated:
+                        type: boolean
+                      cryptoSuite:
+                        type: string
+                      extendedTid:
+                        type: string
+                      extendedUserMemory:
+                        type: string
+
+  "{tenantId}/{deviceSerial}/event/{eventType}":
+    description: System events (including Gen2x auth failures)
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+      eventType:
+        schema:
+          type: string
+          enum:
+            - heartbeat
+            - connection
+            - gpioEvent
+            - antennaStatus
+            - alert
+            - authFailure
+    subscribe:
+      operationId: receiveEvent
+      message:
+        contentType: application/json
+        payload:
+          type: object
+          properties:
+            type:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+            data:
+              type: object

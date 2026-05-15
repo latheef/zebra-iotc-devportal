@@ -1,0 +1,155 @@
+---
+sidebar_position: 2
+title: "dataEVT Payload Schema"
+description: "Complete field reference for the dataEVT MQTT payload published by the RFD40/RFD90 during RFID operations."
+---
+
+# dataEVT Payload Schema
+
+The `dataEVT` payload is published by the RFD40/RFD90 each time one or more tags are read during an RFID operation. This reference documents every field, its type, possible values, and the conditions under which it appears.
+
+## Topic Pattern
+
+```
+{tenantId}/DATA/clients/{channel}/{deviceSerial}
+```
+
+Where `{channel}` is `data1event` or `data2event` depending on `config_events` channel assignment.
+
+## QoS Level
+
+`dataEVT` messages are published at **QoS 0** by default to maximize throughput. This means delivery is best-effort with no broker acknowledgment.
+
+## Complete Field Table
+
+| Field | Type | Always Present | Description |
+|---|---|---|---|
+| `event_type` | string | Yes | Always `"dataEVT"` |
+| `device_serial` | string | Yes | Serial number of the reader that generated the event |
+| `timestamp` | string | Yes | ISO 8601 UTC timestamp of the read: `2026-05-14T10:23:45.123Z` |
+| `sequence_id` | integer | Yes | Monotonically increasing sequence number per device session |
+| `epc` | string | Yes | Hex-encoded EPC value (e.g., `"3034257BF400B7800004E3A1"`) |
+| `epc_length` | integer | Yes | Length of the EPC in bits (typically 96 or 128) |
+| `rssi` | number | RSSI/Locationing modes | Received Signal Strength Indicator in dBm (e.g., `-42.5`) |
+| `peak_rssi` | number | RSSI/Locationing modes | Peak RSSI observed across antenna cycles |
+| `tid` | string | TID mode only | Hex-encoded Tag Identifier from the TID memory bank |
+| `phase` | number | Locationing mode only | Phase angle in degrees (0–360) |
+| `distance` | number | Locationing mode only | Relative distance indicator (arbitrary units) |
+| `channel_index` | integer | Yes | RF channel index used for the read |
+| `antenna_id` | integer | Yes | Antenna port identifier (typically `0` for handheld) |
+| `seen_count` | integer | Yes | Number of times this tag was observed in the current batch |
+| `first_seen` | string | Yes | ISO 8601 timestamp of the first observation in this batch |
+| `last_seen` | string | Yes | ISO 8601 timestamp of the most recent observation in this batch |
+| `operating_mode` | string | Yes | Mode active during this read: `SIMPLE_INVENTORY`, `INVENTORY_RSSI`, `INVENTORY_TID`, `TAG_LOCATIONING` |
+| `pc_bits` | string | No | Protocol Control bits (hex string), present when available |
+
+## Payload Variations by Operating Mode
+
+### Simple Inventory
+
+```json
+{
+  "event_type": "dataEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:23:45.123Z",
+  "sequence_id": 1042,
+  "epc": "3034257BF400B7800004E3A1",
+  "epc_length": 96,
+  "channel_index": 3,
+  "antenna_id": 0,
+  "seen_count": 1,
+  "first_seen": "2026-05-14T10:23:45.123Z",
+  "last_seen": "2026-05-14T10:23:45.123Z",
+  "operating_mode": "SIMPLE_INVENTORY"
+}
+```
+
+### Inventory with RSSI
+
+Adds `rssi` and `peak_rssi` fields:
+
+```json
+{
+  "event_type": "dataEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:23:45.456Z",
+  "sequence_id": 1043,
+  "epc": "3034257BF400B7800004E3A1",
+  "epc_length": 96,
+  "rssi": -42.5,
+  "peak_rssi": -38.2,
+  "channel_index": 5,
+  "antenna_id": 0,
+  "seen_count": 3,
+  "first_seen": "2026-05-14T10:23:44.900Z",
+  "last_seen": "2026-05-14T10:23:45.456Z",
+  "operating_mode": "INVENTORY_RSSI"
+}
+```
+
+### Inventory with TID
+
+Adds `tid` field:
+
+```json
+{
+  "event_type": "dataEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:23:46.789Z",
+  "sequence_id": 1044,
+  "epc": "3034257BF400B7800004E3A1",
+  "epc_length": 96,
+  "tid": "E2801170200048E1499C1734",
+  "channel_index": 2,
+  "antenna_id": 0,
+  "seen_count": 1,
+  "first_seen": "2026-05-14T10:23:46.789Z",
+  "last_seen": "2026-05-14T10:23:46.789Z",
+  "operating_mode": "INVENTORY_TID"
+}
+```
+
+### Tag Locationing
+
+Adds `rssi`, `peak_rssi`, `phase`, and `distance` fields:
+
+```json
+{
+  "event_type": "dataEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:23:47.012Z",
+  "sequence_id": 1045,
+  "epc": "3034257BF400B7800004E3A1",
+  "epc_length": 96,
+  "rssi": -35.1,
+  "peak_rssi": -32.8,
+  "phase": 127.4,
+  "distance": 0.73,
+  "channel_index": 1,
+  "antenna_id": 0,
+  "seen_count": 5,
+  "first_seen": "2026-05-14T10:23:46.500Z",
+  "last_seen": "2026-05-14T10:23:47.012Z",
+  "operating_mode": "TAG_LOCATIONING"
+}
+```
+
+## Timestamp Format
+
+All timestamps use ISO 8601 format in UTC with millisecond precision:
+
+```
+YYYY-MM-DDTHH:MM:SS.mmmZ
+```
+
+Example: `2026-05-14T10:23:45.123Z`
+
+## Sequence ID Behavior
+
+The `sequence_id` is a monotonically increasing integer that resets when the device reboots or when a new RFID operation starts. Use it to detect gaps in the event stream (missed messages at QoS 0).
+
+## Related Topics
+
+- [How to Interpret Tag Data Fields](./interpret-tag-data.mdx): decoding and understanding field values
+- [About Tag Data Event Architecture](./about-tag-data-architecture.mdx): data flow pipeline
+- [About Dual Data Channels](./dual-data-channels.mdx): channel routing

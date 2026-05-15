@@ -1,0 +1,68 @@
+---
+sidebar_position: 2
+title: Quick Start
+---
+
+# Quick Start
+
+Get started with your Zebra fixed RFID reader.
+
+## Prerequisites
+
+- A Zebra fixed RFID reader connected to your network (Ethernet or Wi-Fi)
+- Network access to the reader's IP address
+- An MQTT broker for telemetry (optional for REST-only usage)
+
+## Step 1: Discover the Reader
+
+The fixed reader is accessible via its IP address. Use your network's DHCP server or the reader's LCD display to identify the address.
+
+```bash
+curl -k https://<READER_IP>/api/v1/status
+```
+
+## Step 2: Authenticate
+
+REST API calls use HTTP Basic Authentication:
+
+```bash
+curl -k -u admin:password https://<READER_IP>/api/v1/status
+```
+
+## Step 3: Configure MQTT (Optional)
+
+If you want to receive real-time tag data over MQTT, configure the MQTT broker connection:
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v1/mqtt/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brokerUri": "tcp://<BROKER_HOST>:1883",
+    "clientId": "fixed-reader-001"
+  }'
+```
+
+## Step 4: Start Inventory
+
+### Via REST
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v1/inventory/start
+```
+
+### Via MQTT
+
+Publish to the reader's command topic:
+
+```json
+{
+  "command": "start_inventory"
+}
+```
+
+## Next Steps
+
+- [REST Configuration Guide](./rest/configuration): Detailed REST API usage
+- [MQTT Telemetry Guide](./mqtt/telemetry): Real-time tag data streaming

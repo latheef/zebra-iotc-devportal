@@ -1,0 +1,92 @@
+---
+sidebar_position: 1
+title: "About Bulk Configuration"
+---
+
+# About Bulk Configuration
+
+Bulk configuration refers to reading or writing the complete device configuration as a single JSON document, using the `get_config` and `set_config` MQTT command endpoints. This contrasts with the individual `set_*` endpoints (such as `set_power`, `set_session`, or `set_mode`) that modify one parameter at a time.
+
+## How Bulk Configuration Works
+
+The Zebra IoT Connector exposes two bulk configuration endpoints:
+
+| Endpoint | Direction | Purpose |
+|---|---|---|
+| `get_config` | Reader → Client | Returns the complete device configuration as a JSON document |
+| `set_config` | Client → Reader | Applies a complete or partial configuration document to the reader |
+
+These endpoints operate on the same underlying configuration store as the individual `set_*` endpoints. A parameter set via `set_config` is indistinguishable from one set via `set_power`; they modify the same value.
+
+## When to Use Bulk vs. Individual Endpoints
+
+**Use `set_config` (bulk) when:**
+
+- Provisioning a new reader with a complete configuration
+- Restoring a reader to a known-good baseline
+- Applying coordinated changes across multiple parameter groups (e.g., changing both RF settings and reporting intervals together)
+- Replicating one reader's configuration to another
+- Enforcing fleet-wide configuration compliance
+
+**Use individual `set_*` endpoints when:**
+
+- Adjusting a single parameter during operation (e.g., tuning transmit power)
+- Making a change that should take effect immediately without disturbing other settings
+- Responding to a specific operational condition (e.g., reducing power in a noisy RF environment)
+
+## The Get-Modify-Set Pattern
+
+The safest approach to bulk configuration changes follows three steps:
+
+1. **Get**: Issue `get_config` to retrieve the reader's current configuration
+2. **Modify**: Change only the parameters you need to update in the returned document
+3. **Set**: Issue `set_config` with the modified document
+
+This pattern ensures you do not accidentally overwrite parameters you did not intend to change.
+
+```
+┌──────────┐         ┌──────────┐
+│  Client  │         │  Reader  │
+└────┬─────┘         └────┬─────┘
+     │   get_config       │
+     │───────────────────►│
+     │                    │
+     │   config document  │
+     │◄───────────────────│
+     │                    │
+     │  (modify locally)  │
+     │                    │
+     │   set_config       │
+     │───────────────────►│
+     │                    │
+     │   acknowledgment   │
+     │◄───────────────────│
+```
+
+## Risks and Considerations
+
+**Configuration overwrite:** If you send a `set_config` payload that omits a parameter, the reader retains the current value for that parameter. However, if you explicitly set a parameter to a default or null value, it resets. Always use the get-modify-set pattern to avoid unintended resets.
+
+**Partial vs. full documents:** The `set_config` endpoint accepts both complete and partial configuration documents. A partial document updates only the included parameters. While convenient, partial documents risk configuration drift if different management tools apply different subsets of parameters over time.
+
+**Reboot requirements:** Some configuration changes, particularly MQTT broker endpoint or TLS settings; require a reader reboot to take effect. The `set_config` response indicates whether a reboot is needed.
+
+**Concurrent modifications:** If two management systems issue `set_config` simultaneously, the last write wins. Coordinate configuration changes through a single management system or implement optimistic locking using the configuration's version or timestamp.
+
+> **Warning:** Never blindly apply a `set_config` document captured from one reader to a different reader without reviewing device-specific fields such as `client_id`. Device identity fields must be unique per reader.
+
+## Bulk Configuration in Fleet Context
+
+At fleet scale, bulk configuration becomes a management tool rather than a provisioning tool. The typical fleet management workflow is:
+
+1. Define a **golden configuration**; the approved baseline for a specific deployment environment
+2. Periodically **audit** readers by comparing their `get_config` response against the golden baseline
+3. **Remediate** any readers that have drifted from the baseline by re-applying the golden configuration via `set_config`
+
+This approach is detailed in [How to Detect and Remediate Configuration Drift](./detect-config-drift.mdx).
+
+## Next Steps
+
+- [How to Read Full Device Configuration](./read-full-config.mdx): using `get_config`
+- [How to Apply Bulk Configuration](./apply-bulk-config.mdx): using `set_config`
+- [How to Detect and Remediate Configuration Drift](./detect-config-drift.mdx): fleet compliance monitoring

@@ -1,0 +1,119 @@
+---
+sidebar_position: 2
+title: "MQTT Topic Quick Reference"
+---
+
+# MQTT Topic Quick Reference
+
+📕 **REFERENCE**: One-page cheat sheet of all IoT Connector MQTT topics, directions, and purposes.
+
+## Topic Pattern
+
+All IoT Connector topics follow the pattern:
+
+```
+zebra/iotc/{type}/{deviceId}
+```
+
+Where `{deviceId}` is the device serial number (e.g., `RFD401234567890`).
+
+## Complete Topic Table
+
+### Command & Response Topics
+
+| Topic | Direction | QoS | Purpose |
+|---|---|---|---|
+| `zebra/iotc/command/{deviceId}` | Client → Device | 1 | Send commands to the device |
+| `zebra/iotc/response/{deviceId}` | Device → Client | 1 | Receive command responses |
+
+### Event Topics
+
+| Topic | Direction | QoS | Purpose |
+|---|---|---|---|
+| `zebra/iotc/event/{deviceId}` | Device → Client | 0/1 | Tag reads, heartbeats, status changes, exception events |
+
+### Management Topics
+
+| Topic | Direction | QoS | Purpose |
+|---|---|---|---|
+| `zebra/iotc/management/command/{deviceId}` | Client → Device | 1 | Fleet management commands (firmware, config push) |
+| `zebra/iotc/management/response/{deviceId}` | Device → Client | 1 | Fleet management command responses |
+| `zebra/iotc/management/event/{deviceId}` | Device → Client | 1 | Fleet management events (update progress, health reports) |
+
+## Wildcard Subscriptions
+
+Use MQTT wildcards to subscribe to multiple devices or topic types:
+
+| Pattern | Use Case |
+|---|---|
+| `zebra/iotc/event/#` | All events from all devices |
+| `zebra/iotc/event/RFD40+` | All events from devices with IDs starting with RFD40 (single-level) |
+| `zebra/iotc/response/{deviceId}` | Responses from a specific device |
+| `zebra/iotc/+/{deviceId}` | All topic types for a specific device |
+| `zebra/iotc/#` | Everything (use for debugging only) |
+
+> **Warning:** Wildcard subscriptions on `zebra/iotc/#` can produce high message volumes in production environments. Use targeted subscriptions in production.
+
+## Commands Quick Reference
+
+Commands are sent as JSON payloads to `zebra/iotc/command/{deviceId}`:
+
+| Command | Purpose | Returns |
+|---|---|---|
+| `get_version` | Query firmware and IoT Connector version | Version details |
+| `get_config` | Retrieve full device configuration | Configuration document |
+| `set_config` | Update device configuration | Success/error |
+| `start_inventory` | Begin RFID tag inventory | Success/error |
+| `stop_inventory` | Stop active RFID inventory | Success/error |
+| `get_inventory_status` | Check if inventory is running | Inventory state |
+| `read_tag` | Read specific memory bank of a tag | Tag data |
+| `write_tag` | Write data to a tag memory bank | Success/error |
+| `lock_tag` | Lock tag memory bank | Success/error |
+| `kill_tag` | Permanently disable a tag | Success/error |
+| `create_endpoint` | Add an MQTT broker endpoint | Success/error |
+| `delete_endpoint` | Remove an MQTT broker endpoint | Success/error |
+| `connect_endpoint` | Switch to a different endpoint | Success/error |
+| `add_wifi_profile` | Add a Wi-Fi network profile | Success/error |
+| `delete_wifi_profile` | Remove a Wi-Fi profile | Success/error |
+| `connect_wifi` | Connect to a saved Wi-Fi profile | Success/error |
+| `install_certificate` | Install a TLS certificate | Success/error |
+| `delete_certificate` | Remove a TLS certificate | Success/error |
+| `reboot` | Restart the device | Success (then disconnect) |
+| `set_heartbeat` | Configure heartbeat interval | Success/error |
+
+## Event Types Quick Reference
+
+Events are received on `zebra/iotc/event/{deviceId}`:
+
+| Event Type | Payload Field | Purpose |
+|---|---|---|
+| `tagReadEVT` | `eventType: "tagReadEVT"` | Individual or batched tag read data |
+| `heartbeatEVT` | `eventType: "heartbeatEVT"` | Periodic device health and status |
+| `inventoryStatusEVT` | `eventType: "inventoryStatusEVT"` | Inventory operation started/stopped |
+| `exceptionEVT` | `eventType: "exceptionEVT"` | Error and warning conditions |
+| `connectionEVT` | `eventType: "connectionEVT"` | MQTT/Wi-Fi/Bluetooth connection state changes |
+| `batteryEVT` | `eventType: "batteryEVT"` | Battery level and charging status changes |
+
+## Subscription Checklist
+
+For a minimal integration, subscribe to:
+
+1. **`zebra/iotc/response/{deviceId}`**: to receive command responses
+2. **`zebra/iotc/event/{deviceId}`**: to receive tag data and device events
+
+For fleet management, also subscribe to:
+
+3. **`zebra/iotc/management/response/{deviceId}`**: management command responses
+4. **`zebra/iotc/management/event/{deviceId}`**: management events
+
+## QoS Recommendations
+
+| Use Case | Recommended QoS |
+|---|---|
+| Commands and responses | QoS 1 (at least once) |
+| Tag read events (high throughput) | QoS 0 (at most once) |
+| Exception events | QoS 1 (at least once) |
+| Heartbeat events | QoS 0 (at most once) |
+| Fleet management | QoS 1 (at least once) |
+
+> **Note:** QoS 2 (exactly once) is not commonly used with the IoT Connector. QoS 1 provides a good balance between reliability and throughput. Use QoS 0 for high-volume tag events where occasional message loss is acceptable.

@@ -1,0 +1,118 @@
+---
+sidebar_position: 13
+title: "config_events"
+description: "Configure event reporting and alert thresholds on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# config_events
+
+Configures which asynchronous events the device publishes, heartbeat intervals, and alert thresholds for battery, temperature, and other conditions.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "config_events",
+  "requestId": "15",
+  "eventConfig": {
+    "heartbeat": {
+      "enabled": true,
+      "intervalSeconds": 300
+    },
+    "alerts": {
+      "enabled": true,
+      "batteryLow": {
+        "enabled": true,
+        "thresholdPercent": 20
+      },
+      "batteryCritical": {
+        "enabled": true,
+        "thresholdPercent": 5
+      },
+      "temperatureHigh": {
+        "enabled": true,
+        "thresholdCelsius": 50
+      },
+      "networkDisconnect": {
+        "enabled": true
+      },
+      "powerSourceChange": {
+        "enabled": true
+      }
+    },
+    "mqttConnectionEvents": {
+      "enabled": true
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"config_events"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `eventConfig.heartbeat.enabled` | boolean | No | Enable or disable heartbeat events |
+| `eventConfig.heartbeat.intervalSeconds` | integer | No | Heartbeat interval in seconds (60–3600). Default: `300` |
+| `eventConfig.alerts.enabled` | boolean | No | Master enable/disable for all alerts |
+| `eventConfig.alerts.batteryLow.enabled` | boolean | No | Enable low battery alert |
+| `eventConfig.alerts.batteryLow.thresholdPercent` | integer | No | Battery percentage threshold (1–50) |
+| `eventConfig.alerts.batteryCritical.enabled` | boolean | No | Enable critical battery alert |
+| `eventConfig.alerts.batteryCritical.thresholdPercent` | integer | No | Battery percentage threshold (1–20) |
+| `eventConfig.alerts.temperatureHigh.enabled` | boolean | No | Enable high temperature alert |
+| `eventConfig.alerts.temperatureHigh.thresholdCelsius` | integer | No | Temperature threshold in Celsius (30–70) |
+| `eventConfig.alerts.networkDisconnect.enabled` | boolean | No | Enable network disconnection alerts |
+| `eventConfig.alerts.powerSourceChange.enabled` | boolean | No | Enable power source change alerts |
+| `eventConfig.mqttConnectionEvents.enabled` | boolean | No | Enable MQTT connect/disconnect events |
+
+## Response Payload
+
+```json
+{
+  "command": "config_events",
+  "requestId": "15",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | A threshold value is out of range |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+
+## Notes
+
+- Only the fields included in the request are updated. Omitted fields retain their current values.
+- The heartbeat interval must be between 60 and 3600 seconds. Values outside this range return error code `3`.
+- `batteryCritical.thresholdPercent` must be lower than `batteryLow.thresholdPercent`.
+- Alert events are published to the MGMT event topic: `{tenantId}/MGMT/clients/event/{deviceSerial}`.
+- Event configuration persists across reboots.
+
+## See Also
+
+- [heartBeatEVT](../events/heartbeatevt): Heartbeat event payload reference
+- [alerts](../events/alerts): Alert event payload reference
+- [mqttConnEVT](../events/mqttconnevt): Connection event payload reference
+- [get_config](get-config): Retrieve full configuration including event settings
+- [API Overview](../api-overview): Complete endpoint inventory

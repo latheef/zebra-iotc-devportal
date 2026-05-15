@@ -1,0 +1,115 @@
+---
+sidebar_position: 4
+title: "mqttConnEVT"
+description: "MQTT connection/disconnection event reference for Zebra RFD40/RFD90 handheld RFID readers."
+---
+
+# mqttConnEVT
+
+Connection and disconnection events published when the device connects to or disconnects from the MQTT broker. Includes device identification and connection metadata.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Event** | `{tenantId}/MGMT/clients/event/{deviceSerial}` |
+
+## Direction
+
+Reader → Application
+
+## Payload
+
+### Connection Event
+
+```json
+{
+  "event": "mqttConnEVT",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T08:00:05.000Z",
+  "connectionState": "CONNECTED",
+  "deviceInfo": {
+    "model": "RFD90",
+    "firmwareVersion": "2.1.0.0",
+    "iotcVersion": "1.3.2.0"
+  },
+  "connectionDetails": {
+    "brokerUrl": "mqtt.warehouse.acme.com",
+    "port": 8883,
+    "protocol": "MQTT_TLS",
+    "clientId": "24042AR50033",
+    "cleanSession": true
+  },
+  "networkInfo": {
+    "interface": "WIFI",
+    "ipAddress": "10.0.5.22",
+    "essid": "Warehouse-IoT"
+  }
+}
+```
+
+### Disconnection Event
+
+```json
+{
+  "event": "mqttConnEVT",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T16:45:30.000Z",
+  "connectionState": "DISCONNECTED",
+  "disconnectReason": "NETWORK_LOSS",
+  "deviceInfo": {
+    "model": "RFD90",
+    "firmwareVersion": "2.1.0.0",
+    "iotcVersion": "1.3.2.0"
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `event` | string | Always `"mqttConnEVT"` |
+| `deviceSerial` | string | Serial number of the device |
+| `timestamp` | string | Event timestamp in ISO 8601 format |
+| `connectionState` | string | `CONNECTED` or `DISCONNECTED` |
+| `disconnectReason` | string | Reason for disconnection (present only when `connectionState` is `DISCONNECTED`) |
+| `deviceInfo` | object | Device identification |
+| `deviceInfo.model` | string | Hardware model (e.g., `RFD40`, `RFD90`) |
+| `deviceInfo.firmwareVersion` | string | Current firmware version |
+| `deviceInfo.iotcVersion` | string | IoT Connector agent version |
+| `connectionDetails` | object | MQTT connection parameters (present only on `CONNECTED` events) |
+| `connectionDetails.brokerUrl` | string | MQTT broker hostname |
+| `connectionDetails.port` | integer | MQTT broker port |
+| `connectionDetails.protocol` | string | `MQTT` or `MQTT_TLS` |
+| `connectionDetails.clientId` | string | MQTT client identifier |
+| `connectionDetails.cleanSession` | boolean | Whether a clean MQTT session was established |
+| `networkInfo` | object | Network interface details (present only on `CONNECTED` events) |
+| `networkInfo.interface` | string | Active network interface: `WIFI`, `ETHERNET` |
+| `networkInfo.ipAddress` | string | Device IP address |
+| `networkInfo.essid` | string | Wi-Fi SSID (present only when `interface` is `WIFI`) |
+
+### Disconnect Reasons
+
+| Reason | Description |
+|---|---|
+| `NETWORK_LOSS` | Network connectivity was lost |
+| `BROKER_DISCONNECT` | The broker terminated the connection |
+| `CLIENT_DISCONNECT` | The device initiated a graceful disconnect |
+| `ENDPOINT_SWITCH` | The device is switching to a different MQTT endpoint |
+| `REBOOT` | The device is rebooting |
+| `KEEPALIVE_TIMEOUT` | MQTT keepalive timeout exceeded |
+
+## Notes
+
+- `CONNECTED` events include `connectionDetails` and `networkInfo`. `DISCONNECTED` events include only `disconnectReason`.
+- Disconnection events with reason `NETWORK_LOSS` may be delivered via the MQTT Last Will and Testament (LWT) mechanism, depending on broker configuration.
+- Connection events are useful for fleet monitoring; they confirm when a device comes online and provide its current firmware version and network details.
+- `mqttConnEVT` events are enabled or disabled via `config_events`. They are enabled by default.
+- After a `DISCONNECTED` event, the device automatically attempts to reconnect using exponential backoff (initial 1 second, maximum 60 seconds).
+
+## See Also
+
+- [config_events](../mgmt/config-events): Enable or disable connection events
+- [config_endpoint](../mgmt/config-endpoint): Configure MQTT broker endpoints
+- [heartBeatEVT](heartbeatevt): Periodic health monitoring
+- [reboot](../mgmt/reboot): Device restart (triggers disconnect/reconnect)
+- [API Overview](../api-overview): Complete endpoint inventory

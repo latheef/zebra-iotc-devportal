@@ -1,0 +1,141 @@
+---
+sidebar_position: 15
+title: Config Events
+description: Configure heartbeat interval, temperature alerts, and battery alerts on the reader.
+---
+
+# Config Events
+
+Configure event reporting settings on the reader, including heartbeat interval, temperature threshold alerts, and battery level alerts. Each event category can be independently enabled or disabled with its own parameters.
+
+:::warning
+Changes to event configuration require a **reboot** to take effect. Use the [`reboot`](./reboot) command after applying configuration changes.
+:::
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `config_events` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "config_events",
+  "requestId": "req-evt-001",
+  "eventConfig": {
+    "heartbeat": {
+      "enabled": true,
+      "interval": 30000,
+      "inventoryStatus": true,
+      "batteryStatus": true,
+      "networkStatus": true
+    },
+    "temperature": {
+      "enabled": true,
+      "temperatureThreshold": 45
+    },
+    "battery": {
+      "enabled": true,
+      "lowBatteryThreshold": 20,
+      "criticalBatteryThreshold": 10
+    }
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"config_events"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+| `eventConfig.heartbeat.enabled` | boolean | Yes | Enable or disable heartbeat events. |
+| `eventConfig.heartbeat.interval` | integer | No | Heartbeat interval in milliseconds (10000–3600000). |
+| `eventConfig.heartbeat.inventoryStatus` | boolean | No | Include inventory status in heartbeat. Default: `false`. |
+| `eventConfig.heartbeat.batteryStatus` | boolean | No | Include battery status in heartbeat. Default: `false`. |
+| `eventConfig.heartbeat.networkStatus` | boolean | No | Include network status in heartbeat. Default: `false`. |
+| `eventConfig.temperature.enabled` | boolean | Yes | Enable or disable temperature alerts. |
+| `eventConfig.temperature.temperatureThreshold` | integer | No | Temperature threshold in Celsius (0–70). |
+| `eventConfig.battery.enabled` | boolean | Yes | Enable or disable battery alerts. |
+| `eventConfig.battery.lowBatteryThreshold` | integer | No | Low battery alert threshold as percentage (5–50). |
+| `eventConfig.battery.criticalBatteryThreshold` | integer | No | Critical battery alert threshold as percentage (1–20). Default: `10`. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "config_events",
+  "requestId": "req-evt-001",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"config_events"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `2` | Invalid parameter |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "config_events",
+  "requestId": "req-evt-002",
+  "eventConfig": {
+    "heartbeat": {
+      "enabled": true,
+      "interval": 60000,
+      "inventoryStatus": false,
+      "batteryStatus": true,
+      "networkStatus": false
+    },
+    "temperature": {
+      "enabled": false
+    },
+    "battery": {
+      "enabled": true,
+      "lowBatteryThreshold": 15,
+      "criticalBatteryThreshold": 5
+    }
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "command": "config_events",
+  "requestId": "req-evt-002",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

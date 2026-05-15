@@ -1,0 +1,163 @@
+---
+sidebar_position: 11
+title: Get Endpoint Config
+description: Retrieve all configured MQTT broker endpoints with connection status.
+---
+
+# Get Endpoint Config
+
+Retrieve all configured MQTT broker endpoints and their current connection status. This command returns the full list of endpoint configurations including host, port, TLS settings, topic subscriptions, and whether each endpoint is currently connected, disconnected, or in the process of connecting.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `get_endpoint_config` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "get_endpoint_config",
+  "requestId": "req-gec-001"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"get_endpoint_config"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "get_endpoint_config",
+  "requestId": "req-gec-001",
+  "responseCode": 0,
+  "message": "Success",
+  "endpointConfig": {
+    "endpoints": [
+      {
+        "name": "mgmt-broker-primary",
+        "type": "MGMT",
+        "host": "mqtt-mgmt.example.com",
+        "port": 8883,
+        "tls": true,
+        "tenantId": "tenant-acme-corp",
+        "keepAlive": 60,
+        "cleanSession": true,
+        "connectionStatus": "CONNECTED",
+        "publishTopics": [
+          "tenant-acme-corp/MGMT/clients/resp/RFD40-212735201D0053"
+        ],
+        "subscribeTopics": [
+          "tenant-acme-corp/MGMT/clients/cmnd/RFD40-212735201D0053"
+        ]
+      },
+      {
+        "name": "data-broker-east",
+        "type": "DATA",
+        "host": "mqtt-east.example.com",
+        "port": 8883,
+        "tls": true,
+        "tenantId": "tenant-acme-corp",
+        "keepAlive": 30,
+        "cleanSession": false,
+        "connectionStatus": "DISCONNECTED",
+        "publishTopics": [
+          "tenant-acme-corp/DATA/clients/data/RFD40-212735201D0053"
+        ],
+        "subscribeTopics": [
+          "tenant-acme-corp/DATA/clients/cmnd/RFD40-212735201D0053"
+        ]
+      }
+    ]
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"get_endpoint_config"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+| `endpointConfig.endpoints` | array | List of configured endpoint objects. |
+| `endpoints[].name` | string | User-defined label for the endpoint. |
+| `endpoints[].type` | enum | Interface type: `MGMT`, `CTRL`, `DATA`, or `MDM`. |
+| `endpoints[].host` | string | MQTT broker hostname or IP address. |
+| `endpoints[].port` | integer | MQTT broker port. |
+| `endpoints[].tls` | boolean | Whether TLS is enabled. |
+| `endpoints[].tenantId` | string | Tenant identifier used in topic paths. |
+| `endpoints[].keepAlive` | integer | Keep-alive interval in seconds. |
+| `endpoints[].cleanSession` | boolean | Whether clean session is enabled. |
+| `endpoints[].connectionStatus` | enum | `CONNECTED`, `DISCONNECTED`, or `CONNECTING`. |
+| `endpoints[].publishTopics` | array | Topics the device publishes to on this endpoint. |
+| `endpoints[].subscribeTopics` | array | Topics the device subscribes to on this endpoint. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `3` | Command not supported |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "get_endpoint_config",
+  "requestId": "req-gec-002"
+}
+```
+
+### Response
+
+```json
+{
+  "command": "get_endpoint_config",
+  "requestId": "req-gec-002",
+  "responseCode": 0,
+  "message": "Success",
+  "endpointConfig": {
+    "endpoints": [
+      {
+        "name": "mgmt-broker-primary",
+        "type": "MGMT",
+        "host": "mqtt-mgmt.example.com",
+        "port": 8883,
+        "tls": true,
+        "tenantId": "tenant-acme-corp",
+        "keepAlive": 60,
+        "cleanSession": true,
+        "connectionStatus": "CONNECTED",
+        "publishTopics": [
+          "tenant-acme-corp/MGMT/clients/resp/RFD40-212735201D0053"
+        ],
+        "subscribeTopics": [
+          "tenant-acme-corp/MGMT/clients/cmnd/RFD40-212735201D0053"
+        ]
+      }
+    ]
+  }
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

@@ -1,0 +1,142 @@
+asyncapi: 2.6.0
+info:
+  title: Zebra Fixed RFID Reader IoT Connector MQTT API
+  version: 1.0.0
+  description: |
+    MQTT API for real-time telemetry and event streaming from
+    Zebra fixed RFID readers.
+  contact:
+    name: Zebra Technologies Developer Support
+    url: https://developer.zebra.com
+  license:
+    name: Proprietary
+
+servers:
+  production:
+    url: mqtt.example.com:8883
+    protocol: mqtt
+    protocolVersion: "3.1.1"
+    description: Production MQTT broker (TLS)
+
+channels:
+  "{tenantId}/{deviceSerial}/command":
+    description: Send commands to the reader
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    publish:
+      operationId: sendCommand
+      message:
+        contentType: application/json
+        payload:
+          type: object
+          required:
+            - command
+          properties:
+            command:
+              type: string
+
+  "{tenantId}/{deviceSerial}/response":
+    description: Receive command responses
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveResponse
+      message:
+        contentType: application/json
+        payload:
+          type: object
+          properties:
+            command:
+              type: string
+            status:
+              type: string
+              enum: [SUCCESS, ERROR]
+
+  "{tenantId}/{deviceSerial}/data/tagReads":
+    description: Real-time tag read telemetry
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveTagReads
+      message:
+        contentType: application/json
+        payload:
+          type: object
+          properties:
+            type:
+              type: string
+              const: TAG_READ
+            timestamp:
+              type: string
+              format: date-time
+            readerSerial:
+              type: string
+            reads:
+              type: array
+              items:
+                type: object
+                properties:
+                  epc:
+                    type: string
+                  rssi:
+                    type: number
+                  antennaPort:
+                    type: integer
+                  channel:
+                    type: integer
+                  readCount:
+                    type: integer
+                  firstSeen:
+                    type: string
+                    format: date-time
+                  lastSeen:
+                    type: string
+                    format: date-time
+
+  "{tenantId}/{deviceSerial}/event/{eventType}":
+    description: System events
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+      eventType:
+        schema:
+          type: string
+          enum:
+            - heartbeat
+            - connection
+            - gpioEvent
+            - antennaStatus
+            - alert
+    subscribe:
+      operationId: receiveEvent
+      message:
+        contentType: application/json
+        payload:
+          type: object
+          properties:
+            type:
+              type: string
+            timestamp:
+              type: string
+              format: date-time
+            data:
+              type: object

@@ -1,0 +1,77 @@
+---
+sidebar_position: 16
+title: "reboot"
+description: "Restart a Zebra RFD40/RFD90 handheld RFID reader via MQTT command."
+---
+
+# reboot
+
+Restarts the device. The device disconnects from MQTT, reboots, and reconnects automatically.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "reboot",
+  "requestId": "19"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"reboot"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+
+## Response Payload
+
+The response is sent before the device initiates the reboot sequence.
+
+```json
+{
+  "command": "reboot",
+  "requestId": "19",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `5` | DeviceBusy | The device is performing a firmware update and cannot be rebooted |
+
+## Notes
+
+- The response is published before the device disconnects. If the response is not received, the device may still reboot.
+- Typical reboot time is 30–60 seconds. The device automatically reconnects to the configured MQTT broker after restart.
+- Any in-progress RFID operations are stopped during reboot.
+- Use `reboot` after `set_os` to apply a firmware update, or after configuration changes that require a restart.
+- Monitor the MGMT event topic for a `mqttConnEVT` to detect when the device comes back online.
+
+## See Also
+
+- [set_os](set-os): Initiate a firmware update
+- [mqttConnEVT](../events/mqttconnevt): Connection/disconnection events
+- [get_version](get-version): Verify firmware version after reboot
+- [API Overview](../api-overview): Complete endpoint inventory

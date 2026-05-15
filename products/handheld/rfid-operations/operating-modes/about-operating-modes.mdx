@@ -1,0 +1,80 @@
+---
+sidebar_position: 1
+title: "About RFID Operating Modes"
+description: "Understanding the RFID operating modes available on the RFD40/RFD90 handheld reader sleds and when to use each one."
+---
+
+# About RFID Operating Modes
+
+The RFD40/RFD90 handheld RFID reader sleds support multiple operating modes that control what data the reader captures from each tag and how the RF field behaves. Selecting the right operating mode determines the balance between data richness, read speed, and battery consumption.
+
+## Available Operating Modes
+
+### Simple Inventory
+
+Simple Inventory is the default and most lightweight mode. The reader scans the RF field and returns only the **EPC (Electronic Product Code)** for each tag detected.
+
+- **Returns**: EPC identifier only
+- **Use case**: High-speed bulk inventory counts where you only need to know which tags are present
+- **Read rate**: Highest throughput; hundreds of tags per second
+- **Battery impact**: Lowest power consumption per scan cycle
+
+Simple Inventory is ideal for warehouse cycle counts, receiving dock verification, and any scenario where tag identity alone is sufficient.
+
+### Inventory with RSSI
+
+This mode extends Simple Inventory by adding **Received Signal Strength Indicator (RSSI)** values to each tag read.
+
+- **Returns**: EPC + RSSI (in dBm)
+- **Use case**: Proximity-based workflows where you need to estimate tag distance or confirm tag location zones
+- **Read rate**: Slightly reduced compared to Simple Inventory
+- **Battery impact**: Moderate; additional RF signal processing per tag
+
+RSSI values help determine relative tag proximity. A tag at -30 dBm is closer than one at -60 dBm. Note that RSSI is an approximation influenced by environmental factors such as reflections, tag orientation, and obstructions.
+
+### Inventory with TID
+
+This mode reads the **Tag Identifier (TID)** memory bank in addition to the EPC. The TID is a manufacturer-assigned, read-only identifier unique to each physical chip.
+
+- **Returns**: EPC + TID
+- **Use case**: Anti-counterfeiting, tag authentication, and scenarios requiring chip-level identification
+- **Read rate**: Reduced; requires additional memory bank access per tag
+- **Battery impact**: Higher, each tag read involves multiple RF exchanges
+
+The TID is immutable and silicon-specific, making it useful for verifying that an EPC has not been cloned onto a different chip.
+
+### Tag Locationing
+
+Tag Locationing provides spatial data to help the operator physically locate a specific tag. The reader adjusts its RF behavior to deliver **distance and direction indicators**.
+
+- **Returns**: EPC + RSSI + phase angle + relative distance indicator
+- **Use case**: Finding a specific item on a shelf, locating a misplaced asset, geiger-counter style search
+- **Read rate**: Lowest; focused on a single target tag
+- **Battery impact**: Highest; continuous RF transmission with real-time signal processing
+
+In this mode, you typically configure a target EPC filter so the reader focuses on locating one specific tag rather than inventorying all tags in range.
+
+## Choosing the Right Mode
+
+| Factor | Simple Inventory | With RSSI | With TID | Locationing |
+|---|---|---|---|---|
+| Tags per second | Highest | High | Moderate | Low |
+| Battery per scan | Lowest | Low | Moderate | High |
+| Data richness | EPC only | EPC + signal | EPC + chip ID | EPC + spatial |
+| Typical use case | Bulk counts | Zone detection | Authentication | Item search |
+
+## Battery Consumption Relationship
+
+Operating mode directly affects battery life. Simple Inventory on an RFD40 can sustain thousands of scan cycles on a single charge, while continuous Tag Locationing may drain the battery significantly faster due to sustained RF transmission.
+
+> **Note**: Battery drain also depends on RF power level, scan duration, and the number of tags in the field. Configure the minimum RF power necessary for your environment to maximize battery life.
+
+## How Modes Affect dataEVT Payloads
+
+Each operating mode changes which fields appear in the `dataEVT` MQTT payload. Simple Inventory payloads contain only the EPC, while Inventory with RSSI adds `rssi` fields, and Tag Locationing adds `phase` and `distance` indicators. See [dataEVT Payload Schema](../tag-data/dataevt-payload.mdx) for the complete field reference.
+
+## Related Topics
+
+- [How to Configure the Operating Mode](./configure-operating-mode.mdx): step-by-step configuration
+- [About Post-Filters](./about-post-filters.mdx): filtering tags during inventory
+- [How to Start and Stop RFID Operations](./start-stop-operations.mdx): controlling read sessions

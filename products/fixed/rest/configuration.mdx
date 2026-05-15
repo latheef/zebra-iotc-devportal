@@ -1,0 +1,76 @@
+---
+sidebar_position: 3
+title: REST Configuration
+---
+
+# REST API: Configuration
+
+Use the REST API to configure your Zebra fixed RFID reader. All endpoints use HTTPS and require Basic Authentication.
+
+## Base URL
+
+```
+https://<READER_IP>/api/v1
+```
+
+## Reader Settings
+
+### Get Current Configuration
+
+```bash
+curl -k -u admin:password https://<READER_IP>/api/v1/config
+```
+
+### Update RF Configuration
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v1/config/rf \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transmitPower": 30.0,
+    "session": "S2",
+    "antennas": [
+      {"port": 1, "enabled": true, "power": 30.0},
+      {"port": 2, "enabled": true, "power": 27.0},
+      {"port": 3, "enabled": false},
+      {"port": 4, "enabled": false}
+    ]
+  }'
+```
+
+## Network Configuration
+
+### Get Network Status
+
+```bash
+curl -k -u admin:password https://<READER_IP>/api/v1/network
+```
+
+### Configure MQTT Broker
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v1/mqtt/config \
+  -H "Content-Type: application/json" \
+  -d '{
+    "brokerUri": "ssl://<BROKER_HOST>:8883",
+    "clientId": "fixed-reader-001",
+    "caCertificate": "<pem-encoded-cert>"
+  }'
+```
+
+## Antenna Configuration
+
+Fixed readers support multiple antenna ports. Configure each port independently:
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `port` | number | Antenna port number (1–4, or 1–8 depending on model) |
+| `enabled` | boolean | Enable or disable this antenna port |
+| `power` | number | Transmit power in dBm for this port |
+
+## See Also
+
+- [REST API Reference](/fixed/api-reference): Full interactive API documentation
+- [Management](./management): Firmware and system management endpoints

@@ -1,0 +1,427 @@
+---
+sidebar_position: 1
+title: Fleet Provisioning
+---
+
+# Fleet Provisioning
+
+Configuring one RFID reader is a learning exercise. Configuring five hundred is an engineering problem. The gap between a proof-of-concept, where you paste JSON and watch it connect, and a production fleet deployment sits at the center of this chapter. The tools are the same (`set_config`, `get_config`, `config_endpoint`, `config_events`), but the methodology is fundamentally different: you are no longer an operator typing commands; you are designing an automated pipeline that must work reliably, repeatably, and without bricking hardware you cannot physically touch.
+
+---
+
+## 11.1 Provisioning Workflow Design
+
+Every provisioning operation modifies a reader's configuration over an MQTT connection. That statement contains a trap: *the configuration you are changing includes the very settings that sustain the MQTT connection you are using to change it.* Understanding this dependency, and designing provisioning workflows that respect it; is the difference between a successful fleet rollout and a warehouse full of unreachable readers.
+
+### The Connectivity Trap
+
+Consider a reader deployed at a remote loading dock, reachable only over MQTT. You want to update its Wi-Fi credentials, point it at a new MQTT broker, and install a new TLS certificate. The `set_config` command accepts all these domains in a single payload:
+
+```json
+{
+  "command": "set_config",
+  "requestId": "migration-001",
+  "configPayload": {
+    "wifiConfig": {
+      "operation": "MODIFY",
+      "ssid": "Warehouse-5G-New",
+      "securityType": "WPA3_PERSONAL",
+      "password": "new-wifi-password"
+    },
+    "endpointConfig": {
+      "operation": "MODIFY",
+      "name": "Primary-MGMT",
+      "type": "MGMT",
+      "host": "new-broker.enterprise.com",
+      "port": 8883,
+      "tls": true
+    },
+    "certificates": [
+      {
+        "name": "new-broker-ca",
+        "type": "mqtt",
+        "certificateData": "-----BEGIN CERTIFICATE-----\nMIIDxTCCAq2g...\n-----END CERTIFICATE-----"
+      }
+    ]
+  }
+}
+```
+
+When *any one element* is wrong:
+
+- **Wrong Wi-Fi password:** The reader cannot authenticate to the new network. No transport. MQTT unreachable.
+- **Wrong broker hostname:** Reader connects to Wi-Fi but cannot reach the broker. MQTT unreachable.
+- **Wrong TLS certificate:** Reader reaches the broker but the TLS handshake fails. MQTT unreachable.
+
+In every failure scenario, the outcome is identical: **the reader is offline, and you have no MQTT channel to send corrective commands.** Recovery requires physical access or an MDM platform capable of pushing configuration outside of MQTT.
+
+> **⚠ WARNING:** Never push a `set_config` payload that simultaneously changes network transport (Wi-Fi), MQTT broker endpoint, and TLS certificates to a reader you can only reach over MQTT. If any layer fails, the reader loses its connection to the only management channel you have. This requires physical intervention or MDM rollback.
+
+### Staged Provisioning
+
+Staged provisioning separates the configuration into independent domains, pushes each individually, and verifies connectivity after each change before proceeding.
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                     STAGED PROVISIONING PIPELINE                     │
+├──────────┬───────────────────────────┬───────────────────────────────┤
+│  Stage   │  Command                  │  Verification                 │
+├──────────┼───────────────────────────┼───────────────────────────────┤
+│  1. Wi-Fi│  set_wifi                 │  get_wifi → confirm connected │
+├──────────┼───────────────────────────┼───────────────────────────────┤
+│  2. TLS  │  install_certificate      │  get_installed_certificate    │
+│          │  (broker CA cert)         │  → confirm cert installed     │
+├──────────┼───────────────────────────┼───────────────────────────────┤
+│  3. MQTT │  config_endpoint          │  get_endpoint_config          │
+│  Endpoint│  (new broker host/port)   │  → confirm CONNECTED status   │
+├──────────┼───────────────────────────┼───────────────────────────────┤
+│  4. Events│ config_events            │  reboot → wait for heartbeat  │
+├──────────┼───────────────────────────┼───────────────────────────────┤
+│  5. RFID │  set_operating_mode       │  get_operating_mode           │
+│  (CTRL)  │  (RF params, profiles)    │  → confirm profile applied    │
+└──────────┴───────────────────────────┴───────────────────────────────┘
+```
+
+**Why this order matters:**
+
+1. **Wi-Fi first.** Network transport is the foundation. Push Wi-Fi credentials and verify the reader re-associates before touching anything else.
+2. **TLS certificate second.** The certificate must be installed *before* the endpoint is switched to a TLS broker. If you flip the endpoint first, the handshake fails immediately.
+3. **MQTT endpoint third.** With Wi-Fi and the certificate verified, the endpoint change is now safe. Verify by checking `connectionStatus` in `get_endpoint_config`; should report `"CONNECTED"`.
+4. **Event configuration fourth.** This requires a reboot. Send `config_events`, then `reboot`, and wait for the first heartbeat as the reconnection signal.
+5. **RFID operating mode last.** This configures the Control domain and has no impact on connectivity.
+
+**The key principle:** each stage modifies only one configuration domain, and each includes a verification checkpoint. If a stage fails, the reader remains connected on its previous working configuration.
+
+### When Single-Command Provisioning Is Safe
+
+**Factory-floor initial provisioning.** When a reader is physically in front of you (USB, local staging network, or within reach), a single `set_config` with the full configuration is efficient and safe. If it fails, you can correct it immediately.
+
+**MDM-managed provisioning with rollback.** If your MDM platform can push configuration via Bluetooth or a secondary channel, you can use `set_config` for full-payload updates. The MDM provides the rollback path.
+
+The core safety question: **if this configuration push fails, do I have an alternative path to reach the device?**
+
+See [Securing the Connection](/handheld/mqtt/securing-the-connection) for TLS details, and [Monitoring and Events](/handheld/mqtt/monitoring-events) for event configuration.
+
+---
+
+## 11.2 Golden Configuration Templates
+
+A Golden Configuration is a version-controlled JSON template representing the desired state of every reader in a fleet segment. It is the single source of truth. Every provisioning operation applies this template. Every configuration audit compares against it.
+
+### The Template
+
+```json
+{
+  "command": "set_config",
+  "requestId": "{requestId}",
+  "configPayload": {
+    "wifiConfig": {
+      "operation": "ADD",
+      "ssid": "Warehouse-5G",
+      "securityType": "WPA2_ENTERPRISE",
+      "identity": "{wifiIdentity}",
+      "password": "{wifiPassword}"
+    },
+    "endpointConfig": {
+      "operation": "ADD",
+      "name": "Primary-MGMT",
+      "type": "MGMT",
+      "host": "iot-broker.enterprise.com",
+      "port": 8883,
+      "tls": true,
+      "tenantId": "enterprise",
+      "keepAlive": 60,
+      "cleanSession": true,
+      "publishTopics": [
+        "{tenantId}/MGMT/clients/resp/{deviceSerial}",
+        "{tenantId}/MGMT/clients/event/{deviceSerial}"
+      ],
+      "subscribeTopics": [
+        "{tenantId}/MGMT/clients/cmnd/{deviceSerial}"
+      ]
+    },
+    "certificates": [
+      {
+        "name": "broker-ca-2026",
+        "type": "mqtt",
+        "certificateData": "{caCertificatePEM}"
+      }
+    ],
+    "eventConfig": {
+      "heartbeat": {
+        "enabled": true,
+        "interval": 60000,
+        "inventoryStatus": true,
+        "batteryStatus": true,
+        "networkStatus": true
+      },
+      "temperature": {
+        "enabled": true,
+        "temperatureThreshold": 45
+      },
+      "battery": {
+        "enabled": true,
+        "lowBatteryThreshold": 20,
+        "criticalBatteryThreshold": 10
+      }
+    }
+  }
+}
+```
+
+### Parameterized vs. Static Fields
+
+**Static fields (fleet-wide):**
+
+| Field | Example Value | Rationale |
+|-------|--------------|-----------|
+| `ssid` | `"Warehouse-5G"` | All readers in this site connect to the same network |
+| `securityType` | `"WPA2_ENTERPRISE"` | Uniform security policy |
+| `host` | `"iot-broker.enterprise.com"` | Single broker for fleet segment |
+| `port` | `8883` | Standard MQTT over TLS |
+| `tls` | `true` | Security policy: TLS required |
+| `keepAlive` | `60` | Fleet-wide MQTT keepalive |
+| `heartbeat.interval` | `60000` | Fleet-wide monitoring cadence |
+
+**Parameterized fields (device-specific):**
+
+| Placeholder | Source | Description |
+|-------------|--------|-------------|
+| `{requestId}` | UUID generator | Unique per provisioning operation |
+| `{deviceSerial}` | Device discovery | Reader serial number for topic templates |
+| `{wifiIdentity}` | Credential vault | Per-device 802.1X identity |
+| `{wifiPassword}` | Credential vault | Never hardcoded in templates |
+| `{tenantId}` | Fleet configuration | Organization identifier |
+| `{caCertificatePEM}` | Certificate store | PEM-encoded CA certificate from your PKI |
+
+### IaC Discipline
+
+Treat the Golden Template with the same rigor you apply to Terraform plans or Kubernetes manifests:
+
+**Version control.** Store templates in Git. Tag releases (`v1.0.0`, `v1.1.0`) that correspond to fleet-wide rollouts. Never edit a template and push to production in the same action.
+
+**Peer review.** Require pull request approval for template changes. For changes affecting connectivity-critical fields (Wi-Fi, endpoint, certificates), require review from someone who understands the staged provisioning constraints.
+
+**Environment separation.** Maintain `staging` and `production` template variants. Validate changes against staging readers before promoting to production.
+
+**Secrets management.** Credentials live in a secrets vault (HashiCorp Vault, AWS Secrets Manager, Azure Key Vault) and are injected at provisioning time. Never commit plaintext credentials to version control.
+
+---
+
+## 11.3 Automating Provisioning with Scripts
+
+A Golden Template defines the desired state. An automation pipeline makes that state real across hundreds of devices without manual intervention.
+
+### Pipeline Architecture
+
+```
+┌─────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│  1. DISCOVER │────▶│  2. PUSH     │────▶│  3. VERIFY   │────▶│  4. PROMOTE  │────▶│  5. LOG      │
+│              │     │              │     │              │     │              │     │              │
+│ Detect new   │     │ Send config  │     │ get_config   │     │ Move reader  │     │ Record       │
+│ readers on   │     │ (staged or   │     │ and compare  │     │ to production│     │ outcome      │
+│ staging      │     │ single-cmd)  │     │ against      │     │ namespace    │     │              │
+│ namespace    │     │              │     │ template     │     │              │     │              │
+└─────────────┘     └──────────────┘     └──────────────┘     └──────────────┘     └──────────────┘
+```
+
+### Stage 1: Device Discovery
+
+New readers come online on a **staging namespace**; a dedicated MQTT topic hierarchy monitored by your provisioning service:
+
+```
+staging/MGMT/clients/event/+
+```
+
+When a heartbeat arrives from a device serial not in your provisioned-devices database, the service identifies it as a new reader awaiting provisioning.
+
+**From the discovery heartbeat:**
+
+| Heartbeat Field | Provisioning Use |
+|-----------------|------------------|
+| `deviceSerial` | Target serial for provisioning commands |
+| `timestamp` | Reader is alive and MQTT-connected |
+| `heartbeat.batteryStatus.chargePercentage` | Battery sufficient for provisioning + reboot |
+
+> **Recommendation:** Do not begin provisioning a reader with battery below 30%. The provisioning sequence includes a reboot. If the battery dies during reboot, the reader may not complete its boot with the new configuration.
+
+### Stage 2: Configuration Push
+
+The provisioning service loads the Golden Template, substitutes device-specific parameters, and publishes to the reader.
+
+**Push response codes:**
+
+| Code | Action |
+|------|--------|
+| `0` (Success) | Proceed to verification |
+| `1` (Accepted) | Wait for async processing, then verify |
+| `2` (Invalid payload) | Abort pipeline, log error, alert operator |
+| `10` (Config already exists) | Retry with `"operation": "MODIFY"` instead of `"ADD"` |
+
+### Stage 3: Configuration Verification
+
+Send `get_config` and compare the response against the expected template:
+
+```json
+{
+  "command": "get_config",
+  "requestId": "verify-RFD40-212735201D0053-001"
+}
+```
+
+**Key verification fields:**
+
+| `get_config` Field | Compare Against |
+|--------------------|-----------------|
+| `wifiConfig.profiles[].ssid` | Template `wifiConfig.ssid` |
+| `endpointConfig.endpoints[].host` | Template `endpointConfig.host` |
+| `endpointConfig.endpoints[].port` | Template `endpointConfig.port` |
+| `endpointConfig.endpoints[].connectionStatus` | `"CONNECTED"` |
+| `certificates[].name` | Template `certificates[].name` |
+| `eventConfig.heartbeat.interval` | Template heartbeat interval |
+
+**Implement retry logic.** `get_config` may return response code `3` ("Unable to retrieve info") if the reader is in a transitional state after reboot. Retry with exponential backoff: wait 2 seconds, then 4, then 8. Maximum 3 retries.
+
+### Stage 4: Promotion to Production
+
+Once verification passes, update the reader from the staging namespace to the production topic hierarchy:
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "promote-RFD40-212735201D0053-001",
+  "endpointConfig": {
+    "operation": "MODIFY",
+    "name": "Primary-MGMT",
+    "type": "MGMT",
+    "tenantId": "production"
+  }
+}
+```
+
+If staging and production use separate brokers, apply the staged provisioning pattern: install the production broker's CA certificate first, then modify the endpoint, then verify `connectionStatus`.
+
+### Stage 5: Logging and Auditability
+
+**Record for each provisioning operation:**
+
+| Field | Example | Purpose |
+|-------|---------|---------|
+| `deviceSerial` | `RFD40-212735201D0053` | Which reader was provisioned |
+| `timestamp` | `2026-04-09T14:30:00Z` | When |
+| `templateVersion` | `v1.2.0` | Which Golden Template version was applied |
+| `templateName` | `warehouse-5g-production` | Which fleet segment |
+| `outcome` | `SUCCESS` or `FAILED` | Final result |
+| `errorCode` | `null` or `2` | API response code on failure |
+| `operatorId` | `deploy-service-01` | Which service initiated the provisioning |
+
+### Provisioning Loop: Pseudocode
+
+```
+function provision_reader(device_serial, template, credentials):
+    # Stage 2: Push configuration
+    payload = template.render(
+        requestId    = generate_uuid(),
+        deviceSerial = device_serial,
+        wifiIdentity = credentials.wifi_identity,
+        wifiPassword = credentials.wifi_password,
+        caCertPEM    = credentials.ca_certificate
+    )
+    
+    publish(
+        topic   = f"staging/MGMT/clients/cmnd/{device_serial}",
+        payload = payload,
+        qos     = 1
+    )
+    
+    response = wait_for_response(
+        topic   = f"staging/MGMT/clients/resp/{device_serial}",
+        timeout = 30_seconds
+    )
+    
+    if response.code not in [0, 1]:
+        log_failure(device_serial, "PUSH", response.code, response.description)
+        return FAILED
+    
+    # Reboot if event configuration was included
+    if template.includes_event_config:
+        publish_reboot(device_serial)
+        wait_for_heartbeat(device_serial, timeout = 90_seconds)
+    
+    # Stage 3: Verify configuration
+    for attempt in [1, 2, 3]:
+        config = get_config(device_serial)
+        if config.response.code == 3:
+            wait(2 ** attempt seconds)
+            continue
+        if config.response.code == 0:
+            drift = compare(config.deviceConfig, template.expected_config)
+            if drift is empty:
+                break
+            else:
+                log_failure(device_serial, "VERIFY", drift_details = drift)
+                return FAILED
+    else:
+        log_failure(device_serial, "VERIFY", "get_config unavailable after retries")
+        return FAILED
+    
+    # Stage 4: Promote to production namespace
+    promote_to_production(device_serial)
+    
+    # Stage 5: Log success
+    log_success(device_serial, template.version)
+    return SUCCESS
+```
+
+---
+
+## 11.4 Configuration Backup and Restore
+
+A Golden Template defines what a reader's configuration *should* be. The `get_config` command tells you what it *actually is*. The gap between the two (configuration drift) is the source of fleet management problems that grow worse over time.
+
+### Capturing a Configuration Snapshot
+
+```json
+{
+  "command": "get_config",
+  "requestId": "backup-RFD40-212735201D0053-001"
+}
+```
+
+The response arrives with a `deviceConfig` object containing the complete device state, including `wifiConfig`, `endpointConfig`, `certificates`, and `eventConfig`. Store the snapshot with the device serial and a timestamp.
+
+### Understanding the Response Structure
+
+The `get_config` response is a **superset** of the Golden Template; it contains both configurable settings and read-only status fields.
+
+**Read-only fields (exclude from templates/diffs):**
+
+| Field | Why It Changes |
+|-------|---------------|
+| `deviceVersion.firmwareVersion` | Changes with firmware updates |
+| `deviceStatus.temperature` | Varies with environment and radio activity |
+| `deviceStatus.batteryStatus.*` | Varies with usage and charging |
+| `endpointConfig.endpoints[].connectionStatus` | Reflects live connectivity |
+| `wifiConfig.profiles[].connected` | Reflects current Wi-Fi association |
+| `certificates[].validFrom` / `validTo` | Properties of the certificate itself |
+
+### Drift Detection
+
+Run `get_config` against every reader on a recurring schedule; nightly for production fleets. Compare configurable fields against the Golden Template.
+
+**Drift response actions:**
+
+| Drift Category | Example | Severity | Action |
+|----------------|---------|----------|--------|
+| Event configuration | Heartbeat disabled | Low | Auto-remediate: push `config_events` + `reboot` |
+| Certificate | Wrong cert name, approaching expiry gap | Medium | Alert operator; schedule rotation |
+| MQTT endpoint | Wrong host, wrong port | High | Alert operator; do not auto-remediate |
+| Wi-Fi | Wrong SSID, wrong security type | Critical | Alert operator; do not auto-remediate |
+
+> **⚠ WARNING:** Do not auto-remediate connectivity-critical drift (Wi-Fi, endpoint, certificate). Automatically pushing the template could trigger the connectivity trap from Section 11.1. The drift may be intentional; the reader may have been moved to a different network zone.
+
+### Restoring from Backup
+
+Extract the configurable domains from the stored snapshot and repackage as a `set_config` payload. Use `"operation": "MODIFY"` (not `"ADD"`; the reader already has configurations). Re-inject credentials from the vault, since `get_config` does not return Wi-Fi passwords or certificate private keys.
+
+After the restore, send `reboot` if event configuration was included, then run `get_config` to confirm the restoration matches the backup.

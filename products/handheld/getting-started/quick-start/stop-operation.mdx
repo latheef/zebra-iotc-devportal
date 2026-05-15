@@ -1,0 +1,90 @@
+---
+sidebar_position: 7
+title: "Step 6: Stop the Operation"
+description: "Stop the RFID inventory operation cleanly and verify the reader has returned to idle state."
+---
+
+# Step 6: Stop the Operation
+
+📗 **TUTORIAL**: In this step, you stop the running RFID inventory operation and verify the reader has returned to an idle state.
+
+## What You Will Do
+
+1. Publish a `control_operation` stop command
+2. Verify the operation stopped successfully
+3. Confirm tag data events have ceased
+
+## Stop the Inventory
+
+In your publisher terminal, send the `control_operation` stop command to the CTRL command topic:
+
+```bash
+mosquitto_pub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/CTRL/clients/cmnd/<DEVICE_SERIAL>" \
+  -m '{"command":"control_operation","requestId":"4","payload":{"action":"STOP"}}'
+```
+
+### `control_operation` Stop Payload
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "4",
+  "payload": {
+    "action": "STOP"
+  }
+}
+```
+
+## Expected Response
+
+On the CTRL response topic (Terminal 4), you should see:
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "4",
+  "status": "OK",
+  "payload": {
+    "action": "STOP",
+    "operationState": "IDLE"
+  }
+}
+```
+
+| Field | Value | Description |
+|-------|-------|-------------|
+| `status` | `OK` | Command executed successfully |
+| `payload.action` | `STOP` | Echoes the requested action |
+| `payload.operationState` | `IDLE` | Reader has returned to idle state |
+
+## Verify Tag Data Stopped
+
+Switch to **Terminal 3** (your `data1event` subscriber). After the stop command is acknowledged, no further tag data events should arrive.
+
+> **Note:** There may be a brief delay (up to 1–2 seconds) between the stop command acknowledgment and the last data event, as the reader flushes any buffered reads.
+
+## Tutorial Complete
+
+Congratulations; you have completed the full quick start flow:
+
+| Step | Action | Status |
+|------|--------|--------|
+| 1 | Connect to the MQTT Broker | ✅ |
+| 2 | Discover Your Reader | ✅ |
+| 3 | Subscribe to Tag Data Events | ✅ |
+| 4 | Start an RFID Read Operation | ✅ |
+| 5 | Read Your First Tags | ✅ |
+| 6 | Stop the Operation | ✅ |
+
+## Clean Up
+
+You can now close all terminal sessions. To disconnect from the broker, press `Ctrl+C` in each subscriber terminal.
+
+## Next Steps
+
+- **Runnable code examples**: See the complete [Python](./example-python.mdx), [Node.js](./example-nodejs.mdx), or [C# (.NET)](./example-csharp.mdx) examples that automate this entire flow in a single script.
+- **Explore operating modes**: Learn about advanced operating modes beyond simple inventory.
+- **MQTT reference**: See the full [MQTT Reference](../../mqtt-reference.mdx) for all available commands, events, and topic patterns.

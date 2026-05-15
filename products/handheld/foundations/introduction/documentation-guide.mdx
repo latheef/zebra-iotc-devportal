@@ -1,0 +1,121 @@
+---
+sidebar_position: 4
+title: "How This Documentation Is Organized"
+---
+
+# How This Documentation Is Organized
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Documentation Framework
+
+This documentation follows the **Diátaxis** framework, which organizes technical content into four distinct types based on the reader's needs. Each page in this documentation set is tagged with a badge indicating its content type.
+
+### Content-Type Badges
+
+| Badge | Type | Purpose | Reader's Need |
+|-------|------|---------|--------------|
+| 📗 **TUTORIAL** | Learning-oriented | Step-by-step lessons that guide you through a complete workflow | "Teach me how to do this" |
+| 📙 **HOW-TO GUIDE** | Task-oriented | Practical steps to accomplish a specific goal | "Help me solve this problem" |
+| 📕 **REFERENCE** | Information-oriented | Precise, complete technical descriptions | "Give me the exact specification" |
+| 📘 **EXPLANATION** | Understanding-oriented | Conceptual discussion of architecture, design decisions, and background | "Help me understand why" |
+
+## The Seven Parts
+
+The documentation is organized into seven major parts, each addressing a different layer of the IOTC integration experience.
+
+### Part 1: Foundations
+
+Conceptual explanations that build your understanding of the IOTC platform before you write any code. Covers system architecture, the MQTT communication model, interface design, and handheld-specific considerations.
+
+**Content types**: Primarily 📘 EXPLANATION
+
+### Part 2: Getting Started
+
+Hands-on tutorials that walk you through your first IOTC integration, from setting up a broker to receiving your first tag read. Designed to be followed in order.
+
+**Content types**: Primarily 📗 TUTORIAL
+
+### Part 3: Infrastructure
+
+Guides for deploying and configuring the supporting infrastructure; MQTT brokers, TLS certificates, network architecture, and host device setup.
+
+**Content types**: Mix of 📗 TUTORIAL and 📙 HOW-TO GUIDE
+
+### Part 4: RFID Operations
+
+Task-focused guides for real-world RFID workflows: running inventory, reading/writing tag memory, configuring antenna parameters, applying tag filters, and managing inventory sessions.
+
+**Content types**: Primarily 📙 HOW-TO GUIDE
+
+### Part 5: Fleet & Device Management
+
+Guides for managing multiple readers at scale; device provisioning, firmware updates, health monitoring, configuration profiles, and MDM integration.
+
+**Content types**: Mix of 📙 HOW-TO GUIDE and 📘 EXPLANATION
+
+### Part 6: Observability
+
+Monitoring, diagnostics, and troubleshooting. Covers device health telemetry, connection monitoring, read-rate analysis, and common failure patterns.
+
+**Content types**: Mix of 📙 HOW-TO GUIDE and 📘 EXPLANATION
+
+### Part 7: Reference
+
+Complete technical specifications: every MQTT topic, every JSON payload, every command/response pair, every error code. The authoritative source of truth for building integrations.
+
+**Content types**: Primarily 📕 REFERENCE
+
+## Recommended Reading Paths
+
+Different readers have different goals. Use these guided paths to find the content most relevant to your role.
+
+### New Integrator
+
+You're evaluating IOTC or building your first integration.
+
+1. **Foundations** → About IOTC → End-to-End System → Interface Model
+2. **Getting Started** → Quick Start Tutorial (all steps in order)
+3. **Reference** → MQTT Topic Reference → MGMT Command Reference
+4. **RFID Operations** → Start/Stop Inventory → Read Tag Data
+
+### Solution Builder
+
+You're designing an RFID solution architecture using IOTC.
+
+1. **Foundations** → All architecture pages
+2. **Infrastructure** → Broker deployment → Network architecture → TLS configuration
+3. **Fleet Management** → Provisioning → Configuration profiles
+4. **Observability** → Health monitoring → Diagnostics
+
+### API Consumer
+
+You have a working environment and need precise API specifications.
+
+1. **Reference** → MQTT Topic Reference (complete topic list)
+2. **Reference** → MGMT Commands → CTRL Commands → DATA Payloads
+3. **Reference** → Error Codes
+4. **RFID Operations** → Specific task guides as needed
+
+### Fleet Operator
+
+You manage deployed readers and need operational guidance.
+
+1. **Fleet Management** → Device health monitoring → Firmware updates
+2. **Observability** → Connection monitoring → Diagnostics
+3. **Troubleshooting** → Common issues reference
+4. **Infrastructure** → Broker maintenance → Certificate rotation
+
+## How to Use Code Examples
+
+Code examples throughout this documentation use the following conventions:
+
+- **MQTT topic strings** are shown in `monospace` font with variable segments in `{braces}`
+- **JSON payloads** are formatted with 2-space indentation
+- **Variable values** like `{tenantId}`, `{channel}`, and `{deviceSerial}` must be replaced with your actual values
+- **Shell commands** use `$` as the prompt character and assume a Linux/macOS environment unless noted otherwise
+- **Response payloads** are annotated with inline comments where field semantics may be unclear
+
+## Version Scope
+
+This documentation covers IOTC **V1.1** for handheld RFID readers. Where behavior differs between V1.0 and V1.1, the differences are explicitly noted. All content assumes V1.1 unless stated otherwise.

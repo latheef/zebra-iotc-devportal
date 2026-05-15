@@ -1,0 +1,114 @@
+---
+sidebar_position: 1
+title: "get_operating_mode"
+description: "Retrieve the current RFID operating mode configuration from a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# get_operating_mode
+
+Retrieves the current RFID operating mode configuration, including transmit power, session, tag population estimate, and mode-specific parameters.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/CTRL/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "get_operating_mode",
+  "requestId": "30"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"get_operating_mode"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+
+## Response Payload
+
+```json
+{
+  "command": "get_operating_mode",
+  "requestId": "30",
+  "statusCode": 0,
+  "statusMessage": "Success",
+  "operatingMode": {
+    "mode": "INVENTORY",
+    "transmitPowerIndex": 270,
+    "session": "S0",
+    "tagPopulation": 100,
+    "antennaConfig": {
+      "antennaId": 1,
+      "enabled": true
+    },
+    "dynamicPower": {
+      "enabled": false
+    },
+    "tagReportConfig": {
+      "includeFirstSeenTime": true,
+      "includeLastSeenTime": true,
+      "includeAntennaId": true,
+      "includeRssi": true,
+      "includePhase": true,
+      "includeChannel": true,
+      "includeTid": false,
+      "includeUserMemory": false,
+      "seenCountThreshold": 1
+    }
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+| `operatingMode.mode` | string | RFID operation mode: `INVENTORY`, `LOCATE`, `ACCESS` |
+| `operatingMode.transmitPowerIndex` | integer | Transmit power in tenths of dBm (e.g., `270` = 27.0 dBm) |
+| `operatingMode.session` | string | RFID session: `S0`, `S1`, `S2`, `S3` |
+| `operatingMode.tagPopulation` | integer | Estimated number of tags in the read field |
+| `operatingMode.antennaConfig.antennaId` | integer | Active antenna ID |
+| `operatingMode.antennaConfig.enabled` | boolean | Whether the antenna is enabled |
+| `operatingMode.dynamicPower.enabled` | boolean | Whether dynamic power optimization is active |
+| `operatingMode.tagReportConfig` | object | Controls which fields are included in tag read reports |
+| `operatingMode.tagReportConfig.includeFirstSeenTime` | boolean | Include first seen timestamp |
+| `operatingMode.tagReportConfig.includeLastSeenTime` | boolean | Include last seen timestamp |
+| `operatingMode.tagReportConfig.includeAntennaId` | boolean | Include antenna ID |
+| `operatingMode.tagReportConfig.includeRssi` | boolean | Include RSSI value |
+| `operatingMode.tagReportConfig.includePhase` | boolean | Include phase angle |
+| `operatingMode.tagReportConfig.includeChannel` | boolean | Include RF channel index |
+| `operatingMode.tagReportConfig.includeTid` | boolean | Include TID memory bank |
+| `operatingMode.tagReportConfig.includeUserMemory` | boolean | Include user memory bank |
+| `operatingMode.tagReportConfig.seenCountThreshold` | integer | Minimum number of reads before reporting a tag |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+
+## Notes
+
+- `transmitPowerIndex` is expressed in tenths of dBm. A value of `270` means 27.0 dBm. The maximum is determined by the regulatory region (see `get_current_region`).
+- The `tagReportConfig` controls the data fields included in `dataEVT` events. Enabling more fields increases data payload size and may affect throughput.
+- `seenCountThreshold` of `1` reports every tag read. Higher values aggregate reads and reduce data volume.
+
+## See Also
+
+- [set_operating_mode](set-operating-mode): Configure RFID operating mode parameters
+- [control_operation](control-operation): Start or stop RFID operations
+- [dataEVT](../data/dataevt): Tag read data event payload
+- [get_current_region](../mgmt/get-current-region): Regulatory region and power limits
+- [API Overview](../api-overview): Complete endpoint inventory

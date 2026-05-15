@@ -1,0 +1,106 @@
+---
+sidebar_position: 12
+title: "config_endpoint"
+description: "Create or modify an MQTT endpoint configuration on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# config_endpoint
+
+Creates a new MQTT endpoint configuration or modifies an existing one, including broker address, TLS settings, credentials, and topic configuration.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "14",
+  "endpointDetails": {
+    "name": "Production-Broker",
+    "activate": true,
+    "protocol": "MQTT_TLS",
+    "url": "mqtt.warehouse.acme.com",
+    "port": 8883,
+    "tls": {
+      "caCertificate": "MQTTBrokerCA",
+      "clientCertificate": "DeviceClientCert"
+    },
+    "credentials": {
+      "username": "device-24042AR50033",
+      "password": "BrokerP@ss456"
+    },
+    "topics": {
+      "tenantId": "acme-tenant-001"
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"config_endpoint"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `endpointDetails` | object | Yes | Endpoint configuration |
+| `endpointDetails.name` | string | Yes | Unique name for this endpoint |
+| `endpointDetails.activate` | boolean | No | Set to `true` to make this the active endpoint. Default: `false` |
+| `endpointDetails.protocol` | string | Yes | `MQTT` (plaintext) or `MQTT_TLS` (TLS-encrypted) |
+| `endpointDetails.url` | string | Yes | MQTT broker hostname or IP address |
+| `endpointDetails.port` | integer | Yes | MQTT broker port (typically `1883` for MQTT, `8883` for MQTT_TLS) |
+| `endpointDetails.tls` | object | Conditional | Required when `protocol` is `MQTT_TLS` |
+| `endpointDetails.tls.caCertificate` | string | No | Name of installed CA certificate for broker validation |
+| `endpointDetails.tls.clientCertificate` | string | No | Name of installed client certificate for mutual TLS |
+| `endpointDetails.credentials.username` | string | No | MQTT broker username |
+| `endpointDetails.credentials.password` | string | No | MQTT broker password |
+| `endpointDetails.topics.tenantId` | string | Yes | Tenant identifier used to construct MQTT topics |
+
+## Response Payload
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "14",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | A required field is missing or a value is invalid |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `10` | OperationFailed | Endpoint could not be configured (e.g., referenced certificate not found) |
+| `15` | NotFound | Referenced certificate name does not exist on the device |
+
+## Notes
+
+- When `activate` is `true`, the device disconnects from the current MQTT broker and connects to the new endpoint. This interrupts in-progress commands.
+- If an endpoint with the same `name` already exists, it is updated with the new configuration.
+- TLS certificates referenced in the `tls` object must be installed on the device before configuring the endpoint. Use `install_certificate` first.
+- Topic paths are automatically generated from the `tenantId` and device serial number. You cannot customize individual topic paths.
+- The device reconnects automatically if the connection is lost, using exponential backoff with a maximum interval of 60 seconds.
+
+## See Also
+
+- [get_endpoint_config](get-endpoint-config): Query current endpoint configuration
+- [install_certificate](install-certificate): Install TLS certificates
+- [API Overview](../api-overview): Complete endpoint inventory

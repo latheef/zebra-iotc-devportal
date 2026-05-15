@@ -1,0 +1,224 @@
+---
+sidebar_position: 2
+title: "Prerequisites & Planning"
+description: "Hardware, software, and network requirements for Zebra RFID Connect"
+---
+
+# Prerequisites and Planning
+
+This chapter is a gate check. Before you write any integration code, verify that every hardware component, software tool, and network dependency listed here is in place. Missing a single prerequisite (an unconfigured regulatory region, a blocked firewall port, a missing CA certificate) will stall your integration at a point where the root cause is difficult to diagnose.
+
+Work through these sections in order. Each builds on the one before it: hardware must be ready before software tooling can run, and software must be configured before network communication can begin.
+
+---
+
+## 5.1 Hardware Requirements
+
+### Reader
+
+You need one of the following Zebra handheld RFID reader sleds:
+
+- **RFD40 Series**: RFD40 Premium, RFD40 Premium Plus, or RFD40-M Premium Plus
+- **RFD90 Series**: RFD9030 (standard range) or RFD9090 (long range)
+
+Both families expose the same MQTT API. Model selection affects read range, environmental durability, and maximum transmit power; see Section 1.3 for detailed specification tables.
+
+**Verify before proceeding:**
+
+- [ ] Reader is running **IoT Connector firmware version 3.10.27** or later. Query the installed version with `get_version` after connectivity is established, or check via 123RFID Desktop.
+- [ ] Reader battery is charged. A PowerPrecision+ 7000 mAh battery provides 8–12 hours of typical operation. Initial setup and configuration are battery-intensive due to Wi-Fi provisioning, firmware checks, and sustained radio activity during testing.
+
+### Host Mobile Device
+
+The reader sled pairs over Bluetooth to a **host mobile device**, typically a Zebra handheld computer (e.g., TC21, TC26, TC52, TC57, TC72, TC77) or a compatible Android smartphone.
+
+The host device serves two purposes during setup:
+
+1. **Bluetooth pairing**: The sled connects to the host via Bluetooth 5.3. Use **NFC tap-to-pair** for fastest pairing: hold the host device's NFC antenna against the reader's NFC logo. Alternatively, pair manually through the host device's Bluetooth settings.
+2. **123RFID Desktop relay**: During initial configuration, the host device can relay the sled's connection to 123RFID Desktop running on a connected PC (via USB or network).
+
+> **After initial setup**, the host device is not required for MQTT communication. The reader connects to your MQTT broker over its own Wi-Fi radio independently of the Bluetooth link to the host. See Section 2.1 for the architectural rationale.
+
+**Verify before proceeding:**
+
+- [ ] Host device supports **Bluetooth 5.x** and **NFC** (for tap-to-pair).
+- [ ] Host device is running a compatible Android version with the **Zebra RFID SDK** or **123RFID Mobile** app installed (required for Bluetooth pairing).
+
+### Charging Cradle
+
+- [ ] A **single-slot or multi-slot charging cradle** is available for the reader sled. The cradle charges the battery and can provide a USB connection to a PC for 123RFID Desktop.
+- [ ] If configuring multiple readers, a **multi-slot cradle** accelerates fleet provisioning by allowing USB-connected configuration of several readers in sequence.
+
+### Bluetooth Pairing
+
+The reader sled communicates with the host mobile device over **Bluetooth Low Energy (BLE)** for data transfer and **Bluetooth Classic** for audio (beep feedback). Both profiles are established during the pairing process.
+
+**Pairing methods (in order of preference):**
+
+1. **NFC tap-to-pair**: Hold the host device against the reader's NFC logo. The sled and host negotiate a Bluetooth connection automatically. This is the fastest and most reliable method.
+2. **Manual Bluetooth pairing**: Enable Bluetooth on the host device, scan for available devices, and select the reader (identified by its serial number). Enter the pairing PIN if prompted.
+3. **Zebra 123RFID Mobile app**: The app on the host device provides a guided pairing workflow with visual confirmation.
+
+> **Pairing is a one-time operation.** Once paired, the reader and host reconnect automatically when both are powered on and within Bluetooth range (~10 meters line-of-sight).
+
+**Verify before proceeding:**
+
+- [ ] Reader and host device are **paired** and showing a connected status.
+- [ ] Bluetooth connection is stable; the reader's LED indicator shows a solid connection state (not blinking or off).
+
+---
+
+## 5.2 Software Requirements
+
+### 123RFID Desktop (Mandatory for Initial Setup)
+
+**123RFID Desktop** is Zebra's Windows-based configuration and diagnostic utility for RFID readers. It connects to the reader over USB (via the charging cradle) or over the network.
+
+**Why it is mandatory:** The regulatory region, which determines the reader's operating frequency, channel plan, and maximum transmit power; is configured exclusively through 123RFID Desktop. The MQTT API provides read-only access via `get_current_region` but cannot set the region. A reader without a configured region will reject any `control_operation` START command with response code `6` ("Region is not configured"). See Section 4.4 for the regulatory context.
+
+**When you need it:**
+
+- **Before any MQTT communication**: to set the regulatory region for your deployment country.
+- **During hardware diagnostics**: to verify antenna connectivity, view RF parameters, test tag reads, and inspect device health.
+- **During fleet provisioning**: to configure Wi-Fi profiles and MQTT endpoints on new readers (can also be done via MQTT after initial connectivity is established).
+
+**Verify before proceeding:**
+
+- [ ] 123RFID Desktop is installed on a **Windows PC** (Windows 10/11, 64-bit).
+- [ ] The reader is connected to the PC via **USB** (through the charging cradle) or over the **local network**.
+- [ ] The **regulatory region** is configured and matches your deployment country. Confirm via `get_current_region` after MQTT connectivity is established.
+
+### MQTT Broker
+
+You need an MQTT 3.1.1-compliant broker. The broker is the routing infrastructure between your application and the reader fleet (see Section 2.1). Zebra does not provide a hosted broker; you provision your own.
+
+Choose your broker based on your development stage:
+
+#### Development and Prototyping
+
+For local development, use a lightweight self-hosted broker. The goal is fast iteration with minimal infrastructure:
+
+- **Eclipse Mosquitto**: Open-source, single-binary, runs on Windows/macOS/Linux. Start with `mosquitto -v` for a zero-config broker on port 1883. Add TLS later. This is the fastest path to a working development environment.
+- **HiveMQ CE**: Open-source community edition. Java-based. Provides a web-based dashboard for topic inspection.
+- **EMQX**: Open-source, high-performance. Docker-friendly. Suitable when you want to test at higher message volumes.
+
+> **Start without TLS.** For local development on a trusted network, use port **1883** (unencrypted MQTT) to eliminate certificate complexity during initial integration. Add TLS (port **8883**) before moving to staging or production. Section 7 covers TLS configuration in detail.
+
+#### Production
+
+For production deployments, use a managed or enterprise-grade broker with built-in authentication, TLS termination, monitoring, and horizontal scaling:
+
+- **AWS IoT Core**: Fully managed. Native device certificate authentication. MQTT 3.1.1 and 5.0. Integrates with AWS Lambda, IoT Rules Engine, and S3.
+- **Azure IoT Hub**: Fully managed. Device provisioning service (DPS) for fleet enrollment. SAS token or X.509 certificate authentication.
+- **HiveMQ (Enterprise)**: Self-hosted or cloud. Clustering, MQTT 3.1.1/5.0, RBAC, and audit logging. Good fit for on-premises deployments with strict data residency requirements.
+- **EMQX (Enterprise)**: Self-hosted or cloud. High-throughput broker with rule engine and data integration pipelines.
+
+**Verify before proceeding:**
+
+- [ ] A broker instance is **running and reachable** from the network where the reader will operate.
+- [ ] You know the broker's **hostname** (or IP address) and **port** (1883 for development, 8883 for TLS).
+- [ ] If the broker requires authentication, you have valid **credentials** (username/password) or **client certificates**.
+- [ ] The broker accepts connections on the MQTT 3.1.1 protocol.
+
+### MQTT Client Tools
+
+You need an MQTT client to publish commands, subscribe to response/event/data topics, and inspect message traffic during development. These tools are not required in production (your application code replaces them), but they are essential for integration testing and debugging.
+
+- **MQTTX**: Cross-platform GUI client. Supports TLS, multiple connections, topic bookmarking, and JSON payload formatting. Recommended for developers who prefer a visual interface for exploring topics and payloads.
+- **mqtt-cli** (HiveMQ); Command-line client. Scriptable. Useful for automated testing and CI/CD pipelines.
+- **mosquitto_pub / mosquitto_sub**: Command-line tools bundled with Mosquitto. Minimal dependencies. Useful for quick one-off publishes and subscribes from a terminal.
+
+**Verify before proceeding:**
+
+- [ ] At least one MQTT client tool is **installed and able to connect** to your broker.
+- [ ] You have confirmed the tool can **publish** a test message and **subscribe** to receive it; verifying end-to-end broker connectivity before introducing the reader.
+
+---
+
+## 5.3 Network Planning
+
+The reader connects to your MQTT broker over Wi-Fi. This section covers the three layers of network configuration that must be correct before communication can begin: Wi-Fi access, firewall/port rules, and TLS certificate provisioning.
+
+### Wi-Fi Requirements
+
+The reader has an integrated **Wi-Fi 6 (802.11ax)** radio supporting both **2.4 GHz** and **5 GHz** bands. It connects to your wireless network independently of the host mobile device's network connection.
+
+**Supported security types:**
+
+| Security Type | Authentication | When to Use |
+|--------------|---------------|-------------|
+| **WPA2 Personal** | Pre-shared key (PSK) | Development labs, isolated test networks |
+| **WPA3 Personal** | Simultaneous Authentication of Equals (SAE) | Development labs with WPA3-capable access points |
+| **WPA2 Enterprise** | 802.1X with EAP (PEAP, EAP-TLS, EAP-TTLS) | Production deployments on corporate networks |
+| **WPA3 Enterprise** | 802.1X with EAP | Production deployments requiring latest Wi-Fi security |
+| **Open** | None | **Not recommended.** Only for isolated bench testing. |
+
+**Enterprise Wi-Fi authentication** requires additional configuration via the `set_wifi` command:
+
+- **PEAP** (Protected EAP); Username/password authentication tunneled inside TLS. Requires `identity` and `password` fields. Optionally set `phase2Method` to `"MSCHAPV2"` (default), `"GTC"`, or `"PAP"`.
+- **EAP-TLS**: Certificate-based mutual authentication. Most secure. Requires a client certificate and private key installed on the reader via `install_certificate` (type `"wifi"`), plus the `identity` field in `set_wifi`.
+- **EAP-TTLS**: Username/password inside a TLS tunnel with optional anonymous outer identity. Requires `identity`, `password`, and optionally `anonymousIdentity` for privacy.
+
+> **Plan your certificate pipeline early.** If your production network uses EAP-TLS or mutual TLS for MQTT, you need a **certificate authority (CA)**, a per-reader **client certificate**, and a **private key** for each reader. Section 7 covers certificate formats, issuance, and rotation. The `install_certificate` command accepts **PEM-encoded** certificates only.
+
+**Verify before proceeding:**
+
+- [ ] The deployment site has **Wi-Fi coverage** in all areas where readers will operate.
+- [ ] The Wi-Fi network's **SSID** and **security credentials** are known.
+- [ ] If using enterprise authentication (802.1X), the **EAP method**, **user identity**, and any required **certificates** are ready.
+- [ ] The Wi-Fi network provides a path to the MQTT broker (same network segment, or routable through the infrastructure).
+- [ ] The reader's Wi-Fi radio supports the network's frequency band (**2.4 GHz** or **5 GHz**). Both are supported.
+
+### Firewall Rules and Port Requirements
+
+The reader initiates all MQTT connections **outbound**. It does not listen on any inbound ports. Your firewall rules must allow the reader to reach the broker on the appropriate port.
+
+| Port | Protocol | Direction | Encryption | Usage |
+|------|----------|-----------|------------|-------|
+| **1883** | TCP | Outbound (reader → broker) | None | Standard MQTT. **Development only.** Payloads including commands, credentials, and tag data are transmitted in cleartext. |
+| **8883** | TCP | Outbound (reader → broker) | TLS 1.2+ | MQTT over TLS. **Required for production.** Encrypts all traffic between the reader and broker. |
+| **443** | TCP | Outbound (reader → broker) | TLS 1.2+ (WSS) | MQTT over WebSockets (TLS). Required by some cloud brokers (e.g., AWS IoT Core) that tunnel MQTT over HTTPS. |
+| **8080/8443** | TCP | Outbound (reader → broker) | Varies | Alternative ports used by some self-hosted brokers. Confirm with your broker's documentation. |
+| **123** | UDP | Outbound (reader → NTP server) | None | NTP time synchronization. Required for accurate timestamps in `dataEVT` payloads and TLS certificate validation. |
+
+**Key principles:**
+
+- **No inbound ports are required.** The reader connects outbound to the broker. The broker routes messages bidirectionally over the established TCP connection. Do not open inbound firewall rules to the reader.
+- **Use 8883 in production.** Port 1883 transmits MQTT payloads, including `set_wifi` credentials, `install_certificate` private keys, and tag data; in cleartext. Any network observer can read this traffic. TLS on port 8883 encrypts the entire session.
+- **Whitelist the broker's hostname or IP.** If your firewall uses allowlists rather than port-based rules, add the broker's fully qualified domain name (FQDN) or IP address.
+- **Allow NTP (port 123 UDP).** The reader uses NTP to synchronize its system clock. Accurate time is required for valid TLS handshakes (certificate expiry checks) and meaningful timestamps in event and data payloads. Block NTP and the reader's clock will drift, eventually causing TLS certificate validation failures.
+
+**Verify before proceeding:**
+
+- [ ] The network firewall allows **outbound TCP** from the reader subnet to the broker on port **8883** (production) or **1883** (development).
+- [ ] If your broker uses WebSockets, port **443** is open.
+- [ ] **NTP (UDP 123)** is permitted outbound from the reader subnet.
+- [ ] No network appliance (proxy, DPI, captive portal) intercepts or modifies MQTT traffic between the reader and broker.
+
+### TLS Certificate Planning
+
+TLS secures the connection between the reader and the MQTT broker. For production deployments, plan your certificate infrastructure before configuring readers.
+
+**Three certificate components are involved:**
+
+| Component | Installed On | Purpose | API Command |
+|-----------|-------------|---------|-------------|
+| **CA certificate** | Reader | The reader uses this to verify the broker's identity during the TLS handshake. Install the root (or intermediate) CA certificate that signed the broker's server certificate. | `install_certificate` (type `"mqtt"`) |
+| **Client certificate** | Reader | The broker uses this to verify the reader's identity (mutual TLS / mTLS). Required by brokers that enforce client certificate authentication (e.g., AWS IoT Core). | `install_certificate` (type `"client"`) |
+| **Client private key** | Reader | The private key corresponding to the client certificate. Sent with the client certificate during installation. | `install_certificate` (`privateKeyData` field) |
+
+**Certificate format:** The `install_certificate` command accepts **PEM-encoded** certificates only; base64-encoded text wrapped in `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` markers. DER (binary) format is not supported. Convert DER to PEM with:
+
+```bash
+openssl x509 -inform DER -in cert.der -out cert.pem
+```
+
+**Planning checklist:**
+
+- [ ] **Development:** For local testing with Mosquitto, generate a self-signed CA and server certificate. The reader must trust the CA that signed the broker's cert. See Section 7 for a step-by-step walkthrough.
+- [ ] **Production (server-only TLS):** Obtain the CA certificate chain for your broker's server certificate. For cloud brokers (AWS IoT Core, Azure IoT Hub), download the platform's root CA from their documentation.
+- [ ] **Production (mutual TLS):** In addition to the CA certificate, generate a unique **client certificate and private key** per reader. Install both on the reader via `install_certificate`. Plan for certificate **rotation** before expiry; Section 12 covers fleet-scale certificate management.
+- [ ] **Enterprise Wi-Fi (EAP-TLS):** If your Wi-Fi network requires certificate-based authentication, install a separate certificate via `install_certificate` with type `"wifi"`. This is independent of the MQTT broker certificate.
+- [ ] **Private key security:** Private keys are transmitted to the reader inside the `install_certificate` command payload. Ensure this command is sent over a **TLS-encrypted** MQTT connection (port 8883) or a **USB** connection via 123RFID Desktop. Never send private keys over an unencrypted MQTT connection on port 1883.
+
+> **Certificate lifecycle matters.** Expired certificates cause silent connection failures; the reader cannot connect to the broker, and the only symptom is missing heartbeats and data. Build monitoring for certificate expiry dates and plan rotation at least 30 days before expiry. See [Fleet Management](/handheld/fleet/management) for fleet certificate rotation patterns.

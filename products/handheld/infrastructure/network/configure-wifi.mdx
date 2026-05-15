@@ -1,0 +1,218 @@
+---
+sidebar_position: 2
+title: How to Configure Wi-Fi Profiles
+description: "View, set, and delete Wi-Fi profiles on RFD40 handheld RFID readers via MQTT commands"
+---
+
+# How to Configure Wi-Fi Profiles
+
+This guide covers Wi-Fi profile management on the RFD40 reader using MQTT commands. Wi-Fi profiles define the network credentials and security settings the reader uses when connecting in direct mode (using its own Wi-Fi radio).
+
+> **RFD90 users:** The RFD90 does not have an integrated Wi-Fi radio. Wi-Fi configuration is managed on the paired host device, not the reader. This guide applies only to the RFD40.
+
+**Publish commands to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+---
+
+## View Current Wi-Fi Configuration
+
+Use the `get_wifi` command to retrieve the reader's current Wi-Fi settings, including the connected SSID, signal strength, IP address, and saved profiles.
+
+**Request:**
+
+```json
+{
+  "requestId": "req-wifi-001",
+  "command": "get_wifi"
+}
+```
+
+**Response:**
+
+```json
+{
+  "requestId": "req-wifi-001",
+  "command": "get_wifi",
+  "responseCode": 0,
+  "responseMessage": "Success",
+  "payload": {
+    "currentConnection": {
+      "essid": "WAREHOUSE-5G",
+      "bssid": "AA:BB:CC:DD:EE:01",
+      "securityType": "WPA2Enterprise",
+      "signalStrength": -42,
+      "frequency": 5180,
+      "ipAddress": "10.1.50.23",
+      "subnetMask": "255.255.255.0",
+      "gateway": "10.1.50.1",
+      "dns": ["10.1.1.10", "10.1.1.11"]
+    },
+    "savedProfiles": [
+      {
+        "essid": "WAREHOUSE-5G",
+        "securityType": "WPA2Enterprise",
+        "priority": 1
+      },
+      {
+        "essid": "WAREHOUSE-2G",
+        "securityType": "WPA2Personal",
+        "priority": 2
+      }
+    ]
+  }
+}
+```
+
+**Key fields:**
+
+| Field | Description |
+|-------|-------------|
+| `signalStrength` | RSSI in dBm. Values above -50 are excellent; below -70 may cause instability. |
+| `frequency` | Channel frequency in MHz. 5 GHz bands (5180+) offer higher throughput; 2.4 GHz (2412+) offers better range. |
+| `priority` | Lower number = higher priority. Reader connects to highest-priority available network. |
+
+---
+
+## Set a Wi-Fi Profile
+
+Use the `set_wifi` command to add or update a Wi-Fi profile. The reader stores multiple profiles and connects to the highest-priority available network.
+
+### WPA2-Personal / WPA3-Personal
+
+```json
+{
+  "requestId": "req-wifi-002",
+  "command": "set_wifi",
+  "payload": {
+    "essid": "WAREHOUSE-5G",
+    "securityType": "WPA2Personal",
+    "passphrase": "your-network-passphrase",
+    "priority": 1,
+    "autoConnect": true,
+    "hidden": false
+  }
+}
+```
+
+### WPA2-Enterprise / WPA3-Enterprise
+
+Enterprise security requires additional credential fields. The exact fields depend on the EAP method.
+
+**EAP-PEAP (username/password):**
+
+```json
+{
+  "requestId": "req-wifi-003",
+  "command": "set_wifi",
+  "payload": {
+    "essid": "CORP-SECURE",
+    "securityType": "WPA2Enterprise",
+    "eapMethod": "PEAP",
+    "phase2Auth": "MSCHAPV2",
+    "identity": "reader-svc@corp.example.com",
+    "password": "service-account-password",
+    "caCertificateId": "corp-root-ca",
+    "priority": 1,
+    "autoConnect": true
+  }
+}
+```
+
+**EAP-TLS (certificate-based):**
+
+```json
+{
+  "requestId": "req-wifi-004",
+  "command": "set_wifi",
+  "payload": {
+    "essid": "CORP-SECURE",
+    "securityType": "WPA3Enterprise",
+    "eapMethod": "TLS",
+    "identity": "RFD40-12345678@corp.example.com",
+    "caCertificateId": "corp-root-ca",
+    "clientCertificateId": "reader-client-cert",
+    "priority": 1,
+    "autoConnect": true
+  }
+}
+```
+
+> **Certificate prerequisite:** For EAP-TLS, you must install the CA certificate and client certificate on the reader before configuring the Wi-Fi profile. See [Manage TLS/SSL Certificates](../security/manage-certificates) for installation instructions.
+
+**Successful response:**
+
+```json
+{
+  "requestId": "req-wifi-004",
+  "command": "set_wifi",
+  "responseCode": 0,
+  "responseMessage": "Success"
+}
+```
+
+**Common error codes:**
+
+| Code | Meaning | Resolution |
+|------|---------|------------|
+| `1` | Invalid parameter | Check field names and value types |
+| `5` | Certificate not found | Install referenced certificate first |
+| `14` | SSID not found | Verify network is in range, or set `hidden: true` |
+
+---
+
+## Delete a Wi-Fi Profile
+
+Use the `delete_wifi_profile` command to remove a saved profile by ESSID.
+
+**Request:**
+
+```json
+{
+  "requestId": "req-wifi-005",
+  "command": "delete_wifi_profile",
+  "payload": {
+    "essid": "WAREHOUSE-2G"
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "requestId": "req-wifi-005",
+  "command": "delete_wifi_profile",
+  "responseCode": 0,
+  "responseMessage": "Success"
+}
+```
+
+> **Active connection warning:** If you delete the profile for the currently connected network, the reader will disconnect immediately. Ensure an alternative profile exists or that you have another management channel (Bluetooth, cradle Ethernet) before deleting the active profile.
+
+---
+
+## Best Practices
+
+1. **Always configure at least two profiles**: a primary and a fallback; to maintain connectivity during access point failures.
+2. **Use 5 GHz bands** where available. They offer better throughput and less interference in dense environments.
+3. **Set `autoConnect: true`** for production profiles so the reader reconnects automatically after power cycles or signal loss.
+4. **Prefer WPA3-Enterprise with EAP-TLS** for maximum security. Certificate-based authentication eliminates password management at scale.
+5. **Test signal strength** at all operational locations using `get_wifi` before going live.
+
+---
+
+## Next Steps
+
+- [About Network Architecture](./about-network-architecture): understand the full network path
+- [Troubleshoot Network Issues](./troubleshoot-network): diagnose Wi-Fi connectivity failures
+- [Manage TLS/SSL Certificates](../security/manage-certificates): install certificates for EAP-TLS

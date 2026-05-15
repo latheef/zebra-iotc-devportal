@@ -1,0 +1,196 @@
+---
+sidebar_position: 3
+title: How to Rotate Certificates at Scale
+description: "Monitor certificate expiration, automate rotation, and handle installation failures across a fleet of handheld RFID readers"
+---
+
+# How to Rotate Certificates at Scale
+
+Certificates expire. In a fleet of hundreds or thousands of readers, manual certificate replacement is impractical. This guide covers monitoring expiration, designing automated rotation workflows, and handling failures gracefully.
+
+**Publish commands to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+---
+
+## Monitor Certificate Expiration
+
+### Periodic Polling
+
+Query each reader's installed certificates using `get_installed_certificate` and compare the `validTo` field against the current date. Flag certificates expiring within your rotation window (recommended: 30 days before expiry).
+
+```json
+{
+  "requestId": "req-rotate-001",
+  "command": "get_installed_certificate"
+}
+```
+
+Parse the response and check each certificate's `validTo` timestamp:
+
+```
+If (validTo - now) < 30 days → schedule rotation
+If (validTo - now) < 7 days  → urgent rotation
+If (validTo - now) < 0 days  → expired; reader may lose connectivity
+```
+
+### Event-Driven Monitoring
+
+The reader publishes a `certificateExpiryEVT` event when an installed certificate is approaching expiration. Subscribe to the response topic to receive these events without polling:
+
+```json
+{
+  "event": "certificateExpiryEVT",
+  "deviceSerial": "RFD40-12345678",
+  "payload": {
+    "certificateId": "reader-client-cert",
+    "validTo": "2026-06-01T00:00:00Z",
+    "daysRemaining": 18
+  }
+}
+```
+
+> **Event timing:** The reader checks certificate expiration daily and emits `certificateExpiryEVT` when any certificate is within 30 days of expiry. The event repeats daily until the certificate is renewed or deleted.
+
+---
+
+## Rotation Workflow
+
+### Step 1: Generate the New Certificate
+
+Generate the replacement certificate from your PKI or certificate authority. For client certificates, ensure the new certificate:
+- Uses the same CN (common name) convention as the existing certificate
+- Is signed by a CA already trusted by the broker
+- Has a validity period aligned with your rotation schedule
+
+### Step 2: Install the New Certificate
+
+Send `install_certificate` with a new `certificateId`:
+
+```json
+{
+  "requestId": "req-rotate-002",
+  "command": "install_certificate",
+  "payload": {
+    "certificateId": "reader-client-cert-2027",
+    "type": "CLIENT",
+    "format": "PKCS12",
+    "certificateData": "<base64-encoded-new-certificate>",
+    "passphrase": "new-cert-passphrase"
+  }
+}
+```
+
+> **Do not overwrite the existing certificate.** Use a different `certificateId` so both old and new certificates coexist during the transition.
+
+### Step 3: Update the Endpoint Configuration
+
+Reconfigure the MQTT endpoint to use the new client certificate:
+
+```json
+{
+  "requestId": "req-rotate-003",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "clientCertificateId": "reader-client-cert-2027"
+  }
+}
+```
+
+The reader will use the new certificate on its next MQTT reconnection.
+
+### Step 4: Verify Connectivity
+
+After the endpoint configuration update, verify the reader reconnects successfully:
+
+```json
+{
+  "requestId": "req-rotate-004",
+  "command": "get_status"
+}
+```
+
+Confirm `mqttConnectionStatus` is `CONNECTED`.
+
+### Step 5: Delete the Old Certificate
+
+Once connectivity is verified with the new certificate, remove the old one:
+
+```json
+{
+  "requestId": "req-rotate-005",
+  "command": "delete_certificate",
+  "payload": {
+    "certificateId": "reader-client-cert"
+  }
+}
+```
+
+---
+
+## Handling Failures
+
+### Installation Failure
+
+If `install_certificate` returns an error (response code ≠ 0), the reader retains the existing certificate. No connectivity is lost. Diagnose the error code (see [Manage TLS/SSL Certificates](./manage-certificates)), fix the issue, and retry.
+
+### Endpoint Update Failure
+
+If `config_endpoint` fails, the reader continues using the old certificate. Retry the endpoint configuration after verifying the new certificate was installed successfully.
+
+### Post-Rotation Connectivity Loss
+
+If the reader disconnects after switching to the new certificate:
+
+1. The reader will attempt to reconnect using its configured retry logic
+2. If reconnection fails, the reader falls back to the last known good connection state
+3. Use an out-of-band channel (Bluetooth management, cradle Ethernet) to revert the endpoint configuration to the old certificate ID
+4. Investigate the root cause; common issues: broker trust store not updated with the new CA, certificate CN mismatch, or certificate chain incomplete
+
+---
+
+## Fleet Rotation Strategy
+
+For large deployments, rotate certificates in waves rather than all at once:
+
+| Wave | Percentage | Purpose |
+|------|-----------|---------|
+| Canary | 1–2% | Validate the new certificate works correctly |
+| Early Adopters | 10% | Detect edge cases (different firmware versions, network configs) |
+| Majority | 70% | Main rollout |
+| Stragglers | Remaining | Catch offline/docked readers as they reconnect |
+
+**Between waves:** Verify connectivity metrics. If the canary wave shows failures, halt and investigate before proceeding.
+
+**Offline readers:** Readers that are powered off or disconnected during rotation will continue using the old certificate when they reconnect. Maintain the old certificate in the broker's trust store until all readers have been rotated.
+
+---
+
+## CA Certificate Rotation
+
+CA certificate rotation follows the same workflow but affects all readers that trust that CA. Plan for a longer transition period:
+
+1. Install the new CA certificate on all readers (both old and new CA coexist)
+2. Update the broker's server certificate to one signed by the new CA
+3. Verify all readers connect successfully
+4. Delete the old CA certificate from readers
+
+> **Timeline:** Start CA rotation at least 60 days before the old CA expires. The overlap period (both CAs trusted) ensures no reader loses connectivity during the transition.
+
+---
+
+## Next Steps
+
+- [Manage TLS/SSL Certificates](./manage-certificates): certificate installation reference
+- [Secure the MQTT Connection with TLS](./secure-mqtt-connection): endpoint TLS configuration
+- [About the Security Model](./about-security-model): how certificates fit the security stack

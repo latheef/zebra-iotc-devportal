@@ -1,0 +1,162 @@
+---
+sidebar_position: 15
+title: "set_config"
+description: "Apply a partial or full configuration document to a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# set_config
+
+Applies a partial or full configuration document to the device. This is the most comprehensive configuration endpoint, capable of updating network, MQTT, event, and RFID settings in a single command.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+The request accepts any subset of the configuration document. Only the fields included are updated; omitted fields retain their current values.
+
+### Partial Update Example
+
+```json
+{
+  "command": "set_config",
+  "requestId": "17",
+  "config": {
+    "events": {
+      "heartbeat": {
+        "intervalSeconds": 600
+      }
+    },
+    "rfid": {
+      "operatingMode": {
+        "transmitPowerIndex": 240,
+        "session": "S1"
+      }
+    }
+  }
+}
+```
+
+### Full Configuration Example
+
+```json
+{
+  "command": "set_config",
+  "requestId": "18",
+  "config": {
+    "network": {
+      "ethernet": {
+        "ipv4Configuration": {
+          "enableDhcp": false,
+          "ipAddress": "192.168.1.100",
+          "subnetMask": "255.255.255.0",
+          "gateway": "192.168.1.1",
+          "dns1": "8.8.8.8"
+        }
+      }
+    },
+    "mqtt": {
+      "activeEndpoint": "Production-Broker"
+    },
+    "events": {
+      "heartbeat": {
+        "enabled": true,
+        "intervalSeconds": 300
+      },
+      "alerts": {
+        "enabled": true,
+        "batteryLow": {
+          "enabled": true,
+          "thresholdPercent": 15
+        },
+        "temperatureHigh": {
+          "enabled": true,
+          "thresholdCelsius": 45
+        }
+      }
+    },
+    "rfid": {
+      "operatingMode": {
+        "mode": "INVENTORY",
+        "transmitPowerIndex": 270,
+        "session": "S0",
+        "tagPopulation": 100
+      }
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"set_config"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `config` | object | Yes | Configuration document (partial or full) |
+| `config.network` | object | No | Network settings (Ethernet, Wi-Fi) |
+| `config.network.ethernet.ipv4Configuration.enableDhcp` | boolean | No | `true` for DHCP, `false` for static IP |
+| `config.network.ethernet.ipv4Configuration.ipAddress` | string | Conditional | Required when `enableDhcp` is `false` |
+| `config.network.ethernet.ipv4Configuration.subnetMask` | string | Conditional | Required when `enableDhcp` is `false` |
+| `config.network.ethernet.ipv4Configuration.gateway` | string | Conditional | Required when `enableDhcp` is `false` |
+| `config.mqtt.activeEndpoint` | string | No | Name of the endpoint to activate |
+| `config.events` | object | No | Event and alert configuration |
+| `config.rfid.operatingMode.mode` | string | No | RFID mode (see `set_operating_mode` for options) |
+| `config.rfid.operatingMode.transmitPowerIndex` | integer | No | Transmit power in tenths of dBm (0–300) |
+| `config.rfid.operatingMode.session` | string | No | RFID session: `S0`, `S1`, `S2`, `S3` |
+| `config.rfid.operatingMode.tagPopulation` | integer | No | Estimated tag population (1–10000) |
+
+## Response Payload
+
+```json
+{
+  "command": "set_config",
+  "requestId": "17",
+  "statusCode": 0,
+  "statusMessage": "Success",
+  "appliedSections": ["events", "rfid"]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+| `appliedSections` | array | List of configuration sections that were updated |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | A parameter value is out of range or malformed |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `5` | DeviceBusy | The device is currently performing an RFID operation; stop it first |
+| `10` | OperationFailed | One or more configuration sections could not be applied |
+
+## Notes
+
+- `set_config` applies changes atomically per section. If one section fails, other sections may still be applied. Check `appliedSections` in the response.
+- Changing `mqtt.activeEndpoint` causes the device to disconnect from the current broker and reconnect to the new one. Commands in flight during the switch are lost.
+- RFID configuration changes (`config.rfid`) require that no RFID operation is in progress. Send `control_operation` with `operationType: "STOP"` first.
+- The `config.deviceInfo` section is read-only and is ignored if included.
+- Network changes may cause the device to become temporarily unreachable if the MQTT broker connection depends on the network being reconfigured.
+- Configuration changes persist across reboots.
+
+> **Warning:** Changing network or MQTT settings can make the device unreachable. Ensure you have a recovery path (e.g., physical access or a secondary management interface) before modifying connectivity settings remotely.
+
+## See Also
+
+- [get_config](get-config): Retrieve the current configuration
+- [config_endpoint](config-endpoint): Configure a specific MQTT endpoint
+- [config_events](config-events): Configure events and thresholds
+- [set_operating_mode](../ctrl/set-operating-mode): Configure RFID operating mode
+- [API Overview](../api-overview): Complete endpoint inventory

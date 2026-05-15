@@ -1,0 +1,171 @@
+---
+sidebar_position: 4
+title: How to Troubleshoot Network Issues
+description: "Diagnose and resolve Wi-Fi, DNS, DHCP, and MQTT connectivity problems for handheld RFID readers"
+---
+
+# How to Troubleshoot Network Issues
+
+When a reader cannot reach the MQTT broker, the problem lies somewhere in the network path: Wi-Fi association, IP addressing, DNS resolution, firewall rules, or TLS negotiation. This guide provides a systematic diagnostic approach using the reader's built-in commands and event data.
+
+**Publish diagnostic commands to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+---
+
+## Diagnostic Sequence
+
+Work through these checks in order. Each step eliminates a class of failure before moving to the next.
+
+### Step 1: Verify Wi-Fi Association
+
+The reader must be associated with a Wi-Fi access point (direct mode) or the host device must have network connectivity (relayed mode).
+
+**Check Wi-Fi status:**
+
+```json
+{
+  "requestId": "diag-net-001",
+  "command": "get_wifi"
+}
+```
+
+**What to look for:**
+
+| Condition | Meaning | Action |
+|-----------|---------|--------|
+| `currentConnection` is present | Wi-Fi is associated | Proceed to Step 2 |
+| `currentConnection` is null/empty | Wi-Fi is not associated | Check SSID, credentials, signal range |
+| `signalStrength` worse than -75 dBm | Weak signal; connection may be unstable | Move closer to AP or add coverage |
+
+**Common Wi-Fi association failures:**
+
+- **Wrong passphrase:** `set_wifi` succeeds (profile is saved) but the reader never associates. Delete and re-create the profile with the correct passphrase.
+- **Hidden SSID:** Ensure `hidden: true` is set in the profile.
+- **802.1X rejection:** Check that the RADIUS server accepts the reader's identity. Inspect RADIUS logs for `Access-Reject` messages.
+- **Band mismatch:** The reader may be configured for 5 GHz but only 2.4 GHz APs are in range (or vice versa).
+
+### Step 2: Verify IP Addressing (DHCP)
+
+Once Wi-Fi is associated, the reader needs a valid IP address.
+
+**Check the `ipAddress` field** in the `get_wifi` response:
+
+| Condition | Meaning | Action |
+|-----------|---------|--------|
+| Valid IP (e.g., `10.1.50.23`) | DHCP succeeded | Proceed to Step 3 |
+| `169.254.x.x` | DHCP failed; link-local address | Check DHCP server, VLAN tagging, DHCP relay |
+| Empty or `0.0.0.0` | No IP assigned | DHCP server unreachable or out of leases |
+
+**DHCP troubleshooting:**
+- Verify the DHCP scope has available addresses
+- Check that the reader's VLAN has a DHCP relay configured (if the DHCP server is on a different subnet)
+- Confirm the DHCP lease time is sufficient; very short leases (< 5 minutes) can cause frequent reconnections
+
+### Step 3: Verify DNS Resolution
+
+The MQTT broker is typically addressed by hostname. DNS resolution must work.
+
+**Check the `dns` field** in the `get_wifi` or `get_eth` response. If the DNS servers are empty, the reader cannot resolve hostnames.
+
+> **Diagnostic tip:** If you have access to the broker's IP address, configure the MQTT endpoint using the IP directly to bypass DNS. If connectivity succeeds with an IP but fails with a hostname, the problem is DNS.
+
+### Step 4: Verify Firewall Rules
+
+MQTT requires outbound TCP connectivity from the reader (or host device) to the broker.
+
+**Required ports:**
+
+| Port | Protocol | Purpose | Required? |
+|------|----------|---------|-----------|
+| **8883** | TCP | MQTT over TLS (encrypted) | Yes; production |
+| **1883** | TCP | MQTT plaintext (unencrypted) | Development only |
+| **443** | TCP | MQTT over WebSocket/TLS | If using WebSocket transport |
+
+**Firewall checklist:**
+- Allow outbound TCP to the broker's IP/hostname on port 8883
+- If the corporate firewall performs deep packet inspection (DPI), ensure it does not block MQTT protocol signatures
+- If using a proxy, MQTT does not natively support HTTP proxies; use a SOCKS proxy or a direct connection
+- Check that source NAT is not exhausting ports under high device counts
+
+### Step 5: Verify MQTT Connectivity
+
+Use the `get_status` command to check the reader's MQTT connection state:
+
+```json
+{
+  "requestId": "diag-net-005",
+  "command": "get_status"
+}
+```
+
+**Key fields in the response:**
+
+| Field | Healthy Value | Problem Indicator |
+|-------|--------------|-------------------|
+| `mqttConnectionStatus` | `CONNECTED` | `DISCONNECTED`, `CONNECTING`, `ERROR` |
+| `lastBrokerConnectTime` | Recent timestamp | Stale timestamp or empty |
+| `lastDisconnectReason` | (absent) | `TLS_HANDSHAKE_FAILED`, `AUTH_REJECTED`, `TIMEOUT` |
+
+**Common MQTT connection failures:**
+
+| `lastDisconnectReason` | Cause | Resolution |
+|------------------------|-------|------------|
+| `TLS_HANDSHAKE_FAILED` | Certificate mismatch, expired cert, or TLS version incompatible | Check broker CA cert is installed; verify TLS 1.2+ support |
+| `AUTH_REJECTED` | Invalid MQTT username/password or client certificate rejected | Verify credentials in endpoint configuration |
+| `TIMEOUT` | Broker unreachable; firewall, DNS, or network issue | Work through Steps 1–4 above |
+| `PROTOCOL_ERROR` | MQTT protocol version mismatch | Ensure broker supports MQTT 3.1.1 |
+
+### Step 6: Monitor Heartbeat Events
+
+If the reader connects but then drops, monitor `heartBeatEVT` events to detect intermittent connectivity:
+
+**Subscribe to:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+The reader publishes `heartBeatEVT` at regular intervals (default: 30 seconds). Missing heartbeats indicate connectivity loss. Three or more consecutive missed heartbeats suggest a persistent network issue; restart the diagnostic sequence from Step 1.
+
+---
+
+## Quick Reference: Diagnostic Commands
+
+| Command | What It Tells You |
+|---------|-------------------|
+| `get_wifi` | Wi-Fi association, signal strength, IP address, DNS servers |
+| `get_eth` | Ethernet link status when docked in cradle |
+| `get_status` | MQTT connection state, last disconnect reason |
+| `get_endpoint_config` | Configured broker hostname, port, TLS settings |
+
+---
+
+## Network Requirements Checklist
+
+Use this checklist when setting up a new site:
+
+- [ ] Wi-Fi coverage verified at all operational locations (signal ≥ -70 dBm)
+- [ ] DHCP scope configured with sufficient addresses and reasonable lease time
+- [ ] DNS servers configured and resolving the MQTT broker hostname
+- [ ] Firewall allows outbound TCP on port 8883 to the MQTT broker
+- [ ] TLS certificates installed on readers (CA cert at minimum)
+- [ ] MQTT broker reachable; test with an MQTT client from the same network segment
+- [ ] Heartbeat events arriving at expected intervals
+
+---
+
+## Next Steps
+
+- [Configure Wi-Fi Profiles](./configure-wifi): fix Wi-Fi configuration issues
+- [Check Ethernet Status](./check-ethernet): verify cradle-docked connectivity
+- [Secure the MQTT Connection with TLS](../security/secure-mqtt-connection): resolve TLS-related failures

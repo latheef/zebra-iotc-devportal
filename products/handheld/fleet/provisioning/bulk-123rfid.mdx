@@ -1,0 +1,115 @@
+---
+sidebar_position: 3
+title: "How to Provision Readers in Bulk with 123RFID Desktop"
+---
+
+# How to Provision Readers in Bulk with 123RFID Desktop
+
+This guide explains how to use 123RFID Desktop to create reusable configuration profiles and apply them to multiple RFD40 or RFD90 reader sleds in sequence.
+
+## Prerequisites
+
+- Windows workstation with 123RFID Desktop installed (version 2.5 or later)
+- USB connection to each reader sled (via the host mobile computer's USB debug port, or Bluetooth pairing)
+- Target MQTT broker endpoint information (host, port, TLS certificates)
+- Planned RF parameters for the deployment environment
+
+## Step 1: Create a Configuration Profile
+
+A configuration profile captures all settings needed to bring a reader from factory defaults to production-ready state.
+
+1. Launch 123RFID Desktop and connect a reference reader
+2. Navigate to **Configuration → Profile Manager → New Profile**
+3. Configure the following sections:
+
+**MQTT Connection:**
+- Broker hostname and port
+- TLS mode (None, Server Auth, Mutual Auth)
+- Client ID pattern; use `{SERIAL}` as a placeholder that 123RFID substitutes with each reader's serial number
+- Authentication credentials
+
+**RF Parameters:**
+- Transmit power (dBm)
+- RF session (S0, S1, S2, S3)
+- Link profile
+- Tag population estimate
+- Dynamic power enable/disable
+
+**Operating Mode:**
+- Select the default operating mode (Inventory, Locate, or Access)
+
+**Reporting:**
+- Tag report interval
+- RSSI reporting threshold
+- Duplicate elimination window
+
+4. Click **Save Profile** and give it a descriptive name (e.g., `warehouse-standard-v2.1`)
+
+> **Note:** Create separate profiles for different deployment environments. A warehouse with dense tag populations needs different RF parameters than a retail stockroom.
+
+## Step 2: Apply the Profile to Readers
+
+With a profile saved, apply it to each reader sled:
+
+1. Connect the reader sled to the workstation
+2. Wait for 123RFID Desktop to detect the reader (status bar shows **Connected**)
+3. Navigate to **Configuration → Profile Manager**
+4. Select the target profile and click **Apply to Connected Reader**
+5. 123RFID Desktop writes all configuration parameters and restarts the reader
+6. Verify the reader connects to the MQTT broker (status LED or 123RFID connection indicator)
+7. Disconnect and connect the next reader
+
+**Typical timing:** Each reader takes approximately 30–60 seconds to provision, depending on whether firmware is also being updated.
+
+## Step 3: Batch Application with Multiple Readers
+
+For faster throughput, use 123RFID Desktop's batch mode:
+
+1. Navigate to **Tools → Batch Configuration**
+2. Select the profile to apply
+3. Enable **Auto-apply on connect**; this automatically applies the profile whenever a new reader is detected
+4. Connect readers one at a time; each is provisioned automatically as soon as it is detected
+5. The batch log shows the status of each reader:
+
+| Serial Number | Profile Applied | Status | Duration |
+|---|---|---|---|
+| RFD40-A001 | warehouse-standard-v2.1 | Success | 32s |
+| RFD40-A002 | warehouse-standard-v2.1 | Success | 28s |
+| RFD90-B015 | warehouse-standard-v2.1 | Failed; firmware mismatch | N/A |
+
+> **Warning:** If a reader's firmware version is incompatible with the profile, the batch application fails for that reader. Update the reader's firmware first, then retry.
+
+## Step 4: Export and Import Profiles
+
+Configuration profiles can be exported for backup, version control, or sharing across workstations.
+
+**Exporting a profile:**
+1. In Profile Manager, select the profile
+2. Click **Export → Save as File**
+3. The profile is saved as a `.z123profile` file (JSON-based format)
+
+**Importing a profile:**
+1. On the target workstation, open 123RFID Desktop
+2. Navigate to **Configuration → Profile Manager → Import**
+3. Select the `.z123profile` file
+4. The profile appears in the local profile list, ready for application
+
+**Profile version control best practice:**
+- Store exported profiles in your organization's version control system (Git)
+- Use a naming convention that includes the environment and version: `warehouse-standard-v2.1.z123profile`
+- Document changes between profile versions
+
+## Step 5: Validate Provisioned Readers
+
+After provisioning a batch of readers, validate the deployment:
+
+1. Check the MQTT broker's connected clients list, each provisioned reader should appear with its unique client ID
+2. Subscribe to `zebra/rfid/+/status` on the broker and confirm each reader is publishing heartbeat messages
+3. Issue a test inventory command to verify RF operation
+
+## Tips for Efficient Bulk Provisioning
+
+- **Pre-stage firmware:** If readers ship with an older firmware version, perform a firmware-only pass before applying configuration profiles
+- **Label readers:** Affix asset tags with serial numbers before provisioning to simplify tracking
+- **Use a provisioning station:** Set up a dedicated workstation with USB hubs and a clear workflow: unbox → connect → provision → verify → box for deployment
+- **Document exceptions:** Record any reader that fails provisioning for follow-up. Common causes include hardware faults and incompatible firmware

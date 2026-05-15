@@ -1,0 +1,116 @@
+---
+sidebar_position: 6
+title: "Step 5: Read Your First Tags"
+description: "Observe RFID tag data events flowing from the reader and understand the EPC, RSSI, and timestamp fields."
+---
+
+# Step 5: Read Your First Tags
+
+📗 **TUTORIAL**: In this step, you observe RFID tag data events arriving on the `data1event` topic and learn to interpret the tag data payload fields.
+
+## What You Will Do
+
+1. Observe tag data events in your data subscriber terminal
+2. Understand the structure of a tag data event
+3. Identify key fields: EPC, RSSI, antenna, timestamp
+
+## Observing Tag Data
+
+With the inventory operation running (from Step 4), switch to **Terminal 3** (your `data1event` subscriber). As the reader detects UHF RFID tags in range, you will see messages appearing in real time.
+
+> **Note:** Ensure at least one UHF RFID tag is within the reader's antenna range. Hold the tag within 1–5 meters of the RFD40 reader (or up to 9 meters for the RFD90).
+
+## Example Tag Data Event
+
+Each tag read produces a message on the `data1event` topic with a payload like:
+
+```json
+{
+  "eventType": "dataEVT",
+  "timestamp": "2026-05-14T10:32:15.123Z",
+  "deviceSerial": "RFD40-1234567890",
+  "payload": {
+    "tags": [
+      {
+        "epc": "E2801160600002071131F3A5",
+        "rssi": -45,
+        "antenna": 1,
+        "channel": 915.25,
+        "phase": 120.5,
+        "seenCount": 3,
+        "lastSeenTime": "2026-05-14T10:32:15.120Z"
+      },
+      {
+        "epc": "3034257BF400B78000000041",
+        "rssi": -52,
+        "antenna": 1,
+        "channel": 915.75,
+        "phase": 85.2,
+        "seenCount": 1,
+        "lastSeenTime": "2026-05-14T10:32:15.118Z"
+      }
+    ],
+    "totalTagCount": 2
+  }
+}
+```
+
+## Understanding the Fields
+
+### Top-Level Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `eventType` | string | Event type identifier, always `dataEVT` for tag data events |
+| `timestamp` | string | ISO 8601 timestamp when the event was generated |
+| `deviceSerial` | string | Serial number of the reader that produced the event |
+| `payload` | object | Contains the tag data array and summary |
+
+### Tag Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `epc` | string | Electronic Product Code; the unique tag identifier (hex-encoded) |
+| `rssi` | number | Received Signal Strength Indicator in dBm (closer to 0 = stronger signal) |
+| `antenna` | number | Antenna port that read the tag (1 for single-antenna readers) |
+| `channel` | number | RF frequency channel (MHz) used for the read |
+| `phase` | number | Phase angle of the backscattered signal (degrees) |
+| `seenCount` | number | Number of times this tag was read in the current reporting interval |
+| `lastSeenTime` | string | ISO 8601 timestamp of the most recent read of this tag |
+
+### Summary Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `totalTagCount` | number | Total number of unique tags in this event batch |
+
+## Reading the EPC
+
+The **EPC (Electronic Product Code)** is the primary identifier for each RFID tag. It is reported as a hexadecimal string. Common EPC formats include:
+
+| EPC Standard | Length | Example |
+|-------------|--------|---------|
+| SGTIN-96 | 24 hex chars (96 bits) | `3034257BF400B78000000041` |
+| SGTIN-198 | 50 hex chars (198 bits) | Extended encoding with serial |
+| Custom | Varies | Vendor-specific encoding |
+
+## Understanding RSSI
+
+The **RSSI** value indicates the signal strength of the tag read:
+
+| RSSI Range | Signal Quality | Typical Distance |
+|------------|---------------|-----------------|
+| -20 to -35 dBm | Excellent | < 0.5 m |
+| -35 to -50 dBm | Good | 0.5 – 2 m |
+| -50 to -65 dBm | Fair | 2 – 5 m |
+| -65 to -80 dBm | Weak | 5 – 9 m |
+
+> **Note:** RSSI values are approximate and depend on tag type, orientation, and environmental factors. They should not be used as precise distance measurements.
+
+## Multiple Tags
+
+If multiple tags are in range, the `tags` array contains one entry per unique tag per event batch. The reader aggregates reads and sends periodic event batches.
+
+## Next Step
+
+You are successfully reading RFID tags. Proceed to [Step 6: Stop the Operation](./stop-operation.mdx) to cleanly stop the inventory.

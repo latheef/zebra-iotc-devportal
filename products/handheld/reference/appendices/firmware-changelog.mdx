@@ -1,0 +1,169 @@
+---
+sidebar_position: 3
+title: "Firmware Version History & Changelog"
+---
+
+# Firmware Version History & Changelog
+
+📕 **REFERENCE**: Release history for Zebra IoT Connector firmware on RFD40/RFD90 handheld RFID reader sleds.
+
+## Overview
+
+This changelog documents firmware releases for the handheld IoT Connector. Each entry includes the version number, release date, new features, bug fixes, and the corresponding IoT Connector API version.
+
+> **Note:** Firmware updates are applied via the 123RFID Desktop application or Zebra's StageNow enterprise staging tool. Always review the changelog before upgrading, and test new firmware on a small number of devices before fleet-wide deployment.
+
+## Version History
+
+| Version | Release Date | API Version | Summary |
+|---|---|---|---|
+| 3.2.0 | 2026-03-15 | 2.4 | OTA firmware update support, batch tag reporting |
+| 3.1.1 | 2025-12-01 | 2.3 | Bug fixes for TLS reconnection, Wi-Fi profile management |
+| 3.1.0 | 2025-09-20 | 2.3 | Certificate management commands, WPA3-SAE support |
+| 3.0.2 | 2025-06-10 | 2.2 | Heartbeat payload improvements, memory leak fix |
+| 3.0.1 | 2025-04-01 | 2.2 | Stability fixes, Bluetooth reconnection improvements |
+| 3.0.0 | 2025-01-15 | 2.2 | Major release; fleet management topics, exception events |
+| 2.5.0 | 2024-10-01 | 2.1 | Tag write/lock/kill commands, expanded error codes |
+| 2.4.0 | 2024-07-15 | 2.0 | Tag filtering, unique tag reporting, RF mode selection |
+| 2.3.0 | 2024-04-01 | 1.3 | Multiple MQTT endpoint support, endpoint switching |
+| 2.2.0 | 2024-01-10 | 1.2 | Wi-Fi profile management via MQTT |
+| 2.1.0 | 2023-09-15 | 1.1 | Heartbeat events, battery monitoring |
+| 2.0.0 | 2023-06-01 | 1.0 | Initial IoT Connector release for handheld readers |
+
+---
+
+## Detailed Release Notes
+
+### Version 3.2.0 (2026-03-15)
+
+**API Version:** 2.4
+
+**New Features:**
+- Over-the-air (OTA) firmware update support via management topics
+- Batch tag reporting mode; multiple tag reads per MQTT message to reduce message volume
+- Configurable batch size (1–100 tags per message)
+- New `get_inventory_status` command to query active operation state
+
+**Bug Fixes:**
+- Fixed: Inventory stop command occasionally returning error code 8 while inventory was still running
+- Fixed: Tag timestamp precision reduced to milliseconds (was microseconds, causing JSON parsing issues in some clients)
+- Fixed: Device not publishing reconnection event after TLS renegotiation
+
+**Known Issues:**
+- OTA update progress events may report 100% briefly before the actual completion. Wait for the `firmwareUpdateComplete` event.
+
+---
+
+### Version 3.1.1 (2025-12-01)
+
+**API Version:** 2.3
+
+**Bug Fixes:**
+- Fixed: TLS reconnection failure after broker restart when using mutual TLS authentication
+- Fixed: Deleting a Wi-Fi profile by SSID name was case-sensitive (now case-insensitive)
+- Fixed: Maximum Wi-Fi profiles error (code 19) reported at 9 profiles instead of 10
+- Fixed: Heartbeat interval not applied until device reboot (now applied immediately)
+
+---
+
+### Version 3.1.0 (2025-09-20)
+
+**API Version:** 2.3
+
+**New Features:**
+- `install_certificate` command for remote TLS certificate provisioning
+- `delete_certificate` command for certificate lifecycle management
+- WPA3-SAE support for Wi-Fi profiles
+- Certificate expiration warning events (exception code 1300)
+- Certificate expired events (exception code 1301)
+
+**Bug Fixes:**
+- Fixed: Device sending malformed JSON when tag EPC contains non-ASCII characters in user memory
+- Fixed: MQTT keepalive timer not resetting on outbound message publish
+
+---
+
+### Version 3.0.2 (2025-06-10)
+
+**API Version:** 2.2
+
+**Bug Fixes:**
+- Fixed: Memory leak during long-running continuous inventory operations (could cause device unresponsiveness after 24+ hours)
+- Fixed: Heartbeat payload missing `wifiRssi` field when `includeWifiRssi` was enabled
+- Fixed: Device clock drift after extended uptime without NTP access
+
+---
+
+### Version 3.0.1 (2025-04-01)
+
+**API Version:** 2.2
+
+**Bug Fixes:**
+- Fixed: Bluetooth reconnection taking up to 30 seconds after brief disconnection (reduced to 3–5 seconds)
+- Fixed: Queued tag events published out of order after MQTT reconnection
+- Fixed: `set_config` returning success but not applying changes to the `tagReporting` section
+
+---
+
+### Version 3.0.0 (2025-01-15)
+
+**API Version:** 2.2
+
+**New Features:**
+- Fleet management topics (`zebra/iotc/management/...`) for centralized device administration
+- Exception event framework with severity levels (INFO, WARNING, ERROR, CRITICAL)
+- Battery health monitoring and degradation alerts
+- Temperature monitoring and thermal protection events
+- Wi-Fi signal strength tracking in heartbeat payloads
+- Device reboot command via MQTT
+
+**Breaking Changes:**
+- Event topic payload structure updated; `eventType` field is now required (previously implicit)
+- Heartbeat payload format changed; fields are now nested under a `status` object
+
+**Migration Notes:**
+- Update your event parser to check the `eventType` field
+- Update heartbeat processing to read fields from `payload.status.*` instead of `payload.*`
+
+---
+
+### Version 2.5.0 (2024-10-01)
+
+**API Version:** 2.1
+
+**New Features:**
+- `read_tag` command for reading specific tag memory banks
+- `write_tag` command for writing to tag EPC, User, and Reserved memory
+- `lock_tag` command for locking tag memory banks
+- `kill_tag` command for permanently disabling tags
+- Expanded error code set (codes 9–21 added)
+
+---
+
+### Version 2.4.0 (2024-07-15)
+
+**API Version:** 2.0
+
+**New Features:**
+- Tag filtering by EPC prefix, TID, and User memory content
+- Unique tag reporting interval configuration
+- RF mode selection for optimizing read performance
+- RSSI, phase, and channel reporting options in tag events
+
+---
+
+## API Version Compatibility
+
+| API Version | Minimum Firmware | Key Capabilities |
+|---|---|---|
+| 2.4 | 3.2.0 | OTA updates, batch reporting |
+| 2.3 | 3.1.0 | Certificate management, WPA3 |
+| 2.2 | 3.0.0 | Fleet management, exception events |
+| 2.1 | 2.5.0 | Tag write/lock/kill |
+| 2.0 | 2.4.0 | Tag filtering, RF modes |
+| 1.3 | 2.3.0 | Multiple endpoints |
+| 1.2 | 2.2.0 | Wi-Fi management |
+| 1.1 | 2.1.0 | Heartbeat events |
+| 1.0 | 2.0.0 | Base command/event model |
+
+> **Tip:** Use the `get_version` command to check the device's current firmware and API version before sending commands that require a specific API level.

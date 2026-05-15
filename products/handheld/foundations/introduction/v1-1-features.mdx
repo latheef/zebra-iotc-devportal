@@ -1,0 +1,129 @@
+---
+sidebar_position: 3
+title: "About IOTC V1.1 Features"
+---
+
+# About IOTC V1.1 Features
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+IOTC V1.1 is a significant update to the handheld RFID IoT Connector platform, introducing expanded hardware support, enhanced tag data processing, improved power management, and richer device telemetry. This page summarizes what changed from V1.0 and provides guidance for teams migrating existing integrations.
+
+## What's New in V1.1
+
+### RFD90 Series Support
+
+V1.1 extends IOTC compatibility to the RFD90 ultra-rugged reader sled. The RFD90 introduces Bluetooth 5.3 connectivity, hot-swappable batteries, and extended read range (up to 10 m). The IOTC interface is identical across RFD40 and RFD90; applications built for the RFD40 work with the RFD90 without code changes.
+
+### Enhanced Tag Data Filtering
+
+V1.1 introduces server-side post-filters that reduce MQTT bandwidth consumption by filtering tag observations on the reader before transmission:
+
+- **EPC pattern matching**: filter by EPC prefix, suffix, or regex pattern
+- **RSSI threshold**: suppress tag reads below a configurable signal strength
+- **Unique tag interval**: deduplicate repeated reads of the same EPC within a time window (configurable from 100 ms to 60 s)
+- **TID filtering**: filter based on Tag Identifier memory contents
+
+Filters are configured via the `mgmt` interface and persist across reader reboots.
+
+### Battery Telemetry
+
+V1.1 adds detailed battery health reporting to the `mgmt` interface telemetry stream:
+
+| Metric | Description | Unit |
+|--------|-------------|------|
+| `batteryLevel` | Current charge percentage | % (0–100) |
+| `batteryHealth` | Overall battery health status | `good`, `degraded`, `replace` |
+| `batteryVoltage` | Current voltage | mV |
+| `chargingState` | Charging status | `charging`, `discharging`, `full`, `not_charging` |
+| `estimatedRuntime` | Estimated remaining runtime at current usage | minutes |
+| `cycleCount` | Total charge/discharge cycles | integer |
+| `temperature` | Battery temperature | °C |
+
+### Improved Inventory Session Management
+
+V1.1 refines how inventory sessions are started, stopped, and resumed:
+
+- **Graceful stop**: the `stop_inventory` command now acknowledges pending tag observations before halting, preventing data loss
+- **Session persistence**: inventory session configuration (antenna power, session type, target flag) survives Bluetooth disconnections when the reader reconnects within the keep-alive window
+- **Trigger-linked sessions**: inventory can be bound to the physical trigger, starting on trigger pull and stopping on release, with automatic MQTT streaming
+
+### Bulk Configuration
+
+V1.1 introduces a bulk configuration command that applies multiple reader parameters in a single atomic MQTT message, reducing round-trips and preventing inconsistent intermediate states:
+
+```json
+{
+  "command": "set_config_bulk",
+  "params": {
+    "rfPower": 27.0,
+    "session": "S1",
+    "target": "A",
+    "singulationAlgorithm": "DYNAMIC_Q",
+    "uniqueTagInterval": 5000,
+    "rssiThreshold": -70
+  }
+}
+```
+
+### Enhanced Error Reporting
+
+Error responses now include structured error codes, human-readable descriptions, and recommended corrective actions:
+
+```json
+{
+  "status": "error",
+  "error": {
+    "code": "ANTENNA_FAULT",
+    "message": "Antenna impedance mismatch detected",
+    "severity": "warning",
+    "action": "Check antenna cable connection. If error persists, contact Zebra support."
+  }
+}
+```
+
+## Feature Matrix: V1.0 vs V1.1
+
+| Feature | V1.0 | V1.1 |
+|---------|------|------|
+| RFD40 Standard support | Yes | Yes |
+| RFD40 Premium / Premium Plus support | Yes | Yes |
+| RFD90 support | No | Yes |
+| MQTT 3.1.1 | Yes | Yes |
+| MGMT interface | Yes | Yes |
+| CTRL interface | Yes | Yes |
+| DATA interface | Yes | Yes |
+| Tag EPC + RSSI streaming | Yes | Yes |
+| Tag TID reading | Yes | Yes |
+| Post-filter: RSSI threshold | No | Yes |
+| Post-filter: EPC pattern | No | Yes |
+| Post-filter: Unique tag interval | No | Yes |
+| Battery telemetry | Basic (level only) | Full (level, health, voltage, temp, cycles) |
+| Bulk configuration | No | Yes |
+| Trigger-linked inventory | No | Yes |
+| Structured error codes | No | Yes |
+| Graceful inventory stop | No | Yes |
+
+## Migration Notes: V1.0 → V1.1
+
+### Backward Compatibility
+
+V1.1 is backward-compatible with V1.0 integrations. Existing applications continue to work without modification. New features are opt-in; they activate only when new commands or configuration parameters are used.
+
+### Topic Structure
+
+The MQTT topic hierarchy is unchanged between V1.0 and V1.1. No topic migrations are required.
+
+### Payload Changes
+
+V1.1 tag data payloads include additional optional fields (`filterMatch`, `triggerEvent`). Applications using strict JSON schema validation should update their schemas to permit these new fields. Applications that ignore unknown fields require no changes.
+
+### Firmware Update
+
+Upgrading from V1.0 to V1.1 requires a firmware update on the reader sled. Firmware can be deployed via:
+
+- **123RFID Desktop**: USB connection, single reader
+- **SOTI Connect**: OTA (over-the-air), fleet-wide deployment
+- **Zebra LifeGuard OTA**: Managed firmware updates through Zebra's cloud service

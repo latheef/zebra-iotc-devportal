@@ -1,0 +1,111 @@
+---
+sidebar_position: 1
+title: "dataEVT"
+description: "Tag read data event reference for Zebra RFD40/RFD90 handheld RFID readers."
+---
+
+# dataEVT
+
+Tag read data events published by the reader during an active RFID operation. Each event contains one or more tag reads with EPC, RSSI, antenna, timestamp, and optional fields based on the `tagReportConfig` in the operating mode.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **data1event** | `{tenantId}/DATA/clients/data1event/{deviceSerial}` |
+| **data2event** | `{tenantId}/DATA/clients/data2event/{deviceSerial}` |
+
+## Direction
+
+Reader → Application
+
+## Payload
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T10:32:15.123Z",
+  "tags": [
+    {
+      "epc": "30340242A02C00000000001A",
+      "rssi": -52.5,
+      "antennaId": 1,
+      "firstSeenTime": "2026-05-14T10:32:15.100Z",
+      "lastSeenTime": "2026-05-14T10:32:15.123Z",
+      "phase": 124.7,
+      "channelIndex": 12,
+      "seenCount": 3
+    },
+    {
+      "epc": "E20068060000004012345678",
+      "rssi": -61.2,
+      "antennaId": 1,
+      "firstSeenTime": "2026-05-14T10:32:15.105Z",
+      "lastSeenTime": "2026-05-14T10:32:15.120Z",
+      "phase": 87.3,
+      "channelIndex": 14,
+      "tid": "E2003412F8300000",
+      "seenCount": 2
+    }
+  ]
+}
+```
+
+### With User Memory
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T10:32:16.456Z",
+  "tags": [
+    {
+      "epc": "30340242A02C00000000001A",
+      "rssi": -48.1,
+      "antennaId": 1,
+      "firstSeenTime": "2026-05-14T10:32:16.450Z",
+      "lastSeenTime": "2026-05-14T10:32:16.456Z",
+      "phase": 131.2,
+      "channelIndex": 8,
+      "tid": "E2003412F8300000",
+      "userMemory": "48656C6C6F",
+      "seenCount": 1
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `event` | string | Always `"dataEVT"` |
+| `deviceSerial` | string | Serial number of the reporting device |
+| `timestamp` | string | Event publish timestamp in ISO 8601 format |
+| `tags` | array | Array of tag read records |
+| `tags[].epc` | string | Electronic Product Code in hexadecimal |
+| `tags[].rssi` | number | Received Signal Strength Indicator in dBm |
+| `tags[].antennaId` | integer | Antenna that read the tag (present when `includeAntennaId` is `true`) |
+| `tags[].firstSeenTime` | string | First read timestamp (present when `includeFirstSeenTime` is `true`) |
+| `tags[].lastSeenTime` | string | Last read timestamp (present when `includeLastSeenTime` is `true`) |
+| `tags[].phase` | number | RF phase angle in degrees (present when `includePhase` is `true`) |
+| `tags[].channelIndex` | integer | RF channel index used for the read (present when `includeChannel` is `true`) |
+| `tags[].tid` | string | Tag identifier memory bank in hexadecimal (present when `includeTid` is `true`) |
+| `tags[].userMemory` | string | User memory bank in hexadecimal (present when `includeUserMemory` is `true`) |
+| `tags[].seenCount` | integer | Number of times the tag was read in the reporting interval |
+
+## Notes
+
+- The `data1event` and `data2event` topics carry the same event type. Two topics are provided to allow different QoS or subscriber routing for high-throughput scenarios.
+- The fields present in each tag record depend on the `tagReportConfig` configured via `set_operating_mode`. Only enabled fields appear in the payload.
+- `epc` is always present in every tag record regardless of configuration.
+- `rssi` values are negative dBm. Higher values (closer to 0) indicate stronger signal and closer proximity.
+- `phase` values range from 0 to 360 degrees and can be used for motion detection or distance estimation algorithms.
+- Tag events are batched; a single `dataEVT` may contain multiple tags. The batch size depends on the read rate and internal buffering.
+- High tag populations and dense read environments can generate significant data volume. Use `seenCountThreshold` and post-filters to manage throughput.
+
+## See Also
+
+- [set_operating_mode](../ctrl/set-operating-mode): Configure tag report fields and thresholds
+- [set_post_filter](../ctrl/set-post-filter): Filter which tags are reported
+- [control_operation](../ctrl/control-operation): Start or stop RFID operations
+- [API Overview](../api-overview): Complete endpoint inventory

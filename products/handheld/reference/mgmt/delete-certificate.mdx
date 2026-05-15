@@ -1,0 +1,79 @@
+---
+sidebar_position: 9
+title: "delete_certificate"
+description: "Remove an installed certificate from a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# delete_certificate
+
+Removes an installed certificate from the device by name.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "delete_certificate",
+  "requestId": "10",
+  "certificate": {
+    "name": "OldBrokerCert"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"delete_certificate"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `certificate` | object | Yes | Certificate identification |
+| `certificate.name` | string | Yes | Name (alias) of the certificate to delete |
+
+## Response Payload
+
+```json
+{
+  "command": "delete_certificate",
+  "requestId": "10",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | The `certificate.name` field is missing or empty |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `15` | NotFound | No certificate exists with the specified name |
+| `16` | ResourceInUse | The certificate is referenced by an active Wi-Fi profile or MQTT endpoint |
+
+## Notes
+
+- A certificate cannot be deleted if it is referenced by an active MQTT endpoint or Wi-Fi profile. Remove the reference first by updating the endpoint or Wi-Fi configuration.
+- The certificate name is case-sensitive and must match exactly as shown by `get_installed_certificate`.
+- Deleting a certificate is permanent. Re-install it using `install_certificate` if needed.
+
+## See Also
+
+- [get_installed_certificate](get-installed-certificate): List installed certificates
+- [install_certificate](install-certificate): Install a new certificate
+- [API Overview](../api-overview): Complete endpoint inventory

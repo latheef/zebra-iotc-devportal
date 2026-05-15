@@ -1,0 +1,205 @@
+---
+sidebar_position: 6
+title: "Third-Party MQTT Client Libraries"
+---
+
+# Third-Party MQTT Client Libraries
+
+📕 **REFERENCE**: Curated list of MQTT 3.1.1 client libraries for integrating with the Zebra IoT Connector.
+
+## Overview
+
+The Zebra IoT Connector communicates via MQTT 3.1.1. You can use any standards-compliant MQTT client library to build your integration. This page lists well-maintained, widely adopted libraries across popular programming languages with notes on suitability for IoT Connector workloads.
+
+## Selection Criteria
+
+When choosing a library, consider:
+
+- **MQTT 3.1.1 support**: Required. MQTT 5.0-only libraries will not work.
+- **TLS 1.2 support**: Required for production deployments using encrypted connections.
+- **QoS 0 and QoS 1 support**: Required. QoS 2 is not typically used with the IoT Connector.
+- **Automatic reconnection**: Strongly recommended for handling transient network interruptions.
+- **Async/event-driven API**: Recommended for high-throughput tag event processing.
+
+## Recommended Libraries
+
+### Python: Eclipse Paho MQTT
+
+| | |
+|---|---|
+| **Package** | `paho-mqtt` |
+| **Version** | 2.x (recommended), 1.6.x (legacy) |
+| **Install** | `pip install paho-mqtt` |
+| **Repository** | [github.com/eclipse/paho.mqtt.python](https://github.com/eclipse/paho.mqtt.python) |
+| **License** | EPL-2.0 / EDL-1.0 |
+
+**Notes:**
+- Most widely used Python MQTT client. Extensive documentation and community support.
+- Version 2.x introduced breaking API changes from 1.x; check the migration guide if upgrading.
+- Supports TLS, username/password auth, and client certificate auth.
+- Built-in automatic reconnection with configurable backoff.
+
+**Minimal example:**
+
+```python
+import paho.mqtt.client as mqtt
+import json
+
+def on_connect(client, userdata, flags, rc, properties=None):
+    client.subscribe("zebra/iotc/response/RFD40123456")
+    client.subscribe("zebra/iotc/event/RFD40123456")
+
+def on_message(client, userdata, msg):
+    payload = json.loads(msg.payload.decode())
+    print(f"Topic: {msg.topic}, Payload: {payload}")
+
+client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id="my-app")
+client.tls_set()  # Uses system CA certificates
+client.username_pw_set("user", "password")
+client.on_connect = on_connect
+client.on_message = on_message
+client.connect("broker.example.com", 8883)
+client.loop_forever()
+```
+
+---
+
+### Node.js / JavaScript: MQTT.js
+
+| | |
+|---|---|
+| **Package** | `mqtt` |
+| **Version** | 5.x |
+| **Install** | `npm install mqtt` |
+| **Repository** | [github.com/mqttjs/MQTT.js](https://github.com/mqttjs/MQTT.js) |
+| **License** | MIT |
+
+**Notes:**
+- The most popular MQTT client for Node.js. Also works in browsers via WebSocket.
+- Supports MQTT 3.1.1 and 5.0; configure `protocolVersion: 4` for MQTT 3.1.1.
+- Built-in reconnection with customizable intervals.
+- Promise and stream-based APIs available.
+
+**Minimal example:**
+
+```javascript
+const mqtt = require('mqtt');
+
+const client = mqtt.connect('mqtts://broker.example.com:8883', {
+  protocolVersion: 4, // MQTT 3.1.1
+  clientId: 'my-app',
+  username: 'user',
+  password: 'password',
+});
+
+client.on('connect', () => {
+  client.subscribe('zebra/iotc/response/RFD40123456');
+  client.subscribe('zebra/iotc/event/RFD40123456');
+});
+
+client.on('message', (topic, message) => {
+  const payload = JSON.parse(message.toString());
+  console.log(`Topic: ${topic}`, payload);
+});
+```
+
+---
+
+### C# / .NET: MQTTnet
+
+| | |
+|---|---|
+| **Package** | `MQTTnet` |
+| **Version** | 4.x |
+| **Install** | `dotnet add package MQTTnet` |
+| **Repository** | [github.com/dotnet/MQTTnet](https://github.com/dotnet/MQTTnet) |
+| **License** | MIT |
+
+**Notes:**
+- High-performance .NET MQTT library. Supports both client and server (broker) roles.
+- Fully async API with `Task`-based patterns.
+- Supports MQTT 3.1.1 and 5.0. Use `MqttProtocolVersion.V311`.
+- Includes built-in managed client with automatic reconnection.
+- Good choice for Azure-hosted applications and Windows services.
+
+---
+
+### Java: Eclipse Paho Java
+
+| | |
+|---|---|
+| **Package** | `org.eclipse.paho.client.mqttv3` |
+| **Version** | 1.2.x |
+| **Install** | Maven: `org.eclipse.paho:org.eclipse.paho.client.mqttv3:1.2.5` |
+| **Repository** | [github.com/eclipse/paho.mqtt.java](https://github.com/eclipse/paho.mqtt.java) |
+| **License** | EPL-2.0 / EDL-1.0 |
+
+**Notes:**
+- Mature, well-tested Java MQTT client from the Eclipse Foundation.
+- Supports MQTT 3.1.1 via the `mqttv3` package. A separate `mqttv5` package exists for MQTT 5.0.
+- Automatic reconnection and offline message buffering.
+- Compatible with Android for mobile companion apps.
+
+---
+
+### Go: Eclipse Paho Go
+
+| | |
+|---|---|
+| **Package** | `github.com/eclipse/paho.mqtt.golang` |
+| **Version** | Latest (v1.x) |
+| **Install** | `go get github.com/eclipse/paho.mqtt.golang` |
+| **Repository** | [github.com/eclipse/paho.mqtt.golang](https://github.com/eclipse/paho.mqtt.golang) |
+| **License** | EPL-2.0 / EDL-1.0 |
+
+**Notes:**
+- Idiomatic Go MQTT client with goroutine-safe API.
+- Supports MQTT 3.1.1. For MQTT 5.0, use the separate `paho.mqtt.golang/v5` module.
+- Automatic reconnection built-in.
+- Suitable for high-concurrency server applications and microservices.
+
+---
+
+### C / C++: Eclipse Paho C
+
+| | |
+|---|---|
+| **Package** | `Eclipse Paho C Client` |
+| **Version** | 1.3.x |
+| **Repository** | [github.com/eclipse/paho.mqtt.c](https://github.com/eclipse/paho.mqtt.c) |
+| **License** | EPL-2.0 / EDL-1.0 |
+
+**Notes:**
+- C library suitable for embedded systems, edge gateways, and performance-critical applications.
+- Synchronous and asynchronous API variants.
+- Supports MQTT 3.1.1 and 5.0.
+- TLS support via OpenSSL or mbedTLS.
+- C++ wrapper available via [paho.mqtt.cpp](https://github.com/eclipse/paho.mqtt.cpp).
+
+---
+
+## Library Comparison Summary
+
+| Language | Library | MQTT 3.1.1 | TLS | Auto-Reconnect | Async API | License |
+|---|---|---|---|---|---|---|
+| Python | paho-mqtt | Yes | Yes | Yes | Threaded | EPL-2.0 |
+| Node.js | MQTT.js | Yes | Yes | Yes | Event-driven | MIT |
+| C# | MQTTnet | Yes | Yes | Yes (managed) | Task-based | MIT |
+| Java | Paho Java | Yes | Yes | Yes | Callback | EPL-2.0 |
+| Go | Paho Go | Yes | Yes | Yes | Goroutines | EPL-2.0 |
+| C/C++ | Paho C | Yes | Yes | Manual | Both | EPL-2.0 |
+
+## Broker Compatibility
+
+The IoT Connector has been tested with the following MQTT brokers:
+
+| Broker | Notes |
+|---|---|
+| Eclipse Mosquitto | Open-source, lightweight, suitable for development and small deployments |
+| HiveMQ | Enterprise-grade, clustering, WebSocket support |
+| EMQX | High-performance, distributed, supports millions of connections |
+| AWS IoT Core | Managed service, integrates with AWS ecosystem |
+| Azure IoT Hub | Managed service (uses MQTT with device-specific topics) |
+| Google Cloud IoT Core | Managed service (deprecated; migrating users should consider alternatives) |
+
+> **Note:** When using managed cloud MQTT services (AWS IoT Core, Azure IoT Hub), be aware that they may impose topic structure requirements or authentication mechanisms that differ from standard MQTT. Review the cloud provider's documentation alongside this guide.

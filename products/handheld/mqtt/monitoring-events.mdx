@@ -1,0 +1,633 @@
+---
+sidebar_position: 6
+title: Monitoring and Events
+description: "Heartbeat, alert, exception, and connection events for fleet health monitoring"
+---
+
+# Monitoring and Events
+
+An RFID reader bolted to a dock door or holstered on a warehouse floor cannot tap you on the shoulder when something goes wrong. It can only send messages, and whether those messages reach the right system, get interpreted correctly, and trigger the right response depends entirely on how you design your monitoring layer. This chapter covers the five event types published by the IoT Connector agent, the semantics of each one, and how to assemble them into a monitoring architecture that gives your operations team genuine visibility into fleet health.
+
+Every event described here arrives on the MGMT interface at a single topic:
+
+```
+{tenantId}/MGMT/clients/event/{deviceSerial}
+```
+
+The exception is tag data (`dataEVT`), which uses the DATA interface and was covered in [Chapter 9](/handheld/mqtt/working-with-tag-data). Subscribe to the event topic with a wildcard to receive all management events from all readers:
+
+```
+zebra/MGMT/clients/event/+
+```
+
+All management events share a common envelope; the `event` field identifies the payload type:
+
+| `event` Value | Section | Signal Type |
+|---------------|---------|-------------|
+| `heartBeatEVT` | [10.1](#101-heartbeat-events) | Periodic health pulse |
+| `alerts` | [10.2](#102-alerts) | Threshold-violation notification (full detail) |
+| `alert_short` | [10.2](#102-alerts) | Threshold-violation notification (compact) |
+| `exceptionEVT` | [10.3](#103-exception-events) | Runtime error report |
+| `mqttConnEVT` | [10.4](#104-connection-events) | MQTT connection state change |
+
+A robust event subscriber routes incoming messages by inspecting the `event` field first, then parsing the type-specific payload. The examples throughout this chapter show a consistent pattern: deserialize the JSON envelope, switch on `event`, and delegate to a type-specific handler.
+
+---
+
+## 10.1 Heartbeat Events
+
+The heartbeat is the single most important signal in fleet monitoring. A reader that sends heartbeats is alive. A reader that stops sending heartbeats requires investigation. Every other event type is supplementary; heartbeats are the baseline.
+
+### What the Heartbeat Contains
+
+A `heartBeatEVT` is published at a configurable interval (10 seconds to 1 hour) and always includes two core measurements: how long the reader has been running, and its internal temperature. Optionally when enabled via `config_events`; the heartbeat also carries battery status, inventory operation status, and network connection details.
+
+**Minimal heartbeat (core fields only):**
+
+```json
+{
+  "event": "heartBeatEVT",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-08T14:30:00.000Z",
+  "apiVersion": "V1.1",
+  "heartbeat": {
+    "uptimeSeconds": 86400,
+    "temperature": 32
+  }
+}
+```
+
+**Full heartbeat (all optional sub-objects enabled):**
+
+```json
+{
+  "event": "heartBeatEVT",
+  "deviceSerial": "RFD90-318842103A0012",
+  "timestamp": "2026-04-08T14:32:00.000Z",
+  "apiVersion": "V1.1",
+  "heartbeat": {
+    "uptimeSeconds": 172800,
+    "temperature": 28,
+    "batteryStatus": {
+      "stateOfHealth": "GOOD",
+      "chargePercentage": 95,
+      "chargeStatus": 2,
+      "voltage": 4200,
+      "temperature": 27
+    },
+    "inventoryStatus": {
+      "radioActivity": "INACTIVE",
+      "operationType": "NONE",
+      "totalTagsRead": 0,
+      "readRate": 0
+    },
+    "networkStatus": {
+      "connectionType": "WIFI",
+      "ssid": "Zebra-Enterprise",
+      "signalStrength": -42,
+      "ipAddress": "192.168.1.105"
+    }
+  }
+}
+```
+
+### Heartbeat Field Reference
+
+**Core fields (always present):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `uptimeSeconds` | integer | Seconds since last reboot. A sudden drop to a low value means the reader rebooted; correlate with any configuration change or `reboot` command you sent. |
+| `temperature` | integer | Internal temperature in °C. Distinct from the temperature *alert* threshold; this is an observation, not a violation. |
+
+**batteryStatus (optional: enable with `config_events`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `stateOfHealth` | string | `"GOOD"`, `"DEGRADED"`, or `"REPLACE"`. A `DEGRADED` value indicates the battery holds significantly less charge than when new. |
+| `chargePercentage` | integer | Current charge level, 0–100. |
+| `chargeStatus` | integer | `0` = not charging, `1` = charging, `2` = fully charged. |
+| `voltage` | integer | Battery voltage in millivolts. A healthy LiPo cell at rest reads 3,700–4,200 mV. |
+| `temperature` | integer | Battery temperature in °C. Distinct from device temperature. |
+
+**inventoryStatus (optional: enable with `config_events`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `radioActivity` | string | `"ACTIVE"` if an RFID operation is running, `"INACTIVE"` otherwise. |
+| `operationType` | string | `"INVENTORY"`, `"ACCESS"`, or `"NONE"`. |
+| `totalTagsRead` | integer | Total unique tags read since the current operation started. Resets to 0 when the operation stops. |
+| `readRate` | integer | Current tags per second. Useful for detecting degraded read performance. |
+
+**networkStatus (optional: enable with `config_events`):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `connectionType` | string | Transport medium: `"WIFI"`, `"ETHERNET"`, or `"BLUETOOTH"`. |
+| `ssid` | string | Connected Wi-Fi network name (if applicable). |
+| `signalStrength` | integer | Signal strength in dBm. For Wi-Fi, values weaker than −70 dBm may indicate an unreliable link. |
+| `ipAddress` | string | Current IP address. Useful for troubleshooting network routing issues. |
+
+### Configuring the Heartbeat
+
+Heartbeat events must be explicitly enabled through the `config_events` command. The configuration also controls which optional sub-objects are included and the publication interval.
+
+```json
+{
+  "command": "config_events",
+  "requestId": "evt-001",
+  "eventConfig": {
+    "heartbeat": {
+      "enabled": true,
+      "interval": 60000,
+      "inventoryStatus": true,
+      "batteryStatus": true,
+      "networkStatus": true
+    }
+  }
+}
+```
+
+> **Reboot required.** Event configuration changes do not take effect until the reader is rebooted. After receiving a success response (code `0` or `1`), send the `reboot` command.
+
+**Interval selection guidance:**
+
+| Interval | Fleet Size | Use Case | Broker Load |
+|----------|-----------|----------|-------------|
+| 10–30 seconds | < 25 readers | Real-time NOC display, demos | High |
+| 60 seconds | 25–100 readers | Standard fleet monitoring | Moderate |
+| 300 seconds | 100+ readers | Large deployments, background health checks | Low |
+
+The heartbeat interval directly affects your offline detection threshold (covered below) and your broker's inbound message rate. For a fleet of 200 readers at a 30-second interval, the broker processes ~400 heartbeat messages per minute; manageable, but worth factoring into capacity planning.
+
+### Offline Detection with Heartbeat Absence
+
+The IoT Connector API does not support MQTT Last Will and Testament (LWT) configuration. This means the broker does not automatically publish a "reader disconnected" message when a reader drops off the network ungracefully. The canonical method for detecting offline readers is **heartbeat absence**; track the timestamp of each reader's last heartbeat, and flag it as potentially offline when the expected interval elapses without a new one.
+
+**Set the offline threshold to 2–3× the configured heartbeat interval.** For a 60-second interval, flag the reader as offline after 120–180 seconds of silence. This margin accounts for network jitter, MQTT QoS 1 retry delays, and brief Wi-Fi roaming events that may cause a single heartbeat to arrive late.
+
+A simplified detection loop:
+
+```
+for each reader in fleet:
+    elapsed = now - reader.lastHeartbeatTimestamp
+    if elapsed > (heartbeatInterval * offlineMultiplier):
+        reader.status = OFFLINE
+        trigger alert
+```
+
+> **Warning: avoid false positives.** A single missed heartbeat is not an outage. Intermittent Wi-Fi coverage in large warehouses, broker restarts that cause brief subscription gaps, and momentary device reboots (from configuration changes you initiated) all cause short heartbeat gaps. Use the 2–3× multiplier and require *sustained* absence before escalating to operations staff.
+
+### Battery Monitoring via Heartbeat
+
+Heartbeat battery data and battery *alerts* (Section 10.2) serve different purposes. Heartbeats report battery state periodically; useful for trend charts, charging rotation planning, and identifying devices with declining battery health over weeks. Alerts fire only when a threshold is crossed; useful for immediate action. Use both.
+
+A practical pattern: collect `chargePercentage` from heartbeats into a time-series database, plot daily charge curves per device, and identify units whose batteries drain faster than peers. A battery that drains from 100% to 20% in 4 hours instead of the fleet average of 8 hours likely needs replacement; the heartbeat trend reveals this before the `BATTERY_LOW` alert fires.
+
+> **Cross-reference:** For `config_events` request/response schemas and response codes, see the [config_events API Reference](01_02_01_01_Management-Domain/mqtt-reference-config-events.md).
+
+---
+
+## 10.2 Alerts
+
+Alerts are threshold-violation events. Unlike heartbeats, which arrive on a schedule regardless of conditions, an alert fires only when a measured value crosses a boundary you configured. The IoT Connector supports two alert formats: `alerts` (full detail) and `alert_short` (compact). Both carry the same information; the difference is verbosity and payload size.
+
+### Alert Types
+
+Five alert types cover the conditions the reader monitors:
+
+| Alert Type | Trigger | Default Severity |
+|------------|---------|-----------------|
+| `TEMPERATURE_HIGH` | Internal device temperature exceeds the configured threshold | `WARNING` or `CRITICAL` |
+| `BATTERY_LOW` | Battery charge drops below the low threshold | `WARNING` |
+| `BATTERY_CRITICAL` | Battery charge drops below the critical threshold | `CRITICAL` |
+| `BATTERY_HEALTH_DEGRADED` | Battery `stateOfHealth` degrades from `GOOD` | `WARNING` |
+| `RADIO_ERROR` | RFID radio communication error | `WARNING` |
+
+### Full Alert Format
+
+The `alerts` event includes human-readable context: a message string describing the condition, the unit of measurement, and full field names.
+
+```json
+{
+  "event": "alerts",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-08T14:45:30.000Z",
+  "apiVersion": "V1.1",
+  "alert": {
+    "alertType": "TEMPERATURE_HIGH",
+    "severity": "WARNING",
+    "message": "Device temperature exceeded configured threshold",
+    "currentValue": 52,
+    "thresholdValue": 45,
+    "unit": "°C"
+  }
+}
+```
+
+**Alert object fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `alertType` | string | One of the five alert type enum values. |
+| `severity` | string | `"WARNING"`, `"CRITICAL"`, or `"INFO"`. |
+| `message` | string | Human-readable description of the condition. |
+| `currentValue` | number | The measured value that triggered the alert. |
+| `thresholdValue` | number | The configured threshold that was exceeded. |
+| `unit` | string | Unit of measurement: `"°C"`, `"%"`, `"mV"`. |
+
+### Compact Alert Format
+
+`alert_short` delivers the same alert in a smaller JSON payload by abbreviating field names and omitting `message` and `unit`. Use this format in bandwidth-constrained environments (cellular backhaul, satellite links) or when processing alerts from very large fleets where payload size affects broker memory.
+
+```json
+{
+  "event": "alert_short",
+  "ds": "RFD40-212735201D0053",
+  "ts": "2026-04-08T14:45:30.000Z",
+  "v": "V1.1",
+  "at": "TEMPERATURE_HIGH",
+  "sv": "WARNING",
+  "cv": 52,
+  "tv": 45
+}
+```
+
+**Compact-to-full field mapping:**
+
+| Compact | Full | Description |
+|---------|------|-------------|
+| `ds` | `deviceSerial` | Reader serial number |
+| `ts` | `timestamp` | ISO 8601 timestamp |
+| `v` | `apiVersion` | API version |
+| `at` | `alert.alertType` | Alert type enum |
+| `sv` | `alert.severity` | Severity |
+| `cv` | `alert.currentValue` | Measured value |
+| `tv` | `alert.thresholdValue` | Threshold |
+
+> **Note:** `alerts` and `alert_short` are mutually exclusive per alert occurrence. The reader publishes one or the other, not both; for a given threshold violation. Your subscriber must handle both `event` values if different readers in the fleet may be configured differently.
+
+### Configuring Alert Thresholds
+
+Alert thresholds are set through the `config_events` command's `temperature` and `battery` objects:
+
+```json
+{
+  "command": "config_events",
+  "requestId": "evt-002",
+  "eventConfig": {
+    "temperature": {
+      "enabled": true,
+      "temperatureThreshold": 45
+    },
+    "battery": {
+      "enabled": true,
+      "lowBatteryThreshold": 20,
+      "criticalBatteryThreshold": 10
+    }
+  }
+}
+```
+
+**Temperature threshold range:** 0–70°C. The right value depends on the operating environment:
+
+| Environment | Recommended Threshold | Rationale |
+|-------------|----------------------|-----------|
+| Climate-controlled warehouse | 40–45°C | Reader at 45°C in a 22°C room suggests a problem |
+| Outdoor loading dock (summer) | 50–55°C | Ambient heat raises baseline; lower threshold causes nuisance alerts |
+| Cold storage / freezer entry | 35–40°C | Rapid temperature swings are more concerning than absolute value |
+
+**Battery threshold ranges:**
+- `lowBatteryThreshold`: 5–50%; triggers a `BATTERY_LOW` warning
+- `criticalBatteryThreshold`: 1–20%; triggers a `BATTERY_CRITICAL` critical alert
+
+Set the low threshold high enough to allow an operator to swap batteries or dock the reader before the critical threshold fires. A 20% low / 10% critical split gives a meaningful warning window in most shift-based operations.
+
+### Avoiding Alert Fatigue
+
+A reader whose temperature oscillates around the threshold: 44°C, 46°C, 44°C, 46°C; will generate an alert every time it crosses 45°C. Left unmanaged, this produces dozens of redundant notifications per hour and trains your operations team to ignore them.
+
+**Client-side deduplication.** The reader may send repeated alerts while the condition persists. Deduplicate by keying on `alertType` + `deviceSerial` and suppressing repeated alerts within a cooldown window: 5 minutes for warnings, 15 minutes for critical (critical should still re-fire periodically as a reminder).
+
+**Threshold hysteresis.** The IoT Connector does not implement hysteresis (a "re-arm" threshold lower than the trigger threshold). If your monitoring pipeline supports configurable hysteresis, wrap the raw alert stream with logic that requires the value to drop 5–10% below the threshold before re-arming. This eliminates the oscillation problem entirely.
+
+**Severity-based routing.** Not every alert deserves a page. Route alerts by severity:
+
+| Severity | Channel | Expectation |
+|----------|---------|-------------|
+| `INFO` | Log only | Historical record, no action |
+| `WARNING` | Dashboard + Slack/Teams channel | Ops team reviews during shift | 
+| `CRITICAL` | PagerDuty / on-call notification | Immediate response required |
+
+> **Cross-reference:** For the complete `alerts` and `alert_short` payload schemas, see the [alerts API Reference](01_02_01_05_Events/mqtt-reference-alerts.md) and [alert_short API Reference](01_02_01_05_Events/mqtt-reference-alert-short.md).
+
+---
+
+## 10.3 Exception Events
+
+Exception events report runtime errors; conditions the reader did not expect and that may affect its ability to function. Unlike alerts, which monitor *expected metrics* against *configured thresholds*, exceptions signal unexpected failures: a radio that stops responding, a Bluetooth link that drops, a firmware assertion that fires.
+
+### Exception Payload
+
+```json
+{
+  "event": "exceptionEVT",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-08T14:50:15.000Z",
+  "apiVersion": "V1.1",
+  "exception": {
+    "exceptionType": "RADIO_COMMUNICATION_ERROR",
+    "errorCode": 1001,
+    "message": "RFID radio communication timeout after 5000ms",
+    "component": "RFID_RADIO",
+    "stackTrace": ""
+  }
+}
+```
+
+**Exception object fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `exceptionType` | string | Exception category. See enum table below. |
+| `errorCode` | integer | Numeric code specific to the exception type. Useful for Zebra support escalations. |
+| `message` | string | Human-readable description. May vary across firmware versions. |
+| `component` | string | The subsystem that produced the error: `"RFID_RADIO"`, `"BLUETOOTH"`, `"NETWORK"`, or `"SYSTEM"`. |
+| `stackTrace` | string | Debug information. Typically empty in production firmware; may contain data in debug builds. |
+
+### Exception Types
+
+| Exception Type | Component | Description |
+|----------------|-----------|-------------|
+| `RADIO_COMMUNICATION_ERROR` | `RFID_RADIO` | Communication with the RFID radio module timed out or failed. Most common exception during active inventory. |
+| `RADIO_INITIALIZATION_ERROR` | `RFID_RADIO` | The radio failed to initialize at boot or after a mode change. Reader cannot perform RFID operations until resolved. |
+| `BLUETOOTH_DISCONNECTION` | `BLUETOOTH` | The Bluetooth link to the host mobile device was lost. The reader may still be MQTT-connected but is no longer paired to its operator's handheld. |
+| `NETWORK_ERROR` | `NETWORK` | Wi-Fi or Ethernet connectivity was lost. The reader will attempt reconnection automatically. |
+| `MQTT_PUBLISH_ERROR` | `NETWORK` | The reader attempted to publish an MQTT message and the publish failed (typically due to broker disconnect or topic-level authorization failure). |
+| `FIRMWARE_ERROR` | `SYSTEM` | An internal firmware error or assertion failure. Rare in production. If persistent, may require a firmware update. |
+| `MEMORY_ERROR` | `SYSTEM` | Low memory or allocation failure. May occur under extreme tag data volume if the reader's internal buffers are exhausted. |
+| `HARDWARE_ERROR` | `SYSTEM` | A hardware component fault was detected. May require physical service. |
+
+> **Always-on.** Exception events cannot be disabled via `config_events`. The reader publishes them whenever an exception condition occurs, regardless of event configuration. This is intentional; you always want to know about runtime errors.
+
+### Diagnosing Exception Patterns
+
+A single exception is noise. A pattern of exceptions is a signal. The diagnostic value of `exceptionEVT` comes from aggregation and correlation.
+
+**Exception rate trending.** Count exceptions per device per hour. A sustained rate above 5 exceptions per hour, particularly of the same `exceptionType`; indicates a systemic issue, not a transient glitch. Track rates over days, not minutes.
+
+**Correlating exceptions with data gaps.** When a reader reports `RADIO_COMMUNICATION_ERROR`, check whether `dataEVT` messages stopped arriving around the same timestamp. A gap in tag data concurrent with radio exceptions confirms that inventory reads were interrupted; useful for explaining missing reads to warehouse operations.
+
+**Component-based triage:**
+
+| Component | First Response | Escalation |
+|-----------|---------------|------------|
+| `RFID_RADIO` | Send `control_operation` STOP, then START. If exception persists, send `reboot`. | If exceptions continue after reboot, suspect hardware fault; escalate to field service. |
+| `BLUETOOTH` | Check host device pairing. Reader will attempt Bluetooth reconnection automatically. | If `BLUETOOTH_DISCONNECTION` occurs repeatedly, verify the host device's Bluetooth stack and proximity. |
+| `NETWORK` | Verify Wi-Fi coverage at the reader's location. Check `networkStatus` in the next heartbeat for signal strength. | If the reader cycles between `NETWORK_ERROR` and reconnection, examine the Wi-Fi infrastructure (AP placement, channel congestion). |
+| `SYSTEM` | Send `reboot`. | If `FIRMWARE_ERROR` or `MEMORY_ERROR` recurs post-reboot, check for firmware updates. Open a Zebra support case with the `errorCode` value. |
+
+> **Cross-reference:** For the complete exception payload schema and additional examples, see the [exceptionEVT API Reference](01_02_01_05_Events/mqtt-reference-exception-evt.md).
+
+---
+
+## 10.4 Connection Events
+
+The `mqttConnEVT` event reports changes to the reader's MQTT connection state; connecting, disconnecting, reconnecting, and connection failures. Each event identifies which endpoint changed state and why.
+
+### Connection Event Payload
+
+```json
+{
+  "event": "mqttConnEVT",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-08T10:15:30.000Z",
+  "apiVersion": "V1.1",
+  "connection": {
+    "status": "DISCONNECTED",
+    "endpointName": "Primary-MGMT",
+    "endpointType": "MGMT",
+    "brokerHost": "mqtt-broker.zebra.com",
+    "brokerPort": 8883,
+    "reason": "KEEPALIVE_TIMEOUT",
+    "reconnectAttempt": 0
+  }
+}
+```
+
+**Connection object fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | Current connection state. See enum table. |
+| `endpointName` | string | The configured name of the affected MQTT endpoint. |
+| `endpointType` | string | Interface type: `"MGMT"`, `"CTRL"`, `"DATA"`, or `"MDM"`. |
+| `brokerHost` | string | Hostname of the MQTT broker. |
+| `brokerPort` | integer | Port number. |
+| `reason` | string | What caused the state change. |
+| `reconnectAttempt` | integer | Number of reconnection attempts made. `0` for the initial connection or the first disconnection. |
+
+### Connection States
+
+| Status | Meaning |
+|--------|---------|
+| `CONNECTED` | The reader successfully established (or re-established) an MQTT session with the broker. |
+| `DISCONNECTED` | The connection was lost. The `reason` field indicates whether this was a broker-side timeout, network change, or broker unavailability. |
+| `RECONNECTING` | The reader is actively attempting to reconnect after a disconnection. |
+| `CONNECTION_FAILED` | A connection attempt failed. The reader will continue retrying. |
+
+### Disconnect Reasons
+
+| Reason | Description | Likely Cause |
+|--------|-------------|--------------|
+| `CLEAN_CONNECT` | Initial connection establishment. Not a disconnect; this reason accompanies the first `CONNECTED` event after boot. | Normal startup. |
+| `KEEPALIVE_TIMEOUT` | The MQTT keepalive period expired without a PINGREQ/PINGRESP exchange completing. | Network congestion, broker overload, or transient connectivity loss. |
+| `BROKER_UNAVAILABLE` | The reader could not reach the broker at the configured host and port. | Broker is down, DNS resolution failed, or firewall is blocking. |
+| `NETWORK_CHANGE` | The underlying network transport changed (e.g., Wi-Fi roaming to a different AP, or switching from Wi-Fi to Ethernet). | Normal operation in environments with multiple access points. |
+
+### Interpreting Connection Events
+
+Connection events are valuable but require careful interpretation. A single `DISCONNECTED` event does not mean a reader is down; mobile readers in large facilities routinely experience brief Wi-Fi interruptions as they move between access points. What matters is the *pattern*.
+
+**Graceful disconnects.** When you send a `reboot` command, expect a `DISCONNECTED` event followed by a `CONNECTED` event 30–60 seconds later. This is normal and does not require operator attention.
+
+**Keepalive timeouts.** A `KEEPALIVE_TIMEOUT` disconnect followed by a `CONNECTED` event within seconds indicates a transient network hiccup; the reader's MQTT client detected the timeout and reconnected. Log it, trend it, but do not alert on it unless it becomes chronic.
+
+**Broker-unavailable disconnects.** A `BROKER_UNAVAILABLE` reason with a rising `reconnectAttempt` count indicates the reader is trying to reach a broker that is genuinely down. If you run multiple broker endpoints (configured via `config_endpoint`), verify that failover is working by watching for a subsequent `CONNECTED` event on the secondary endpoint.
+
+**Multi-endpoint awareness.** A reader with MGMT, CTRL, and DATA endpoints configured to different brokers generates independent `mqttConnEVT` events for each endpoint. Losing the DATA endpoint disconnects tag data flow; losing the MGMT endpoint disconnects management and heartbeats. Your monitoring system should track connection state *per endpoint per reader*, not just per reader.
+
+### The Offline Detection Problem
+
+A `mqttConnEVT` with `status: DISCONNECTED` is a helpful signal, but it only works when the reader has enough connectivity to publish the event. When a reader loses all network connectivity abruptly (battery dies, Wi-Fi access point fails, reader is physically damaged), it cannot publish anything, including its own disconnection notice.
+
+This is where the absence of MQTT Last Will and Testament (LWT) support matters. In standard MQTT, a client can register a "will message" that the broker publishes on the client's behalf when the connection drops unexpectedly. The IoT Connector does not expose LWT configuration; the reader cannot register a will message. This means the broker has no mechanism to notify your subscriber when a reader silently disappears.
+
+**Heartbeat absence is the primary offline detection mechanism.** Section 10.1 described the pattern: track each reader's last heartbeat timestamp and flag it as offline if no heartbeat arrives within 2–3× the configured interval. Connection events supplement this signal; they tell you *how* a reader disconnected, but they are not reliable as the sole offline detection method.
+
+**A combined approach:**
+
+| Signal | Detects | Latency |
+|--------|---------|---------|
+| `mqttConnEVT` with `DISCONNECTED` | Graceful disconnects, keepalive timeouts | Seconds |
+| Heartbeat absence (2–3× interval) | All disconnects including ungraceful drops | 2–5 minutes (for 60s interval) |
+| `mqttConnEVT` with `CONNECTED` | Reconnection | Seconds |
+
+When your system marks a reader offline via heartbeat absence, check the most recent `mqttConnEVT` for that reader to understand *why*; `BROKER_UNAVAILABLE`, `KEEPALIVE_TIMEOUT`, or `NETWORK_CHANGE` each point to different root causes and different remediation steps.
+
+> **Cross-reference:** For the complete connection event payload schema, see the [mqttConnEVT API Reference](01_02_01_05_Events/mqtt-reference-mqtt-conn-evt.md). For endpoint configuration, see the [config_endpoint API Reference](01_02_01_01_Management-Domain/mqtt-reference-config-endpoint.md).
+
+---
+
+## 10.5 Designing a Monitoring Dashboard
+
+The preceding sections describe what the IoT Connector tells you. This section describes what to *do* with that information; how to build a monitoring architecture that transforms raw MQTT events into actionable fleet visibility. The goal is a system where an operations engineer can glance at a dashboard and immediately understand: how many readers are online, which ones need attention, and whether the RFID infrastructure is performing.
+
+### Event Ingestion Pipeline
+
+All IoT Connector events arrive over MQTT. Your monitoring system needs to bridge the MQTT transport into whatever storage and visualization stack you operate. The standard pipeline has three stages:
+
+```
+┌──────────────┐     ┌────────────────────┐     ┌──────────────────┐
+│ MQTT Broker  │────▶│  Stream Processor  │────▶│  Time-Series DB  │
+│              │     │                    │     │                  │
+│ QoS 1 events │     │ Parse, enrich,     │     │ Store metrics,   │
+│ from fleet   │     │ deduplicate,       │     │ events, state    │
+│              │     │ route by type      │     │ transitions      │
+└──────────────┘     └────────────────────┘     └──────────────────┘
+                              │
+                              ▼
+                     ┌────────────────────┐
+                     │  Alert Router      │
+                     │                    │
+                     │ Severity → channel │
+                     │ Dedup + cooldown   │
+                     └────────────────────┘
+```
+
+**Stage 1: MQTT subscription.** A dedicated MQTT client subscribes to the event and data topics using wildcards. For full fleet coverage:
+
+```
+zebra/MGMT/clients/event/+       → All management events
+zebra/DATA/clients/data1event/+  → All tag data (if monitoring data flow)
+```
+
+This subscriber should be a service, not a desktop tool, with persistent sessions (MQTT clean session = false) so that events published while the subscriber restarts are delivered when it reconnects via the broker's message queue.
+
+**Stage 2: Stream processing.** Parse the JSON envelope, switch on the `event` field, and apply type-specific logic:
+
+- **heartBeatEVT:** Extract `deviceSerial`, `timestamp`, and all optional sub-objects. Write the timestamp to a "last-seen" state table. Write numeric fields (temperature, chargePercentage, signalStrength, readRate) to the time-series database.
+- **alerts / alert_short:** Normalize `alert_short` to the full field names using the mapping from Section 10.2. Apply deduplication (suppress repeated alerts within the cooldown window). Route to the alert router.
+- **exceptionEVT:** Count per `exceptionType` per device. Write the exception record to a log index (for search) and increment the exception counter in the time-series database.
+- **mqttConnEVT:** Update the per-endpoint connection state machine for the device. Write state transitions to the time-series database.
+
+**Stage 3: Storage.** A time-series database (InfluxDB, TimescaleDB, Prometheus with appropriate exporters, or a cloud-native equivalent like Amazon Timestream or Azure Data Explorer) is the natural fit. IoT Connector events are inherently temporal; temperature at time T, battery at time T, exception count over the last hour. Relational databases can work for small fleets but struggle with the write rates and retention policies of time-series data at scale.
+
+### Dashboard Panels
+
+A well-designed fleet monitoring dashboard answers five questions at a glance. Each question maps to a panel:
+
+**Panel 1: Fleet Status Map**
+
+A table or tile grid showing every reader in the fleet with its current status. Color-code by state:
+
+| Color | State | Derivation |
+|-------|-------|------------|
+| Green | Online, healthy | Heartbeat received within expected interval, no active alerts |
+| Yellow | Online, warning | Heartbeat current, but one or more `WARNING`-severity alerts active |
+| Red | Online, critical | Heartbeat current, but one or more `CRITICAL`-severity alerts active |
+| Gray | Offline | No heartbeat received within 2–3× the configured interval |
+
+Include key vitals in each tile: last heartbeat time, battery percentage, temperature, and current operation type. This panel is the primary NOC view.
+
+**Panel 2: Alert Timeline**
+
+A chronological feed of `alerts` and `alert_short` events. Filter by severity. Show the `alertType`, `deviceSerial`, `currentValue`, and `thresholdValue`. Color-code rows by severity. This panel answers: "what alerted recently, and has it been acknowledged?"
+
+If your visualization tool supports annotations, overlay alert events on the time-series charts (Panels 3 and 4) so operators can correlate a temperature spike with the alert that fired.
+
+**Panel 3: Battery Distribution**
+
+A histogram or heatmap of `chargePercentage` values across the fleet, derived from heartbeat data. Bucket devices by charge range: 0–20%, 21–40%, 41–60%, 61–80%, 81–100%. This panel reveals:
+
+- How many readers will need charging before the next shift
+- Whether the charging infrastructure is keeping up
+- Outlier devices draining faster than peers
+
+Supplement with a time-series line chart of individual device battery curves for the last 24 hours. A battery that drains linearly from 100% to 0% in 4 hours when peers take 8; is a replacement candidate.
+
+**Panel 4: Temperature Trend**
+
+A time-series line chart of `temperature` values from heartbeats, with the configured alert threshold as a horizontal reference line. Plot individual readers or the fleet average. Temperature trends over hours reveal:
+
+- Environments that approach the threshold during the hottest part of the day
+- Readers running hot due to sustained RFID operations (radio activity generates heat)
+- The thermal headroom between current readings and the configured threshold
+
+**Panel 5: Connection Stability**
+
+A timeline (Gantt-style or state chart) showing `mqttConnEVT` state transitions for each reader over the last 24 hours. Color-code by `status`: green for `CONNECTED`, red for `DISCONNECTED`, yellow for `RECONNECTING`. This panel reveals:
+
+- Readers with frequent reconnection cycles (network instability)
+- Time-of-day patterns (e.g., connectivity drops during shift changes when Wi-Fi load peaks)
+- Broker failover events (disconnect from primary, connect to secondary)
+
+Overlay `reconnectAttempt` counts. A reader that reconnected after 1 attempt had a minor blip; a reader that took 15 attempts was fighting network issues for minutes.
+
+### Alerting Integration
+
+Dashboard panels are passive; someone has to look at them. For conditions that require immediate response, integrate with an alerting system that pushes notifications to the right people.
+
+**Alert routing by severity:**
+
+| Condition | Source | Channel | Response |
+|-----------|--------|---------|----------|
+| Reader offline (heartbeat absence) | Stream processor | PagerDuty / on-call | Investigate network connectivity, check physical device |
+| `BATTERY_CRITICAL` alert | Alert router | Push notification to floor supervisor | Swap or dock the reader immediately |
+| `TEMPERATURE_HIGH` (CRITICAL) | Alert router | PagerDuty / on-call | Stop RFID operations on the reader, investigate environment |
+| `BATTERY_LOW` warning | Alert router | Slack/Teams ops channel | Plan battery swap in next break window |
+| High exception rate (> 5/hr) | Stream processor | Slack/Teams ops channel | Review exception types, consider reboot |
+| Multiple readers offline simultaneously | Stream processor | PagerDuty / on-call | Likely infrastructure issue (broker, network, power), not individual device failure |
+
+**Deduplication at the alerting layer.** The alert router should deduplicate before sending to external systems. Apply a cooldown window per alert type per device. This is separate from the client-side deduplication in the stream processor; this layer prevents your on-call engineer from receiving 50 pages for the same overheating reader.
+
+**Escalation logic.** If a `WARNING` condition persists for more than a configurable period (e.g., 15 minutes) without resolution, escalate to `CRITICAL` routing even if the device-level severity has not changed. A low-battery warning that goes unaddressed for 15 minutes during an active shift is a critical operational risk.
+
+### Tooling Recommendations
+
+The monitoring architecture described here is tool-agnostic; it works with any combination of MQTT client library, stream processor, time-series database, and visualization tool. For teams without an existing monitoring stack, the following combinations are proven in IoT fleet deployments:
+
+**Open-source stack:**
+- **MQTT subscriber:** Telegraf (with MQTT Consumer input plugin) or a custom service using Eclipse Paho
+- **Time-series database:** InfluxDB or Prometheus (with appropriate MQTT exporter)
+- **Visualization:** Grafana
+- **Alerting:** Grafana Alerting, or PagerDuty / Opsgenie with webhook integration
+
+**Cloud-native stack (AWS):**
+- **MQTT subscriber:** AWS IoT Core (or Amazon MQ for RabbitMQ with MQTT plugin)
+- **Stream processing:** AWS Lambda or Amazon Kinesis Data Streams
+- **Time-series database:** Amazon Timestream
+- **Visualization:** Amazon Managed Grafana or Amazon CloudWatch dashboards
+- **Alerting:** Amazon SNS → PagerDuty / Slack
+
+**Cloud-native stack (Azure):**
+- **MQTT subscriber:** Azure IoT Hub or Azure Event Grid (MQTT broker)
+- **Stream processing:** Azure Stream Analytics or Azure Functions
+- **Time-series database:** Azure Data Explorer
+- **Visualization:** Azure Managed Grafana or Azure Dashboards
+- **Alerting:** Azure Monitor Alerts → Action Groups (email, SMS, webhook)
+
+> **Implementation note.** The specific tools are less important than the architecture. The pipeline (subscribe, parse, enrich, store, visualize, alert) remains the same regardless of whether you use Grafana or CloudWatch, InfluxDB or Timestream. Choose tools your team already knows how to operate.
+
+### Summary: Event-to-Dashboard Mapping
+
+| Event | Dashboard Panel | Time-Series Metric | Alert Condition |
+|-------|----------------|--------------------|-----------------| 
+| `heartBeatEVT` | Fleet Status Map, Battery Distribution, Temperature Trend | `temperature`, `chargePercentage`, `readRate`, `signalStrength` | Heartbeat absence → offline |
+| `alerts` / `alert_short` | Alert Timeline, Fleet Status Map (color) | Alert count by type | Severity-based routing |
+| `exceptionEVT` | (Log search / exception rate chart) | Exception count by type per device | Sustained rate > 5/hr |
+| `mqttConnEVT` | Connection Stability | Connection state, reconnect attempts | Multiple simultaneous disconnects |
+
+---
+
+**Next:** [Chapter 11; Device Management →](11_device-management.md)

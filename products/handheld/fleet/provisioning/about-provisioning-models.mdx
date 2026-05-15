@@ -1,0 +1,82 @@
+---
+sidebar_position: 1
+title: "About Provisioning Models"
+---
+
+# About Provisioning Models
+
+Provisioning is the process of configuring a new reader sled with the network credentials, MQTT broker endpoint, operational parameters, and firmware version required for production use. The Zebra IoT Connector supports three provisioning models, each suited to different fleet sizes and operational contexts.
+
+## Why Provisioning Matters
+
+An unconfigured RFD40 or RFD90 ships with factory defaults, no broker endpoint, no TLS certificates, and generic RF settings. Before a reader can publish tag data or accept management commands, it must be provisioned with at minimum:
+
+- **MQTT broker endpoint**: host, port, TLS mode, and credentials
+- **Operating mode**: inventory, locate, or access
+- **RF parameters**: power level, session, link profile
+- **Device identity**: a unique client ID for fleet tracking
+
+Skipping or inconsistently applying any of these creates configuration drift, which degrades fleet reliability.
+
+## The Three Provisioning Models
+
+### Manual Provisioning with 123RFID Desktop
+
+The simplest model. A technician connects each reader sled to a Windows workstation running 123RFID Desktop, configures settings through the GUI, and deploys the reader.
+
+**Best for:** Small deployments (fewer than 25 readers), lab environments, proof-of-concept setups.
+
+| Advantage | Limitation |
+|---|---|
+| No infrastructure required | Does not scale beyond tens of readers |
+| Full visual feedback during setup | Requires physical access to each reader |
+| Immediate validation | No audit trail of provisioning actions |
+
+### MDM-Managed Provisioning with SOTI Connect
+
+SOTI Connect treats each reader sled as a managed IoT endpoint. Configuration profiles are authored centrally and pushed over the air to enrolled devices. Firmware updates follow the same distribution path.
+
+**Best for:** Large deployments (hundreds to thousands of readers), multi-site enterprises, environments requiring compliance audit trails.
+
+| Advantage | Limitation |
+|---|---|
+| Zero-touch deployment at scale | Requires SOTI Connect infrastructure |
+| Centralized config and firmware management | Initial MDM setup has learning curve |
+| Full audit trail and compliance reporting | Licensing cost per managed device |
+
+### Hybrid Provisioning
+
+Hybrid provisioning uses 123RFID Desktop for initial bootstrap (establishing just enough configuration for the reader to connect to the MQTT broker), then pushes the full production configuration via MQTT `set_config` commands.
+
+**Best for:** Medium deployments (25–200 readers), environments where MDM is unavailable but manual provisioning is too slow, phased rollouts.
+
+| Advantage | Limitation |
+|---|---|
+| Minimal upfront infrastructure | Requires custom scripting for MQTT-based config |
+| Faster than pure manual | Bootstrap step still requires physical access |
+| Leverages existing MQTT broker | Two-phase process adds complexity |
+
+## Decision Tree
+
+Use the following criteria to select a provisioning model:
+
+1. **Fleet size under 25 readers?** → Manual provisioning with 123RFID Desktop
+2. **SOTI Connect already deployed or planned?** → MDM-managed provisioning
+3. **Fleet size 25–200 with no MDM?** → Hybrid provisioning
+4. **Fleet size over 200 with no MDM?** → Strongly consider deploying SOTI Connect; hybrid provisioning becomes operationally expensive at this scale
+
+> **Note:** Regardless of the provisioning model chosen, all readers communicate with backend systems exclusively via MQTT 3.1.1. The provisioning model only affects how the initial configuration reaches the device.
+
+## Provisioning vs. Ongoing Management
+
+Provisioning is a one-time (or infrequent) event; getting a reader from factory defaults to production-ready. Ongoing management (monitoring health, updating RF parameters, rolling out firmware) is a separate concern covered in the Fleet Management chapter. However, the provisioning model you choose influences your management options:
+
+- **Manual** provisioning typically leads to manual ongoing management
+- **MDM-managed** provisioning provides a natural path to centralized ongoing management
+- **Hybrid** provisioning establishes the MQTT channel used for ongoing management commands
+
+## Next Steps
+
+- [How to Set Up Zero-Touch Provisioning with SOTI Connect](./zero-touch-soti.mdx): MDM-managed model
+- [How to Provision Readers in Bulk with 123RFID Desktop](./bulk-123rfid.mdx): Manual model at moderate scale
+- [How to Automate Provisioning Workflows](./automate-provisioning.mdx): Hybrid model with MQTT automation

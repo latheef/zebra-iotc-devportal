@@ -1,0 +1,214 @@
+---
+sidebar_position: 4
+title: "How to Automate Provisioning Workflows"
+---
+
+# How to Automate Provisioning Workflows
+
+This guide describes how to build an automated provisioning pipeline that detects new reader sleds, applies configuration, validates the result, and promotes readers to production, all via MQTT.
+
+## Prerequisites
+
+- MQTT broker deployed and accessible
+- Reader sleds bootstrapped with minimal configuration (broker endpoint only); see [How to Provision Readers in Bulk with 123RFID Desktop](./bulk-123rfid.mdx) for the bootstrap step
+- An MQTT client application capable of subscribing and publishing (Python with `paho-mqtt`, Node.js with `mqtt.js`, or similar)
+- A defined "golden configuration" document for the target deployment environment
+
+## Overview
+
+The automated provisioning workflow has four stages:
+
+1. **Detect**: A new reader connects to the broker and announces itself
+2. **Configure**: The provisioning service pushes full configuration via `set_config`
+3. **Verify**: The service reads back the configuration with `get_config` and validates it
+4. **Promote**: The reader is marked as production-ready in the fleet registry
+
+## Step 1: Detect New Readers via Connection Events
+
+When a reader sled connects to the MQTT broker for the first time, it publishes a connection event. Subscribe to the connection event topic to detect new readers:
+
+```
+zebra/rfid/+/mqttConnEVT
+```
+
+The connection event payload includes the reader's identity:
+
+```json
+{
+  "event": "mqttConnEVT",
+  "device_id": "RFD40-SN12345",
+  "firmware_version": "2.3.1",
+  "model": "RFD40",
+  "first_connect": true,
+  "timestamp": "2026-05-14T08:00:00Z"
+}
+```
+
+In your provisioning service, filter for events where `first_connect` is `true` or where the device ID is not yet in your fleet registry.
+
+## Step 2: Apply Configuration via set_config
+
+Once a new reader is detected, publish the full configuration document to the reader's `set_config` command topic:
+
+**Publish topic:**
+```
+zebra/rfid/{device_id}/set_config
+```
+
+**Payload: full configuration document:**
+```json
+{
+  "command_id": "prov-001-RFD40-SN12345",
+  "mqtt": {
+    "broker_host": "broker.example.com",
+    "broker_port": 8883,
+    "tls_enabled": true,
+    "client_id": "rfd40-sn12345",
+    "keepalive_seconds": 60
+  },
+  "rf_config": {
+    "power_level_dbm": 27.0,
+    "session": "S1",
+    "link_profile": "AUTO",
+    "tag_population": 100,
+    "dynamic_power": true
+  },
+  "operating_mode": "INVENTORY",
+  "reporting": {
+    "interval_ms": 500,
+    "rssi_threshold_dbm": -72,
+    "duplicate_elimination_ms": 3000
+  }
+}
+```
+
+The reader processes the configuration and publishes an acknowledgment:
+
+```
+zebra/rfid/{device_id}/set_config/response
+```
+
+> **Warning:** The `set_config` command applies the entire configuration document. Any parameter not included in the payload retains its current value. To ensure a clean provisioning state, always send the complete configuration.
+
+## Step 3: Verify Configuration via get_config
+
+After receiving the `set_config` acknowledgment, verify the applied configuration by issuing a `get_config` command:
+
+**Publish topic:**
+```
+zebra/rfid/{device_id}/get_config
+```
+
+**Payload:**
+```json
+{
+  "command_id": "verify-001-RFD40-SN12345"
+}
+```
+
+**Subscribe to the response:**
+```
+zebra/rfid/{device_id}/get_config/response
+```
+
+Compare the returned configuration document against your golden configuration. Key fields to validate:
+
+- MQTT broker endpoint matches
+- RF parameters match (power level, session, link profile)
+- Operating mode is correct
+- Reporting interval and thresholds are correct
+
+```python
+def validate_config(actual, expected):
+    """Compare actual device config against the golden baseline."""
+    mismatches = []
+    for key in expected:
+        if key not in actual:
+            mismatches.append(f"Missing: {key}")
+        elif actual[key] != expected[key]:
+            mismatches.append(f"Mismatch: {key} expected={expected[key]} actual={actual[key]}")
+    return mismatches
+```
+
+## Step 4: Promote to Production
+
+If verification succeeds, update your fleet registry to mark the reader as production-ready:
+
+1. Record the device ID, serial number, firmware version, and applied configuration version in your fleet database
+2. Assign the reader to its target location or logical group
+3. Optionally publish a provisioning-complete event to a management topic:
+
+```
+zebra/fleet/provisioning/complete
+```
+
+```json
+{
+  "device_id": "RFD40-SN12345",
+  "config_version": "warehouse-standard-v2.1",
+  "provisioned_at": "2026-05-14T08:02:15Z",
+  "status": "PRODUCTION"
+}
+```
+
+If verification fails, quarantine the reader for manual inspection:
+
+```json
+{
+  "device_id": "RFD40-SN12345",
+  "config_version": "warehouse-standard-v2.1",
+  "provisioned_at": "2026-05-14T08:02:15Z",
+  "status": "QUARANTINED",
+  "reason": "RF power level mismatch: expected 27.0, got 25.0"
+}
+```
+
+## Complete Workflow Pseudocode
+
+```python
+import paho.mqtt.client as mqtt
+import json
+
+GOLDEN_CONFIG = load_golden_config("warehouse-standard-v2.1.json")
+fleet_registry = {}
+
+def on_connect_event(client, userdata, message):
+    event = json.loads(message.payload)
+    device_id = event["device_id"]
+
+    if device_id not in fleet_registry:
+        # Stage 1: New reader detected
+        log(f"New reader detected: {device_id}")
+
+        # Stage 2: Apply configuration
+        config_topic = f"zebra/rfid/{device_id}/set_config"
+        client.publish(config_topic, json.dumps(GOLDEN_CONFIG))
+
+        # Stage 3: Schedule verification (after config ack)
+        schedule_verification(device_id, delay_seconds=10)
+
+def on_config_response(client, userdata, message):
+    config = json.loads(message.payload)
+    device_id = extract_device_id(message.topic)
+    mismatches = validate_config(config, GOLDEN_CONFIG)
+
+    if not mismatches:
+        # Stage 4: Promote
+        fleet_registry[device_id] = {"status": "PRODUCTION"}
+        log(f"Reader {device_id} provisioned successfully")
+    else:
+        fleet_registry[device_id] = {"status": "QUARANTINED", "issues": mismatches}
+        log(f"Reader {device_id} quarantined: {mismatches}")
+
+client = mqtt.Client()
+client.message_callback_add("zebra/rfid/+/mqttConnEVT", on_connect_event)
+client.message_callback_add("zebra/rfid/+/get_config/response", on_config_response)
+```
+
+> **Note:** This pseudocode illustrates the workflow structure. Production implementations should include error handling, retry logic, timeouts, and secure credential management.
+
+## Scaling Considerations
+
+- **Rate limiting:** If many readers connect simultaneously (e.g., after a power cycle), stagger `set_config` commands to avoid overwhelming the broker
+- **Idempotency:** Design the workflow to handle duplicate connection events gracefully; a reader may reconnect multiple times during provisioning
+- **Logging:** Log every provisioning action for audit and troubleshooting purposes

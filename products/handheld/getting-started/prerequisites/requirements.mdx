@@ -1,0 +1,74 @@
+---
+sidebar_position: 1
+title: "Hardware & Software Requirements"
+description: "Complete checklist of hardware, software, and network requirements for Zebra IoT Connector handheld RFID integration."
+---
+
+# Hardware & Software Requirements
+
+📕 **REFERENCE**: Use this checklist to verify you have everything needed before beginning integration with the Zebra IoT Connector (IOTC) platform.
+
+## Hardware Requirements
+
+| Component | Requirement | Notes |
+|-----------|-------------|-------|
+| **RFID Reader Sled** | Zebra RFD40 or RFD90 | UHF RFID handheld reader sled |
+| **Firmware Version** | ≥ 3.10.27 | Required for IOTC MQTT connectivity |
+| **Host Mobile Device** | Android smartphone or tablet | For Bluetooth pairing with the reader sled |
+| **USB Cable** | USB-A to USB-C (or USB-C to USB-C) | For initial reader bootstrap via 123RFID Desktop |
+| **Configuration PC** | Windows 10 or Windows 11 | Required for running 123RFID Desktop |
+
+## Software Requirements
+
+| Software | Purpose | Download |
+|----------|---------|----------|
+| **123RFID Desktop** | Reader bootstrap and region configuration | [Zebra Support Portal](https://www.zebra.com/us/en/support-downloads/software/desktop-applications/123rfid-desktop.html) |
+| **MQTT Client** | Testing and debugging MQTT communication | See options below |
+
+### Recommended MQTT Clients
+
+Choose one of the following MQTT clients for development and testing:
+
+- **Eclipse Mosquitto CLI**: Command-line tools (`mosquitto_pub`, `mosquitto_sub`) ideal for scripting and automation
+- **MQTT Explorer**: Desktop GUI client with topic visualization, excellent for initial exploration
+- **MQTTX**: Cross-platform GUI and CLI client with JSON formatting support
+
+## Network Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| **Wi-Fi Network** | 2.4 GHz or 5 GHz Wi-Fi network accessible by the reader sled |
+| **Internet Access** | Outbound MQTT connectivity to the IOTC broker |
+| **MQTT Port** | TCP port 8883 (MQTT over TLS) must be open for outbound connections |
+| **DNS Resolution** | The reader must be able to resolve the IOTC broker hostname |
+
+> **Note:** The reader sled communicates with the IOTC platform exclusively over MQTT 3.1.1 with TLS encryption. Ensure your network firewall permits outbound traffic on port 8883.
+
+## IOTC Platform Credentials
+
+Before connecting a reader, you must have the following from the Zebra IoT Connector platform:
+
+| Credential | Description |
+|------------|-------------|
+| **Tenant ID** | Your unique IOTC tenant identifier |
+| **MQTT Broker Host** | The IOTC MQTT broker endpoint hostname |
+| **MQTT Username** | Authentication username for broker connection |
+| **MQTT Password** | Authentication password for broker connection |
+| **Device Serial Number** | The serial number printed on your reader sled (also available via 123RFID Desktop) |
+
+See [How to Obtain IOTC Credentials & Tenant ID](./obtain-credentials.mdx) for instructions on acquiring these values.
+
+## Pre-Flight Checklist
+
+Use this checklist before starting the [Quick Start Tutorial](../quick-start/overview.mdx):
+
+- [ ] RFD40 or RFD90 reader sled in hand
+- [ ] Firmware version ≥ 3.10.27 confirmed
+- [ ] 123RFID Desktop installed on a Windows PC
+- [ ] USB cable available for initial bootstrap
+- [ ] Wi-Fi network name (SSID) and password known
+- [ ] IOTC tenant credentials obtained
+- [ ] MQTT client installed on your development machine
+- [ ] Host Android device available for Bluetooth pairing
+
+> **Warning:** If your reader firmware is below version 3.10.27, you must update it before proceeding. See [How to Verify Reader Firmware Version](./verify-firmware.mdx) for instructions.

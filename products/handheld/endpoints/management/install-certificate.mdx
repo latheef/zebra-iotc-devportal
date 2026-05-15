@@ -1,0 +1,114 @@
+---
+sidebar_position: 12
+title: Install Certificate
+description: Install a TLS certificate for MQTT broker connections, Wi-Fi EAP-TLS, or client mutual TLS authentication.
+---
+
+# Install Certificate
+
+Install a TLS certificate on the reader for securing MQTT broker connections, Wi-Fi EAP-TLS authentication, or client mutual TLS (mTLS) authentication. The certificate must be PEM-encoded. For client certificates, both the certificate and its private key must be provided.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `install_certificate` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "req-cert-001",
+  "certificate": {
+    "name": "mqtt-broker-ca",
+    "type": "mqtt",
+    "certificateData": "-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w...\n-----END CERTIFICATE-----",
+    "privateKeyData": "",
+    "privateKeyPassword": ""
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"install_certificate"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+| `certificate.name` | string | Yes | User-defined label for the certificate. |
+| `certificate.type` | enum | Yes | Certificate purpose: `mqtt`, `wifi`, or `client`. |
+| `certificate.certificateData` | string | Yes | PEM-encoded certificate data. |
+| `certificate.privateKeyData` | string | No | PEM-encoded private key. Required for `client` type certificates. |
+| `certificate.privateKeyPassword` | string | No | Password to decrypt the private key, if encrypted. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "req-cert-001",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"install_certificate"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `12` | Invalid certificate |
+| `14` | Certificate installed |
+| `18` | Certificate parse error |
+| `26` | Certificate already installed |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "req-cert-002",
+  "certificate": {
+    "name": "client-mtls-cert",
+    "type": "client",
+    "certificateData": "-----BEGIN CERTIFICATE-----\nMIIDdzCCAl+gAwIBAgIEAgAAuTANBgkqhkiG9w...\n-----END CERTIFICATE-----",
+    "privateKeyData": "-----BEGIN RSA PRIVATE KEY-----\nMIIEpAIBAAKCAQEA0Z3VS5JJcds3xfn/ygWep...\n-----END RSA PRIVATE KEY-----",
+    "privateKeyPassword": "key-passphrase"
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "req-cert-002",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

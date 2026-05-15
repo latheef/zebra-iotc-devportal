@@ -1,0 +1,114 @@
+---
+sidebar_position: 4
+title: "set_post_filter"
+description: "Configure post-read tag filters on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# set_post_filter
+
+Configures post-read filter rules that control which tag reads are reported in `dataEVT` events. Filters match against EPC, TID, or user memory banks.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/CTRL/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "34",
+  "postFilter": {
+    "enabled": true,
+    "rules": [
+      {
+        "ruleId": 1,
+        "memoryBank": "EPC",
+        "offset": 32,
+        "length": 16,
+        "pattern": "3034",
+        "matchType": "INCLUDE",
+        "enabled": true
+      }
+    ]
+  }
+}
+```
+
+### Clear All Filters
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "35",
+  "postFilter": {
+    "enabled": false,
+    "rules": []
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"set_post_filter"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `postFilter` | object | Yes | Filter configuration |
+| `postFilter.enabled` | boolean | Yes | Enable or disable post-filtering globally |
+| `postFilter.rules` | array | Yes | List of filter rules (empty array to clear all rules) |
+| `postFilter.rules[].ruleId` | integer | Yes | Unique rule identifier (1–16) |
+| `postFilter.rules[].memoryBank` | string | Yes | Memory bank: `EPC`, `TID`, `USER` |
+| `postFilter.rules[].offset` | integer | Yes | Bit offset from the start of the memory bank |
+| `postFilter.rules[].length` | integer | Yes | Number of bits to compare (must be a multiple of 4) |
+| `postFilter.rules[].pattern` | string | Yes | Hexadecimal pattern to match (length must match `length / 4` hex characters) |
+| `postFilter.rules[].matchType` | string | Yes | `INCLUDE` to report matching tags, `EXCLUDE` to suppress them |
+| `postFilter.rules[].enabled` | boolean | No | Whether this rule is active. Default: `true` |
+
+## Response Payload
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "34",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | A rule field is missing, the pattern length does not match, or `memoryBank` is invalid |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `10` | OperationFailed | Filter rules could not be applied |
+
+## Notes
+
+- A maximum of **16 filter rules** can be configured simultaneously.
+- The `pattern` field uses hexadecimal notation. Each hex character represents 4 bits, so a `length` of `16` bits requires a 4-character hex pattern.
+- The EPC memory bank `offset` of `32` skips the StoredPC and CRC words, starting at the beginning of the actual EPC value.
+- Filter changes sent while an RFID operation is in progress take effect only after stopping and restarting the operation with `control_operation`.
+- Setting `postFilter.enabled` to `false` disables all filtering regardless of individual rule states. All tag reads are reported.
+- The `rules` array replaces all existing rules. To add a rule, include all existing rules plus the new one.
+
+## See Also
+
+- [get_post_filter](get-post-filter): Query current filter rules
+- [control_operation](control-operation): Restart operations to apply filter changes
+- [dataEVT](../data/dataevt): Tag data that filters apply to
+- [API Overview](../api-overview): Complete endpoint inventory

@@ -1,0 +1,193 @@
+---
+sidebar_position: 5
+title: "How to Process Tag Data in Your Application"
+description: "Strategies for deduplication, buffering, real-time alerting, and inventory integration with RFD40/RFD90 tag data."
+---
+
+# How to Process Tag Data in Your Application
+
+This guide covers practical strategies for handling the `dataEVT` stream from the RFD40/RFD90 in your application. High-speed RFID readers can generate thousands of events per second, so your processing pipeline must be designed for throughput, deduplication, and reliability.
+
+## Deduplication Strategies
+
+During an RFID scan, the same tag is typically read multiple times per second. Your application needs to decide how to handle duplicate reads.
+
+### Time-Window Deduplication
+
+Maintain a map of recently seen EPCs with their last-seen timestamp. Discard any duplicate EPC within a configurable time window.
+
+```javascript
+const seenTags = new Map(); // EPC -> last timestamp
+const DEDUP_WINDOW_MS = 2000; // 2-second window
+
+function isDuplicate(dataEvt) {
+  const lastSeen = seenTags.get(dataEvt.epc);
+  const now = new Date(dataEvt.timestamp).getTime();
+
+  if (lastSeen && (now - lastSeen) < DEDUP_WINDOW_MS) {
+    return true; // Duplicate within window
+  }
+
+  seenTags.set(dataEvt.epc, now);
+  return false;
+}
+```
+
+### Session-Based Deduplication
+
+For inventory counts, deduplicate within the entire scan session (START to STOP). Each EPC is counted once regardless of how many times it is read.
+
+```javascript
+const sessionInventory = new Set();
+
+function processForInventory(dataEvt) {
+  if (sessionInventory.has(dataEvt.epc)) {
+    return; // Already counted
+  }
+  sessionInventory.add(dataEvt.epc);
+  updateInventoryCount(dataEvt.epc);
+}
+
+// Clear on new session
+function onSessionStart() {
+  sessionInventory.clear();
+}
+```
+
+### RSSI-Aware Deduplication
+
+Keep the read with the highest RSSI value for each EPC, which represents the closest or clearest read.
+
+```javascript
+const bestReads = new Map(); // EPC -> { rssi, data }
+
+function processBestRead(dataEvt) {
+  const existing = bestReads.get(dataEvt.epc);
+  if (!existing || dataEvt.rssi > existing.rssi) {
+    bestReads.set(dataEvt.epc, { rssi: dataEvt.rssi, data: dataEvt });
+  }
+}
+```
+
+## Buffering and Batching
+
+Processing each `dataEVT` individually creates overhead for database writes and API calls. Batch events for efficiency.
+
+### Time-Based Batching
+
+Collect events for a fixed time interval, then process the batch:
+
+```javascript
+let buffer = [];
+const BATCH_INTERVAL_MS = 1000;
+
+function onDataEvent(dataEvt) {
+  buffer.push(dataEvt);
+}
+
+setInterval(() => {
+  if (buffer.length > 0) {
+    processBatch(buffer);
+    buffer = [];
+  }
+}, BATCH_INTERVAL_MS);
+```
+
+### Count-Based Batching
+
+Flush the buffer when it reaches a certain size:
+
+```javascript
+const MAX_BATCH_SIZE = 100;
+let buffer = [];
+
+function onDataEvent(dataEvt) {
+  buffer.push(dataEvt);
+  if (buffer.length >= MAX_BATCH_SIZE) {
+    processBatch(buffer);
+    buffer = [];
+  }
+}
+```
+
+## Real-Time Alerting
+
+For use cases that require immediate action (security, asset protection), process events in real time with minimal buffering.
+
+### Presence Detection
+
+Alert when a specific EPC is detected:
+
+```javascript
+const watchList = new Set([
+  '3034257BF400B7800004E3A1',
+  '3034257BF400B78000051234'
+]);
+
+function onDataEvent(dataEvt) {
+  if (watchList.has(dataEvt.epc)) {
+    triggerAlert({
+      type: 'WATCHED_TAG_DETECTED',
+      epc: dataEvt.epc,
+      rssi: dataEvt.rssi,
+      device: dataEvt.device_serial,
+      time: dataEvt.timestamp
+    });
+  }
+}
+```
+
+### Zone Transition Detection
+
+Track when tags move between RSSI-based zones:
+
+```javascript
+const tagZones = new Map(); // EPC -> current zone
+
+function detectZoneTransition(dataEvt) {
+  const newZone = rssiToZone(dataEvt.rssi);
+  const currentZone = tagZones.get(dataEvt.epc);
+
+  if (currentZone && currentZone !== newZone) {
+    onZoneChange(dataEvt.epc, currentZone, newZone);
+  }
+  tagZones.set(dataEvt.epc, newZone);
+}
+```
+
+## Inventory Integration
+
+### Reconciliation Pattern
+
+Compare the set of EPCs read during a scan session against the expected inventory:
+
+```javascript
+function reconcileInventory(scannedEpcs, expectedEpcs) {
+  const found = scannedEpcs.filter(epc => expectedEpcs.has(epc));
+  const missing = [...expectedEpcs].filter(epc => !scannedEpcs.has(epc));
+  const unexpected = scannedEpcs.filter(epc => !expectedEpcs.has(epc));
+
+  return {
+    matchRate: found.length / expectedEpcs.size,
+    found: found.length,
+    missing: missing.length,
+    unexpected: unexpected.length,
+    missingEpcs: missing,
+    unexpectedEpcs: unexpected
+  };
+}
+```
+
+## Performance Tips
+
+1. **Process asynchronously**: do not block the MQTT message handler with database writes or API calls
+2. **Use in-memory structures** for deduplication and batching; persist asynchronously
+3. **Monitor the event queue depth**: if your buffer grows unboundedly, you are not keeping up
+4. **Tune the dedup window** to your use case; too short misses valid reads, too long masks movement
+5. **Use `seen_count`** from the payload to avoid redundant counting within a single firmware batch
+
+## Related Topics
+
+- [dataEVT Payload Schema](./dataevt-payload.mdx): field reference
+- [How to Interpret Tag Data Fields](./interpret-tag-data.mdx): field semantics
+- [About Tag Data Event Architecture](./about-tag-data-architecture.mdx): data flow overview

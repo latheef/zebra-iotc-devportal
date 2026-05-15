@@ -1,0 +1,141 @@
+---
+sidebar_position: 3
+title: Control Operation
+description: Start or stop RFID inventory or barcode scanner operations.
+---
+
+# Control Operation
+
+Start or stop RFID inventory or barcode scanner operations on the reader. Use this command to programmatically trigger or halt tag reading and barcode scanning without physical button interaction.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `control_operation` |
+| **Interface** | CTRL |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/CTRL/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+Publish a JSON message specifying the control type (RFID or scanner) and the desired operation (start or stop).
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "unique-id",
+  "ctrlOprPayload": {
+    "controlType": "RFID",
+    "operation": "START"
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"control_operation"`. |
+| `requestId` | string | Yes | Unique identifier to correlate request and response. |
+| `ctrlOprPayload` | object | Yes | Control operation configuration. |
+| `ctrlOprPayload.controlType` | enum | Yes | The subsystem to control. One of: `RFID`, `SCANNER`. |
+| `ctrlOprPayload.operation` | enum | Yes | The operation to perform. One of: `START`, `STOP`. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "unique-id",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "SUCCESS"
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echo of the command name. |
+| `requestId` | string | Echo of the request identifier. |
+| `apiVersion` | string | API version (e.g., `"V1.1"`). |
+| `response.code` | integer | Numeric response code. |
+| `response.description` | string | Human-readable description of the result. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | SUCCESS |
+| `1` | FAILURE |
+| `11` | Inventory already in progress |
+| `12` | No operation currently in progress |
+| `23` | Radio not connected |
+
+## Example
+
+### Request: Start RFID Inventory
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "req-003",
+  "ctrlOprPayload": {
+    "controlType": "RFID",
+    "operation": "START"
+  }
+}
+```
+
+### Response: Success
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "req-003",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "SUCCESS"
+  }
+}
+```
+
+### Request: Stop RFID Inventory
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "req-004",
+  "ctrlOprPayload": {
+    "controlType": "RFID",
+    "operation": "STOP"
+  }
+}
+```
+
+### Response: No Operation in Progress
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "req-004",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 12,
+    "description": "No operation currently in progress"
+  }
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

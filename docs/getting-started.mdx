@@ -1,0 +1,53 @@
+---
+sidebar_position: 2
+title: Getting Started
+---
+
+# Getting Started
+
+This guide walks you through setting up your development environment to communicate with Zebra RFID readers through the IoT Connector.
+
+## Prerequisites
+
+Before you begin, ensure you have the following:
+
+- A Zebra RFID reader (Handheld: RFD40/RFD90 Series, or Fixed Reader)
+- Network connectivity (Wi-Fi for handheld, Ethernet/Wi-Fi for fixed)
+- An MQTT broker (for MQTT-based communication)
+- An MQTT client library or tool (MQTTX, mosquitto_pub/sub, or your preferred SDK)
+
+## Step 1: Identify Your Product
+
+Zebra IOTC supports three product families. Each uses different protocols:
+
+| Product | REST API | MQTT |
+|---------|----------|------|
+| Handheld Readers (RFD40/RFD90) | N/A | ✅ |
+| Fixed Readers | ✅ | ✅ |
+| Gen2x Fixed Readers | ✅ | ✅ |
+
+Select your product from the **Products** menu in the top navigation to access product-specific documentation.
+
+## Step 2: Set Up Connectivity
+
+### For MQTT (All Products)
+
+1. Configure your MQTT broker (Mosquitto, HiveMQ, AWS IoT Core, Azure IoT Hub, or EMQX).
+2. Obtain broker connection details: hostname, port, and credentials.
+3. Configure TLS certificates for production deployments.
+
+### For REST API (Fixed and Gen2x Readers Only)
+
+1. Identify the reader's IP address or hostname on your network.
+2. Obtain API credentials (see [Authentication](./authentication)).
+
+## Step 3: Choose Your Guide
+
+- **Handheld Readers** → [Quick Start: First Tag Read in 15 Minutes](/handheld/quick-start)
+- **Fixed Readers** → [Quick Start](/fixed/quick-start)
+- **Gen2x Fixed Readers** → [Quick Start](/gen2x-fixed/quick-start)
+
+## Next Steps
+
+- Review the [Authentication](./authentication) guide for securing your connections.
+- Explore the product-specific documentation for your reader type.

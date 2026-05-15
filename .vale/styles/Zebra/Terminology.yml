@@ -1,0 +1,19 @@
+extends: substitution
+message: "Use '%s' instead of '%s'."
+level: warning
+swap:
+  utilize: use
+  utilizes: uses
+  utilizing: using
+  in order to: to
+  in order for: for
+  e.g.: for example
+  i.e.: that is
+  via: through
+  leverage: use
+  leveraging: using
+  click on: click
+  please: ""
+  basically: ""
+  simply: ""
+  just: ""

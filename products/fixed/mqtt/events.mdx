@@ -1,0 +1,62 @@
+---
+sidebar_position: 6
+title: MQTT Events
+---
+
+# MQTT Events
+
+Fixed readers publish system events over MQTT for monitoring and alerting.
+
+## Event Topics
+
+```
+<TENANT_ID>/<DEVICE_SERIAL>/event/<eventType>
+```
+
+## Event Types
+
+| Event Type | Description |
+|------------|-------------|
+| `heartbeat` | Periodic health check with temperature, uptime, and antenna status |
+| `connection` | MQTT connection state changes |
+| `gpioEvent` | GPIO pin state changes (for trigger-based applications) |
+| `antennaStatus` | Antenna connect/disconnect events |
+| `alert` | System alerts (high temperature, antenna fault) |
+
+## Heartbeat Event
+
+```json
+{
+  "type": "heartbeat",
+  "timestamp": "2026-04-13T10:30:00.000Z",
+  "data": {
+    "temperature": 45,
+    "uptime": 86400,
+    "firmwareVersion": "4.1.0",
+    "antennaStatus": [
+      {"port": 1, "connected": true},
+      {"port": 2, "connected": true},
+      {"port": 3, "connected": false},
+      {"port": 4, "connected": false}
+    ]
+  }
+}
+```
+
+## GPIO Events
+
+Fixed readers with GPIO ports publish events when pins change state:
+
+```json
+{
+  "type": "gpioEvent",
+  "timestamp": "2026-04-13T10:30:00.000Z",
+  "data": {
+    "pin": 1,
+    "state": "HIGH",
+    "previousState": "LOW"
+  }
+}
+```
+
+Use GPIO events to trigger inventory start/stop based on external sensors (motion detectors, light curtains).

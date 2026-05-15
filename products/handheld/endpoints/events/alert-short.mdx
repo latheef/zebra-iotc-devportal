@@ -1,0 +1,70 @@
+---
+sidebar_position: 3
+title: Alert (Short Format)
+description: Compact alert event with abbreviated field names for bandwidth-constrained environments.
+---
+
+# Alert (Short Format)
+
+The `alert_short` event carries the same alert data as the standard [`alerts`](./alert) event but uses abbreviated field names to reduce message size. This format is intended for bandwidth-constrained environments where payload size directly impacts performance.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Event Name** | `alert_short` |
+| **Interface** | MGMT |
+| **Direction** | SUB (subscribe to receive) |
+| **Topic** | `{tenantId}/MGMT/clients/event/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Event Payload (SUB)
+
+The short-format alert uses single- or two-character keys instead of full field names. The data content is identical to the standard alert event.
+
+```json
+{
+  "event": "alert_short",
+  "ds": "string",
+  "ts": "2026-04-14T12:00:00.000Z",
+  "v": "string",
+  "at": "TEMPERATURE_HIGH",
+  "sv": "WARNING",
+  "cv": 0,
+  "tv": 0
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `event` | string | Yes | Constant value `"alert_short"`. |
+| `ds` | string | Yes | Device serial number. |
+| `ts` | string (date-time) | Yes | ISO 8601 timestamp of the event. |
+| `v` | string | Yes | API version identifier. |
+| `at` | string | Yes | Alert type. One of `TEMPERATURE_HIGH`, `BATTERY_LOW`, `BATTERY_CRITICAL`, `BATTERY_HEALTH_DEGRADED`, `RADIO_ERROR`. |
+| `sv` | string | Yes | Severity level. One of `INFO`, `WARNING`, `CRITICAL`. |
+| `cv` | number | Yes | Current measured value that triggered the alert. |
+| `tv` | number | Yes | Configured threshold value that was exceeded. |
+
+## Example
+
+```json
+{
+  "event": "alert_short",
+  "ds": "RFD40-212735201D0053",
+  "ts": "2026-04-14T15:12:33.000Z",
+  "v": "1.0",
+  "at": "BATTERY_LOW",
+  "sv": "WARNING",
+  "cv": 12,
+  "tv": 15
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

@@ -1,0 +1,216 @@
+---
+sidebar_position: 4
+title: "How to Detect and Remediate Configuration Drift"
+---
+
+# How to Detect and Remediate Configuration Drift
+
+Configuration drift occurs when a reader's active configuration diverges from the approved baseline. This guide explains how to establish golden baselines, detect drift, and remediate non-compliant readers across a fleet.
+
+## Prerequisites
+
+- MQTT broker deployed with reader fleet connected
+- A golden configuration document representing the approved baseline for each deployment environment
+- An MQTT client application or fleet management service
+- Access to publish and subscribe on reader command topics
+
+## Why Drift Happens
+
+Configuration drift is introduced by:
+
+- **Ad-hoc changes**: a technician adjusts a reader's power level via `set_power` without updating the fleet baseline
+- **Partial updates**: a bulk `set_config` is applied with a partial document, leaving some parameters at previous values
+- **Firmware updates**: a firmware upgrade introduces new parameters with default values that differ from the fleet standard
+- **Failed provisioning**: a reader loses connectivity mid-provisioning and retains an incomplete configuration
+
+## Step 1: Define the Golden Configuration Baseline
+
+Create a JSON file that represents the approved configuration for a specific deployment environment. Store this file in version control.
+
+```json
+{
+  "baseline_id": "warehouse-standard-v2.1",
+  "created": "2026-05-01T00:00:00Z",
+  "config": {
+    "rf_config": {
+      "power_level_dbm": 27.0,
+      "session": "S1",
+      "link_profile": "AUTO",
+      "tag_population": 100,
+      "dynamic_power": true
+    },
+    "operating_mode": "INVENTORY",
+    "reporting": {
+      "interval_ms": 500,
+      "rssi_threshold_dbm": -72,
+      "duplicate_elimination_ms": 3000
+    }
+  },
+  "excluded_fields": [
+    "mqtt.client_id",
+    "device.name",
+    "device.location"
+  ]
+}
+```
+
+The `excluded_fields` array lists parameters that are intentionally different per reader (like device identity and location) and should be skipped during comparison.
+
+## Step 2: Collect Current Configurations
+
+Issue `get_config` to each reader in the fleet and store the responses:
+
+```python
+import paho.mqtt.client as mqtt
+import json
+import time
+
+fleet = ["RFD40-SN12345", "RFD40-SN12346", "RFD90-SN67890"]
+configs = {}
+
+def on_message(client, userdata, message):
+    response = json.loads(message.payload)
+    device_id = response.get("device_id")
+    if response["status"] == "SUCCESS":
+        configs[device_id] = response["config"]
+
+client = mqtt.Client()
+client.on_message = on_message
+client.connect("broker.example.com", 8883)
+
+for device_id in fleet:
+    client.subscribe(f"zebra/rfid/{device_id}/get_config/response")
+
+for device_id in fleet:
+    client.publish(
+        f"zebra/rfid/{device_id}/get_config",
+        json.dumps({"command_id": f"audit-{device_id}"})
+    )
+    time.sleep(0.2)
+
+# Wait for responses
+client.loop_start()
+time.sleep(10)
+client.loop_stop()
+```
+
+## Step 3: Compare Against the Baseline
+
+Compare each reader's configuration against the golden baseline, skipping excluded fields:
+
+```python
+def compare_config(actual, baseline, excluded_fields, path=""):
+    """Recursively compare config dicts; return list of drift entries."""
+    drifts = []
+    for key, expected_value in baseline.items():
+        full_path = f"{path}.{key}" if path else key
+        if full_path in excluded_fields:
+            continue
+        if key not in actual:
+            drifts.append({
+                "path": full_path,
+                "expected": expected_value,
+                "actual": "MISSING",
+                "severity": "HIGH"
+            })
+        elif isinstance(expected_value, dict) and isinstance(actual[key], dict):
+            drifts.extend(compare_config(actual[key], expected_value, excluded_fields, full_path))
+        elif actual[key] != expected_value:
+            drifts.append({
+                "path": full_path,
+                "expected": expected_value,
+                "actual": actual[key],
+                "severity": classify_severity(full_path)
+            })
+    return drifts
+
+def classify_severity(param_path):
+    """Classify drift severity based on the parameter."""
+    high_impact = ["rf_config.power_level_dbm", "operating_mode", "rf_config.session"]
+    if param_path in high_impact:
+        return "HIGH"
+    return "MEDIUM"
+```
+
+## Step 4: Generate a Compliance Report
+
+Produce a fleet compliance report summarizing drift across all readers:
+
+| Device ID | Status | Drift Count | High Severity | Details |
+|---|---|---|---|---|
+| RFD40-SN12345 | Compliant | 0 | 0 | N/A |
+| RFD40-SN12346 | Drifted | 2 | 1 | `rf_config.power_level_dbm`: 25.0 (expected 27.0) |
+| RFD90-SN67890 | Drifted | 1 | 0 | `reporting.interval_ms`: 1000 (expected 500) |
+
+Fleet summary:
+- **Total readers:** 3
+- **Compliant:** 1 (33%)
+- **Drifted:** 2 (67%)
+- **High-severity drifts:** 1
+
+## Step 5: Remediate Drifted Readers
+
+For readers that have drifted, re-apply the golden configuration using `set_config`:
+
+```python
+golden = load_golden_config("warehouse-standard-v2.1.json")
+
+for device_id, drift_report in drift_reports.items():
+    if drift_report["status"] == "Drifted":
+        # Get current config to preserve excluded fields
+        current = configs[device_id]
+
+        # Merge golden config with device-specific fields
+        remediation_config = deep_merge(golden["config"], {
+            "mqtt": {"client_id": current["mqtt"]["client_id"]},
+            "device": current["device"]
+        })
+
+        client.publish(
+            f"zebra/rfid/{device_id}/set_config",
+            json.dumps({"command_id": f"remediate-{device_id}", "config": remediation_config})
+        )
+```
+
+> **Warning:** Before remediating production readers, verify that the golden configuration is current and tested. Applying an outdated baseline can introduce new issues.
+
+## Step 6: Schedule Ongoing Compliance Monitoring
+
+Run drift detection on a regular schedule to catch configuration changes early:
+
+| Fleet Size | Recommended Frequency |
+|---|---|
+| Under 50 readers | Daily |
+| 50–200 readers | Every 6 hours |
+| Over 200 readers | Hourly (staggered across the fleet) |
+
+> **Note:** Stagger `get_config` requests across the monitoring window to avoid creating a traffic spike on the MQTT broker.
+
+## Alerting on Drift
+
+Publish drift alerts to a monitoring topic when non-compliance is detected:
+
+```
+zebra/fleet/compliance/alert
+```
+
+```json
+{
+  "alert_type": "CONFIG_DRIFT",
+  "device_id": "RFD40-SN12346",
+  "baseline_id": "warehouse-standard-v2.1",
+  "drift_count": 2,
+  "high_severity_count": 1,
+  "details": [
+    {
+      "path": "rf_config.power_level_dbm",
+      "expected": 27.0,
+      "actual": 25.0,
+      "severity": "HIGH"
+    }
+  ],
+  "detected_at": "2026-05-14T12:00:00Z"
+}
+```
+
+Integrate these alerts with your organization's monitoring platform (e.g., Grafana, Datadog, PagerDuty) for automated incident response.

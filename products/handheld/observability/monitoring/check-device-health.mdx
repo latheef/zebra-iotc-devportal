@@ -1,0 +1,152 @@
+---
+sidebar_position: 1
+title: "How to Check Device Status & Health"
+description: "Guide to performing on-demand device health checks on the RFD40/RFD90 using get_status and heartbeat events."
+---
+
+# How to Check Device Status & Health
+
+This guide covers performing on-demand health checks on the RFD40/RFD90 using the `get_status` command and combining it with heartbeat events for comprehensive monitoring.
+
+## On-Demand Health Check with get_status
+
+The `get_status` command queries the device for its current state and returns an immediate snapshot.
+
+**Publish to:**
+```
+{tenantId}/CTRL/clients/cmnd/{deviceSerial}
+```
+
+```json
+{
+  "command": "get_status",
+  "command_id": "cmd-060"
+}
+```
+
+**Response on:**
+```
+{tenantId}/CTRL/clients/resp/{deviceSerial}
+```
+
+```json
+{
+  "command": "get_status",
+  "command_id": "cmd-060",
+  "status": "OK",
+  "payload": {
+    "device_serial": "RFD401234567890",
+    "device_model": "RFD40",
+    "firmware_version": "3.2.1.045",
+    "operating_state": "IDLE",
+    "battery_level": 72,
+    "battery_charging": false,
+    "battery_health": "GOOD",
+    "temperature_c": 31.4,
+    "wifi_connected": true,
+    "wifi_ssid": "WAREHOUSE-5G",
+    "wifi_rssi": -48,
+    "bt_connected": true,
+    "bt_device": "TC52-ABCDEF",
+    "uptime_seconds": 28800,
+    "last_operation": {
+      "mode": "SIMPLE_INVENTORY",
+      "tags_read": 342,
+      "duration_ms": 4500,
+      "completed_at": "2026-05-14T09:15:00.000Z"
+    }
+  }
+}
+```
+
+## Key Status Fields
+
+### Operating State
+
+| State | Meaning |
+|---|---|
+| `IDLE` | No RFID operation running. Device is ready. |
+| `READING` | RFID scan in progress. |
+| `ERROR` | Device is in an error state. Check exceptions. |
+| `INITIALIZING` | Device is booting or performing self-test. |
+
+### Battery Health
+
+| Value | Meaning |
+|---|---|
+| `GOOD` | Battery is functioning normally |
+| `DEGRADED` | Battery capacity is reduced (aging) |
+| `REPLACE` | Battery should be replaced |
+
+### Last Operation Summary
+
+The `last_operation` object provides a quick summary of the most recent RFID scan, useful for verifying that the device has been active and functioning.
+
+## When to Use get_status
+
+| Scenario | Approach |
+|---|---|
+| Troubleshooting a specific device | Send `get_status` for immediate diagnostics |
+| Pre-shift device checkout | Query each device before issuing to operators |
+| After a reported issue | Verify current state before further action |
+| Application startup | Check if a previous session left the reader active |
+
+## Combining with Heartbeat Events
+
+For comprehensive device monitoring, use both `get_status` and `heartBeatEVT`:
+
+### Heartbeat for Ongoing Monitoring
+
+Subscribe to heartbeat events to receive periodic health updates without polling:
+
+```
+{tenantId}/DATA/clients/heartbeat/{deviceSerial}
+```
+
+Heartbeats provide the same core health metrics (battery, temperature, connectivity, state) automatically at the configured interval.
+
+### get_status for Point-in-Time Verification
+
+Use `get_status` when you need an immediate answer rather than waiting for the next heartbeat cycle. This is especially useful when:
+
+- The heartbeat interval is long (e.g., 300 seconds)
+- You need fields not included in heartbeats (e.g., `last_operation`, `battery_health`)
+- You want to verify a device's state before sending a configuration command
+
+## Health Check Workflow
+
+A recommended pre-operation health check:
+
+1. **Send `get_status`** to the target device
+2. **Check `operating_state`**: ensure it is `IDLE`
+3. **Check `battery_level`**: ensure sufficient charge for the planned operation
+4. **Check `wifi_rssi`**: ensure adequate signal for reliable MQTT delivery
+5. **Check `bt_connected`**: ensure the reader is paired with the mobile computer
+6. Proceed with configuration and `control_operation` START
+
+```javascript
+async function healthCheck(deviceSerial) {
+  const status = await sendCommand(deviceSerial, 'get_status');
+
+  const issues = [];
+  if (status.operating_state === 'ERROR') issues.push('Device in error state');
+  if (status.battery_level < 20) issues.push(`Low battery: ${status.battery_level}%`);
+  if (status.wifi_rssi < -70) issues.push(`Weak Wi-Fi: ${status.wifi_rssi} dBm`);
+  if (!status.bt_connected) issues.push('Bluetooth not connected');
+
+  return {
+    ready: issues.length === 0,
+    issues
+  };
+}
+```
+
+## Error Handling
+
+If the device does not respond to `get_status` within a reasonable timeout (e.g., 10 seconds), it is likely offline or experiencing connectivity issues. Fall back to the most recent heartbeat data and check `mqttConnEVT` for connection state.
+
+## Related Topics
+
+- [About Heartbeat Events](../events/about-heartbeat-events.mdx): periodic health monitoring
+- [How to Monitor Battery Lifecycle](./monitor-battery.mdx): battery management
+- [How to Monitor Connection Quality](./monitor-connection.mdx): connectivity tracking

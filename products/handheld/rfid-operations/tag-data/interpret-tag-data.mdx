@@ -1,0 +1,132 @@
+---
+sidebar_position: 3
+title: "How to Interpret Tag Data Fields"
+description: "Guide to decoding and understanding EPC, RSSI, TID, phase angle, and other fields in dataEVT payloads."
+---
+
+# How to Interpret Tag Data Fields
+
+This guide explains how to decode and use the key fields in `dataEVT` payloads from the RFD40/RFD90. Each field carries specific meaning that maps to real-world information about the tag, its location, and read conditions.
+
+## EPC (Electronic Product Code)
+
+The `epc` field contains the hex-encoded contents of the tag's EPC memory bank. This is the primary identifier for the tagged item.
+
+### Decoding GS1 EPCs
+
+Most supply chain RFID tags use GS1-standardized EPC encoding. A 96-bit EPC hex string like `3034257BF400B7800004E3A1` decodes to:
+
+| Segment | Bits | Description |
+|---|---|---|
+| Header | 8 | EPC encoding scheme (e.g., `30` = SGTIN-96) |
+| Filter | 3 | Item classification |
+| Partition | 3 | Company prefix / item reference split |
+| Company Prefix | Variable | GS1 company identifier |
+| Item Reference | Variable | Product identifier |
+| Serial Number | 38 | Unique item serial |
+
+To decode a GS1 EPC programmatically, use a GS1 EPC library for your language or parse the binary representation according to the GS1 EPC Tag Data Standard.
+
+### Non-GS1 EPCs
+
+Some deployments use proprietary EPC encoding. In these cases, the EPC is simply a unique hex identifier whose meaning is defined by your organization's encoding scheme.
+
+## RSSI (Received Signal Strength Indicator)
+
+The `rssi` field is a signed floating-point value in dBm representing the strength of the tag's response signal.
+
+### Interpreting RSSI Values
+
+| RSSI Range | Interpretation |
+|---|---|
+| -20 to -30 dBm | Very close proximity (< 0.5 m) |
+| -30 to -50 dBm | Near range (0.5–2 m) |
+| -50 to -65 dBm | Mid range (2–5 m) |
+| -65 to -80 dBm | Far range (> 5 m) |
+
+> **Note**: RSSI is a relative indicator, not an absolute distance measurement. Environmental factors; metal surfaces, liquids, tag orientation, multi-path reflections; significantly affect RSSI values. Calibrate RSSI thresholds for your specific environment.
+
+### Peak RSSI
+
+The `peak_rssi` field records the strongest signal observed across multiple antenna cycles within the same batch. Use `peak_rssi` when you want the best-case signal strength rather than the average.
+
+## TID (Tag Identifier)
+
+The `tid` field contains the hex-encoded contents of the tag's TID memory bank, which is programmed at the chip factory and cannot be modified.
+
+### TID Contents
+
+A typical TID like `E2801170200048E1499C1734` encodes:
+
+| Segment | Description |
+|---|---|
+| First 2 bytes | Chip manufacturer identifier (e.g., `E280` = Impinj) |
+| Next bytes | Chip model and features |
+| Remaining bytes | Unique chip serial number |
+
+TID is valuable for:
+- **Anti-counterfeiting**: Verifying a tag's EPC matches its silicon identity
+- **Chip identification**: Determining the tag IC model for compatibility checks
+- **Unique identity**: Even if EPCs are duplicated, TIDs remain unique per chip
+
+## Phase Angle
+
+The `phase` field (Tag Locationing mode only) reports the RF phase angle in degrees (0–360). Phase angle changes as the distance between the reader antenna and the tag changes.
+
+### Using Phase for Location
+
+Phase alone does not give absolute distance, but the **rate of phase change** as you move the reader indicates whether you are getting closer to or farther from the tag. A rapidly changing phase suggests the tag is nearby; a slowly changing phase suggests distance.
+
+Combine phase with RSSI for more reliable tag locationing. When both RSSI is increasing and phase is changing rapidly, you are approaching the target tag.
+
+## Distance Indicator
+
+The `distance` field (Tag Locationing mode only) is a firmware-computed relative distance value. It is not calibrated in meters or feet; it is an arbitrary-unit estimate useful for comparative purposes.
+
+Lower values indicate closer proximity. Use the trend of distance values over successive reads rather than any single value.
+
+## Seen Count
+
+The `seen_count` field indicates how many times the tag was singulated within the current reporting batch. Higher seen counts indicate tags that are consistently readable; well-positioned, good signal, no occlusion.
+
+A `seen_count` of 1 may indicate a tag at the edge of the read zone or one experiencing intermittent interference.
+
+## Timestamps
+
+### `timestamp`
+The primary event timestamp in ISO 8601 UTC format. This is the time the firmware assembled the event payload.
+
+### `first_seen` and `last_seen`
+When `seen_count` is greater than 1, these fields bracket the time window during which the tag was repeatedly observed. The delta between them indicates how long the tag was continuously readable.
+
+```
+Duration in field = last_seen - first_seen
+```
+
+## Channel Index
+
+The `channel_index` identifies which RF frequency channel was used for the read. This is primarily useful for RF diagnostics, if certain channels consistently produce lower RSSI or fewer reads, it may indicate frequency-specific interference.
+
+## Practical Example: Inventory Processing
+
+```javascript
+function processTagEvent(dataEvt) {
+  const epc = dataEvt.epc;
+  const rssi = dataEvt.rssi;
+  const timestamp = new Date(dataEvt.timestamp);
+
+  // Determine proximity zone based on RSSI
+  let zone = 'far';
+  if (rssi > -30) zone = 'immediate';
+  else if (rssi > -50) zone = 'near';
+  else if (rssi > -65) zone = 'mid';
+
+  return { epc, zone, timestamp, seenCount: dataEvt.seen_count };
+}
+```
+
+## Related Topics
+
+- [dataEVT Payload Schema](./dataevt-payload.mdx): complete field reference
+- [How to Process Tag Data in Your Application](./process-tag-data.mdx): processing strategies
+- [About RFID Operating Modes](../operating-modes/about-operating-modes.mdx): modes that determine which fields appear

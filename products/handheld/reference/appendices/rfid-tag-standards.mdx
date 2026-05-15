@@ -1,0 +1,152 @@
+---
+sidebar_position: 4
+title: "Supported RFID Tag Types & Standards"
+---
+
+# Supported RFID Tag Types & Standards
+
+📕 **REFERENCE**: EPC Gen2 compliance, memory bank structure, tag populations, and read/write capabilities.
+
+## Supported Standard
+
+The RFD40 and RFD90 reader sleds support **EPC Gen2 Version 2 (ISO 18000-63)** UHF RFID tags. This is the dominant global standard for passive UHF RFID operating in the 860–960 MHz frequency range.
+
+| Specification | Details |
+|---|---|
+| Air Interface Protocol | EPC Global Class 1 Generation 2 (Gen2v2) |
+| ISO Standard | ISO 18000-63 |
+| Frequency Range | 860–960 MHz (region-specific sub-bands) |
+| Tag Type | Passive (backscatter) |
+| Communication | Reader Talks First (RTF) |
+
+## Tag Memory Banks
+
+Every EPC Gen2 tag has four memory banks. The IoT Connector can read from and write to these banks using the appropriate commands.
+
+### Bank 0: Reserved Memory
+
+| Attribute | Details |
+|---|---|
+| **Size** | 64 bits (8 bytes) |
+| **Contents** | Kill password (32 bits) + Access password (32 bits) |
+| **Default** | All zeros (no password set) |
+| **Read Access** | Requires access password if locked |
+| **Write Access** | Requires access password if locked |
+| **Use Case** | Security; set passwords to protect tag data or permanently disable tags |
+
+### Bank 1: EPC Memory
+
+| Attribute | Details |
+|---|---|
+| **Size** | Variable, typically 96 or 128 bits for the EPC; includes CRC-16 and Protocol Control (PC) bits |
+| **Contents** | CRC-16 (16 bits) + PC bits (16 bits) + EPC (typically 96 bits) |
+| **Default** | Manufacturer-assigned or blank |
+| **Read Access** | Open by default |
+| **Write Access** | Open by default (can be locked) |
+| **Use Case** | Primary tag identifier; used for inventory and item-level tracking |
+
+### Bank 2: TID Memory (Tag Identifier)
+
+| Attribute | Details |
+|---|---|
+| **Size** | Minimum 64 bits; varies by tag IC |
+| **Contents** | Tag IC manufacturer code, model number, and unique serial number |
+| **Read Access** | Always readable |
+| **Write Access** | Permanently locked (read-only) |
+| **Use Case** | Tag authentication, anti-counterfeiting, and chip identification. The TID is factory-programmed and cannot be changed. |
+
+### Bank 3: User Memory
+
+| Attribute | Details |
+|---|---|
+| **Size** | 0 to 65,535 bits (varies by tag IC; many tags have 0, 128, 256, or 512 bits) |
+| **Contents** | Application-defined data |
+| **Default** | Empty or all zeros |
+| **Read Access** | Open by default |
+| **Write Access** | Open by default (can be locked) |
+| **Use Case** | Storing additional data beyond the EPC, such as serial numbers, maintenance records, or sensor calibration data |
+
+> **Note:** Not all tags have User memory. Low-cost tags often omit Bank 3 entirely. Verify the tag's datasheet before attempting User memory operations.
+
+## Common Tag ICs and Capabilities
+
+| Tag IC | Manufacturer | EPC Bits | User Memory | Features |
+|---|---|---|---|---|
+| Impinj Monza R6 | Impinj | 96 | 0 bits | High sensitivity, serialized TID |
+| Impinj Monza M730 | Impinj | 96 | 128 bits | Extended User memory, fast encoding |
+| Impinj Monza M750 | Impinj | 128 | 512 bits | Large User memory, advanced features |
+| NXP UCODE 8 | NXP | 96 | 0 bits | High read sensitivity |
+| NXP UCODE 9 | NXP | 128 | 512 bits | Extended memory, AES security |
+| Alien Higgs-3 | Alien Technology | 96 | 512 bits | Large User memory |
+| Alien Higgs-EC | Alien Technology | 128 | 512 bits | Enhanced encoding |
+
+## Tag Populations and Performance
+
+The reader sled's inventory performance depends on the number of tags in the RF field (tag population).
+
+| Tag Population | Expected Performance | Recommended Session |
+|---|---|---|
+| 1–50 tags | Full read in under 1 second | Session 0, Target A |
+| 50–200 tags | Full read in 1–3 seconds | Session 1, Target AB |
+| 200–500 tags | Full read in 3–10 seconds | Session 1, Target AB |
+| 500–1,000 tags | Full read in 10–30 seconds | Session 2, Target AB |
+| 1,000+ tags | May require multiple passes | Session 2, Target AB, with tuned RF mode |
+
+> **Tip:** For large tag populations, use Session 1 or 2 with Target AB to ensure each tag is singulated exactly once per inventory cycle. Session 0 causes every tag to respond on every cycle, which leads to collisions in dense environments.
+
+## Read and Write Operations
+
+### Reading Tags
+
+The `read_tag` command reads data from a specific memory bank. You must identify the target tag (typically by EPC), specify the memory bank, word offset, and word count.
+
+| Parameter | Description |
+|---|---|
+| `epc` | EPC of the target tag (hex string) |
+| `memoryBank` | Bank to read: `"RESERVED"`, `"EPC"`, `"TID"`, `"USER"` |
+| `wordOffset` | Starting word (16-bit) offset |
+| `wordCount` | Number of words to read |
+| `accessPassword` | Access password (hex, required if bank is locked) |
+
+### Writing Tags
+
+The `write_tag` command writes data to a memory bank. Write operations are slower than reads and require the tag to remain in the RF field for the duration of the write.
+
+| Parameter | Description |
+|---|---|
+| `epc` | EPC of the target tag (hex string) |
+| `memoryBank` | Bank to write: `"EPC"`, `"USER"`, `"RESERVED"` |
+| `wordOffset` | Starting word offset for the write |
+| `data` | Data to write (hex string, must align to 16-bit word boundaries) |
+| `accessPassword` | Access password (hex, required if bank is locked) |
+
+**Write considerations:**
+- Tag must remain stationary and within range during the write operation
+- Write range is significantly shorter than read range (typically 50–70% of read range)
+- Writing to a locked memory bank without the correct access password returns an error
+- Writing to TID memory (Bank 2) is not possible; it is permanently locked at the factory
+
+### Locking Memory Banks
+
+The `lock_tag` command changes the access permissions on a memory bank. Lock states include:
+
+| Lock State | Description |
+|---|---|
+| Unlocked | Read and write access without a password |
+| Locked | Read and write access require the access password |
+| Permalocked | Permanently locked; cannot be unlocked even with the password |
+| Perma-unlocked | Permanently unlocked; cannot be locked |
+
+> **Warning:** Permalock and perma-unlock operations are irreversible. Test thoroughly on sample tags before applying to production inventory.
+
+## Environmental Considerations
+
+Tag read performance is affected by the operating environment:
+
+| Environment | Impact | Mitigation |
+|---|---|---|
+| Metal surfaces | Severe detuning, reduced range | Use on-metal tags (foam spacer or specialized antenna design) |
+| Liquids | RF absorption, reduced range | Position tags away from liquid containers; use specialized tags |
+| Dense tag stacking | Coupling effects, missed reads | Increase session duration; use Session 1/2 for singulation |
+| Multi-reader environments | RF interference, ghost reads | Coordinate reader operation; use frequency hopping |
+| Extreme temperatures | Tag IC sensitivity varies | Verify tag operating temperature range in datasheet |

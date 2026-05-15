@@ -1,0 +1,155 @@
+---
+sidebar_position: 4
+title: "About the Interface Model: MGMT, CTRL, DATA, MDM"
+---
+
+# About the Interface Model: MGMT, CTRL, DATA, MDM
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+IOTC organizes all MQTT communication into four logical interfaces. Each interface serves a distinct purpose, carries different payload types, and follows its own topic naming convention. This separation of concerns simplifies client implementation, enables fine-grained access control, and allows independent scaling of data streams.
+
+## Topic Pattern
+
+All IOTC topics follow a consistent five-segment pattern:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+| Segment | Description | Example |
+|---------|-------------|---------|
+| `{tenantId}` | Organization or deployment identifier | `acme-corp` |
+| `{interface}` | Interface name: `mgmt`, `ctrl`, `data`, or `mdm` | `mgmt` |
+| `clients` | Fixed literal segment | `clients` |
+| `{channel}` | Logical client grouping identifier | `warehouse-app` |
+| `{deviceSerial}` | Reader sled serial number | `23044501500123` |
+
+Additional sub-segments are appended depending on the message direction:
+
+| Direction | Sub-segment | Example |
+|-----------|-------------|---------|
+| Command (app → reader) | `/command` | `acme-corp/mgmt/clients/wh-app/23044501500123/command` |
+| Response (reader → app) | `/response` | `acme-corp/mgmt/clients/wh-app/23044501500123/response` |
+| Event (reader → app) | `/event` | `acme-corp/mgmt/clients/wh-app/23044501500123/event` |
+| Data (reader → app) | *(none)* | `acme-corp/data/clients/wh-app/23044501500123` |
+
+## Interface Summary
+
+| Interface | Topic Segment | Direction | QoS | Purpose |
+|-----------|--------------|-----------|-----|---------|
+| **MGMT** | `mgmt` | Bidirectional | QoS 1 | Device configuration, health, firmware, operating mode |
+| **CTRL** | `ctrl` | Bidirectional | QoS 1 | Operational commands; start/stop inventory, set RF power |
+| **DATA** | `data` | Reader → App | QoS 0 | Tag observation streaming |
+| **MDM** | `mdm` | Bidirectional | QoS 1 | MDM platform integration (SOTI Connect) |
+
+## MGMT Interface (Management)
+
+The Management interface handles all device lifecycle and configuration operations. It is the most feature-rich interface, encompassing device discovery, configuration management, health monitoring, and firmware operations.
+
+### Command Categories
+
+| Category | Commands | Description |
+|----------|----------|-------------|
+| **Device Info** | `get_device_info`, `get_capabilities` | Query model, serial, firmware version, supported features |
+| **Configuration** | `get_config`, `set_config`, `set_config_bulk`, `reset_config` | Read/write reader parameters (RF power, session, filters) |
+| **Health** | `get_health`, `get_battery_status` | Query temperature, battery, uptime, error counters |
+| **Operating Mode** | `set_operating_mode`, `get_operating_mode` | Switch between INVENTORY, IDLE, STANDBY modes |
+| **Firmware** | `get_firmware_version`, `check_firmware_update` | Query and manage firmware lifecycle |
+
+### Topic Examples
+
+```
+# Application sends a command
+acme-corp/mgmt/clients/warehouse-app/23044501500123/command
+
+# Reader publishes response
+acme-corp/mgmt/clients/warehouse-app/23044501500123/response
+
+# Reader publishes asynchronous events
+acme-corp/mgmt/clients/warehouse-app/23044501500123/event
+```
+
+## CTRL Interface (Control)
+
+The Control interface provides real-time operational commands for RFID read/write operations. These commands directly affect the reader's RF behavior and are typically latency-sensitive.
+
+### Command Categories
+
+| Category | Commands | Description |
+|----------|----------|-------------|
+| **Inventory** | `start_inventory`, `stop_inventory`, `get_inventory_status` | Start/stop/query active tag reading |
+| **Tag Access** | `read_tag_memory`, `write_tag_memory`, `lock_tag`, `kill_tag` | Read/write specific tag memory banks |
+| **Antenna** | `set_antenna_config`, `get_antenna_config` | Configure antenna port parameters |
+| **Calibration** | `run_antenna_check` | Test antenna connectivity and impedance |
+
+### Topic Examples
+
+```
+# Application sends an operational command
+acme-corp/ctrl/clients/warehouse-app/23044501500123/command
+
+# Reader publishes operational response
+acme-corp/ctrl/clients/warehouse-app/23044501500123/response
+```
+
+## DATA Interface
+
+The Data interface is a unidirectional, high-throughput stream carrying tag observation data from the reader to subscribing applications. Unlike MGMT and CTRL, there is no command sub-topic; the application only subscribes.
+
+### Payload Structure
+
+Each DATA message contains a batch of one or more tag observations with fields including EPC, RSSI, timestamp, antenna port, phase angle, channel index, and read count.
+
+### Topic Example
+
+```
+# Application subscribes to tag data
+acme-corp/data/clients/warehouse-app/23044501500123
+```
+
+### QoS and Delivery
+
+DATA messages use **QoS 0** (at most once) to maximize throughput and minimize latency. In high-volume tag reading scenarios, occasional message loss is acceptable; duplicate tag reads in subsequent batches provide natural redundancy.
+
+## MDM Interface
+
+The MDM interface is reserved for integration with enterprise Mobile Device Management platforms. It follows the same topic pattern but uses the `mdm` segment.
+
+### Capabilities
+
+| Operation | Description |
+|-----------|-------------|
+| Device enrollment | Register a reader with the MDM platform |
+| Policy enforcement | Apply configuration policies to reader groups |
+| Firmware deployment | Push firmware updates to managed readers |
+| Compliance check | Verify reader configuration against policy |
+
+### Topic Examples
+
+```
+# MDM platform sends a management command
+acme-corp/mdm/clients/soti-connect/23044501500123/command
+
+# Reader publishes MDM response
+acme-corp/mdm/clients/soti-connect/23044501500123/response
+```
+
+## Wildcard Subscriptions
+
+MQTT wildcard characters enable subscribing to multiple readers or interfaces simultaneously:
+
+| Wildcard | Pattern | Effect |
+|----------|---------|--------|
+| `+` (single-level) | `acme-corp/data/clients/wh-app/+` | Subscribe to data from all readers on the `wh-app` channel |
+| `#` (multi-level) | `acme-corp/mgmt/#` | Subscribe to all MGMT traffic for the entire tenant |
+| Combined | `acme-corp/+/clients/wh-app/+/event` | Subscribe to all events from all interfaces, all readers |
+
+<div className="admonition admonition-caution">
+<div className="admonition-heading"><h5>Caution</h5></div>
+<div className="admonition-content">
+<p>Wildcard subscriptions to high-volume topics (especially DATA with <code>#</code>) can overwhelm client applications in large fleet deployments. Use targeted subscriptions in production and reserve wildcards for development and debugging.</p>
+</div>
+</div>

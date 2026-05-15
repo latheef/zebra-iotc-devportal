@@ -1,0 +1,138 @@
+---
+sidebar_position: 9
+title: Get Ethernet
+description: Retrieve Ethernet configuration including link status, DHCP, IP addressing, and MAC address.
+---
+
+# Get Ethernet
+
+Retrieve the Ethernet adapter configuration from a Zebra handheld RFID reader. The response includes the physical link status, DHCP mode, IP address assignment, DNS servers, and the hardware MAC address.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `get_eth` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "get_eth",
+  "requestId": "req-001"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"get_eth"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response with this request. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "get_eth",
+  "requestId": "req-001",
+  "responseCode": 0,
+  "ethernetConfig": {
+    "linkStatus": "UP",
+    "dhcpEnabled": true,
+    "ipAddress": "192.168.1.100",
+    "subnetMask": "255.255.255.0",
+    "gateway": "192.168.1.1",
+    "dns1": "8.8.8.8",
+    "dns2": "8.8.4.4",
+    "macAddress": "00:A0:50:12:34:56"
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echo of the command name. |
+| `requestId` | string | Echo of the request identifier. |
+| `responseCode` | integer | Result code indicating success or failure. |
+| `ethernetConfig` | object | Container for Ethernet configuration data. |
+| `ethernetConfig.linkStatus` | string | Physical link state. Enum: `UP`, `DOWN`. |
+| `ethernetConfig.dhcpEnabled` | boolean | Whether DHCP is enabled for automatic IP configuration. |
+| `ethernetConfig.ipAddress` | string | IPv4 address assigned to the Ethernet adapter. |
+| `ethernetConfig.subnetMask` | string | IPv4 subnet mask. |
+| `ethernetConfig.gateway` | string | Default gateway IPv4 address. |
+| `ethernetConfig.dns1` | string | Primary DNS server IPv4 address. |
+| `ethernetConfig.dns2` | string | Secondary DNS server IPv4 address. |
+| `ethernetConfig.macAddress` | string | Ethernet adapter MAC address. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success. |
+| `1` | General failure. |
+| `3` | Device busy or unavailable. |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "get_eth",
+  "requestId": "eth-20260414-001"
+}
+```
+
+### Response: Link Up (DHCP)
+
+```json
+{
+  "command": "get_eth",
+  "requestId": "eth-20260414-001",
+  "responseCode": 0,
+  "ethernetConfig": {
+    "linkStatus": "UP",
+    "dhcpEnabled": true,
+    "ipAddress": "10.0.5.42",
+    "subnetMask": "255.255.254.0",
+    "gateway": "10.0.4.1",
+    "dns1": "10.0.4.10",
+    "dns2": "10.0.4.11",
+    "macAddress": "00:A0:50:AB:CD:EF"
+  }
+}
+```
+
+### Response: Link Down
+
+```json
+{
+  "command": "get_eth",
+  "requestId": "eth-20260414-002",
+  "responseCode": 0,
+  "ethernetConfig": {
+    "linkStatus": "DOWN",
+    "dhcpEnabled": true,
+    "ipAddress": "",
+    "subnetMask": "",
+    "gateway": "",
+    "dns1": "",
+    "dns2": "",
+    "macAddress": "00:A0:50:AB:CD:EF"
+  }
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

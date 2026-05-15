@@ -1,0 +1,95 @@
+---
+sidebar_position: 17
+title: Reboot
+description: Restart the reader device.
+---
+
+# Reboot
+
+Restart the reader. A reboot is required after applying `config_events` changes for them to take effect. The reader will disconnect from all MQTT brokers, restart, and automatically reconnect within 30–60 seconds.
+
+:::caution
+The device will be **temporarily unavailable** after a reboot. All active MQTT connections will be dropped and any in-progress operations will be interrupted. The reader typically reconnects within 30–60 seconds.
+:::
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `reboot` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "reboot",
+  "requestId": "req-reboot-001"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"reboot"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "reboot",
+  "requestId": "req-reboot-001",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"reboot"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "reboot",
+  "requestId": "req-reboot-002"
+}
+```
+
+### Response
+
+```json
+{
+  "command": "reboot",
+  "requestId": "req-reboot-002",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

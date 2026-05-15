@@ -1,0 +1,139 @@
+---
+sidebar_position: 7
+title: "About MQTT Connection Events"
+description: "Understanding mqttConnEVT events for tracking device connectivity on the RFD40/RFD90."
+---
+
+# About MQTT Connection Events
+
+MQTT connection events (`mqttConnEVT`) report changes in the reader's MQTT connection state. These events enable your application to track when devices come online, go offline, or experience reconnection cycles; critical information for fleet connectivity management.
+
+## Connection States
+
+The `mqttConnEVT` reports three connection states:
+
+### CONNECTED
+
+The device has successfully established an MQTT session with the broker. This event fires:
+
+- On initial connection after power-on
+- After a successful reconnection following a disconnection
+- After a network recovery
+
+```json
+{
+  "event_type": "mqttConnEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T08:00:00.000Z",
+  "connection_state": "CONNECTED",
+  "broker_url": "mqtts://broker.example.com:8883",
+  "disconnect_reason": null,
+  "session_id": "sess-abc123"
+}
+```
+
+### DISCONNECTED
+
+The device has lost its MQTT connection. The `disconnect_reason` field indicates why:
+
+| Reason | Description |
+|---|---|
+| `NETWORK_LOSS` | Wi-Fi or network connectivity lost |
+| `BROKER_UNAVAILABLE` | Broker rejected the connection or is down |
+| `KEEPALIVE_TIMEOUT` | MQTT keepalive ping was not acknowledged |
+| `CLIENT_DISCONNECT` | Device intentionally disconnected (shutdown, sleep) |
+| `SESSION_EXPIRED` | Broker expired the session |
+
+```json
+{
+  "event_type": "mqttConnEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:30:00.000Z",
+  "connection_state": "DISCONNECTED",
+  "broker_url": "mqtts://broker.example.com:8883",
+  "disconnect_reason": "NETWORK_LOSS",
+  "session_id": "sess-abc123"
+}
+```
+
+### RECONNECTING
+
+The device is attempting to re-establish the MQTT connection. This state indicates the device is aware of the disconnection and actively retrying.
+
+```json
+{
+  "event_type": "mqttConnEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:30:05.000Z",
+  "connection_state": "RECONNECTING",
+  "broker_url": "mqtts://broker.example.com:8883",
+  "disconnect_reason": "NETWORK_LOSS",
+  "session_id": "sess-abc123"
+}
+```
+
+> **Note**: The `RECONNECTING` event is published if the device has a secondary communication path or if the event was queued before full disconnection. In a complete network outage, this event may not be received until the device reconnects.
+
+## How Connection Events Are Delivered
+
+Connection events have a delivery challenge: a `DISCONNECTED` event needs to be sent over the connection that just failed. The RFD40/RFD90 handles this through two mechanisms:
+
+1. **Pre-disconnect publish**: If the device detects an impending disconnection (e.g., Wi-Fi signal dropping), it publishes the event before the connection is fully lost
+2. **MQTT Last Will and Testament (LWT)**: The device registers an LWT message with the broker at connection time. If the broker detects an ungraceful disconnection, it publishes the LWT message on behalf of the device
+
+For planned disconnections (`CLIENT_DISCONNECT`), the device publishes the event directly before closing the connection.
+
+## Fleet Dashboard Use Cases
+
+### Online/Offline Tracking
+
+Maintain a device status table updated by connection events:
+
+| Device Serial | Last State | Since | Disconnect Reason |
+|---|---|---|---|
+| RFD401234567890 | CONNECTED | 08:00:00 | N/A |
+| RFD409876543210 | DISCONNECTED | 10:30:00 | NETWORK_LOSS |
+| RFD405555555555 | RECONNECTING | 10:30:05 | KEEPALIVE_TIMEOUT |
+
+### Connectivity Trend Analysis
+
+Track reconnection frequency per device over time. Devices with frequent reconnection cycles may indicate:
+
+- Poor Wi-Fi coverage in their operating area
+- Broker capacity issues
+- Network infrastructure problems
+- Device hardware issues (failing Wi-Fi radio)
+
+### Shift Coverage
+
+Monitor connection events at shift start times to verify all devices are online and operational before the work begins. A device that does not send a `CONNECTED` event during the expected startup window needs attention.
+
+## Subscribing to Connection Events
+
+Single device:
+```
+{tenantId}/DATA/clients/connection/{deviceSerial}
+```
+
+All devices:
+```
+{tenantId}/DATA/clients/connection/+
+```
+
+Connection events are published at **QoS 1** for reliable delivery.
+
+## Combining with Heartbeats
+
+Connection events capture state transitions, while heartbeats confirm ongoing connectivity. Use both together:
+
+- **`mqttConnEVT`** tells you *when* a device connected or disconnected
+- **`heartBeatEVT`** tells you the device is *still* connected and healthy
+
+If heartbeats stop but no `DISCONNECTED` event was received, the device may have lost connectivity abruptly (power failure, hardware crash) before the LWT could fire.
+
+## Related Topics
+
+- [Event Types Reference](./event-types-reference.mdx): mqttConnEVT payload schema
+- [About Heartbeat Events](./about-heartbeat-events.mdx): ongoing health monitoring
+- [How to Monitor Connection Quality](../monitoring/monitor-connection.mdx): connection quality tracking
+- [How to Build a Fleet Health Dashboard](../monitoring/fleet-health-dashboard.mdx): aggregation patterns

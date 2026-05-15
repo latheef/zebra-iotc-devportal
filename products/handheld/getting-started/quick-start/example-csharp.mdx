@@ -1,0 +1,220 @@
+---
+sidebar_position: 10
+title: "Quick Start: C# (.NET) Example"
+description: "Complete runnable C# program using MQTTnet to connect, discover, read RFID tags, and stop: all via the Zebra IoT Connector MQTT API."
+---
+
+# Quick Start: C# (.NET) Example
+
+📗 **TUTORIAL**: A complete, runnable C# console application that performs the entire quick start flow: connect to the IOTC broker, discover the reader, start an RFID inventory, print tag data for 10 seconds, and stop.
+
+## Prerequisites
+
+- .NET 6.0 SDK or later
+- `MQTTnet` NuGet package
+
+Create a new console project and add the dependency:
+
+```bash
+dotnet new console -n IotcQuickStart
+cd IotcQuickStart
+dotnet add package MQTTnet --version 4.*
+```
+
+## Complete Program
+
+Replace the contents of `Program.cs` with:
+
+```csharp
+// Zebra IoT Connector; Quick Start Example (C#)
+// Connects to the IOTC MQTT broker, discovers the reader,
+// starts a simple inventory, prints tags for 10 seconds, and stops.
+
+using System.Text;
+using System.Text.Json;
+using MQTTnet;
+using MQTTnet.Client;
+using MQTTnet.Protocol;
+
+// ──────────────────────────────────────────────
+// Configuration; replace with your actual values
+// ──────────────────────────────────────────────
+const string BrokerHost = "mqtt.iotconnector.zebra.com";
+const int BrokerPort = 8883;
+const string MqttUsername = "tenant-user@abc123def456";
+const string MqttPassword = "your-mqtt-password";
+const string TenantId = "abc123def456";
+const string DeviceSerial = "RFD40-1234567890";
+
+// ──────────────────────────────────────────────
+// Topic construction
+// ──────────────────────────────────────────────
+string mgmtCmd = $"{TenantId}/MGMT/clients/cmnd/{DeviceSerial}";
+string mgmtResp = $"{TenantId}/MGMT/clients/resp/{DeviceSerial}";
+string ctrlCmd = $"{TenantId}/CTRL/clients/cmnd/{DeviceSerial}";
+string ctrlResp = $"{TenantId}/CTRL/clients/resp/{DeviceSerial}";
+string dataEvt = $"{TenantId}/DATA/clients/data1event/{DeviceSerial}";
+
+int tagCount = 0;
+
+var factory = new MqttFactory();
+using var client = factory.CreateMqttClient();
+
+// Handle incoming messages
+client.ApplicationMessageReceivedAsync += args =>
+{
+    string topic = args.ApplicationMessage.Topic;
+    string payload = Encoding.UTF8.GetString(args.ApplicationMessage.PayloadSegment);
+
+    try
+    {
+        using var doc = JsonDocument.Parse(payload);
+        var root = doc.RootElement;
+
+        if (topic == mgmtResp)
+        {
+            string cmd = root.GetProperty("command").GetString() ?? "unknown";
+            string status = root.GetProperty("status").GetString() ?? "unknown";
+            Console.WriteLine($"[mgmt] {cmd}: {status}");
+
+            if (cmd == "get_version" && status == "OK")
+            {
+                var info = root.GetProperty("payload");
+                Console.WriteLine($"  Model: {info.GetProperty("model").GetString()}");
+                Console.WriteLine($"  Serial: {info.GetProperty("serialNumber").GetString()}");
+                Console.WriteLine($"  Firmware: {info.GetProperty("firmwareVersion").GetString()}");
+            }
+        }
+        else if (topic == ctrlResp)
+        {
+            string cmd = root.GetProperty("command").GetString() ?? "unknown";
+            string status = root.GetProperty("status").GetString() ?? "unknown";
+            string state = "";
+            if (root.TryGetProperty("payload", out var p) &&
+                p.TryGetProperty("operationState", out var s))
+            {
+                state = s.GetString() ?? "";
+            }
+            Console.WriteLine($"[ctrl] {cmd}: {status} (state: {state})");
+        }
+        else if (topic == dataEvt)
+        {
+            var tags = root.GetProperty("payload").GetProperty("tags");
+            foreach (var tag in tags.EnumerateArray())
+            {
+                tagCount++;
+                string epc = tag.GetProperty("epc").GetString() ?? "unknown";
+                int rssi = tag.GetProperty("rssi").GetInt32();
+                Console.WriteLine($"[tag #{tagCount}] EPC: {epc}  RSSI: {rssi} dBm");
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[raw] {topic}: {payload} ({ex.Message})");
+    }
+
+    return Task.CompletedTask;
+};
+
+// Connect
+Console.WriteLine($"Connecting to {BrokerHost}:{BrokerPort}...");
+
+var options = new MqttClientOptionsBuilder()
+    .WithTcpServer(BrokerHost, BrokerPort)
+    .WithCredentials(MqttUsername, MqttPassword)
+    .WithTlsOptions(o => o.UseTls())
+    .WithProtocolVersion(MQTTnet.Formatter.MqttProtocolVersion.V311)
+    .Build();
+
+await client.ConnectAsync(options);
+Console.WriteLine("[connected] Successfully connected to IOTC broker");
+
+// Subscribe
+await client.SubscribeAsync(new MqttTopicFilterBuilder().WithTopic(mgmtResp).Build());
+await client.SubscribeAsync(new MqttTopicFilterBuilder().WithTopic(ctrlResp).Build());
+await client.SubscribeAsync(new MqttTopicFilterBuilder().WithTopic(dataEvt).Build());
+Console.WriteLine("[subscribed] Listening on MGMT, CTRL, and DATA topics");
+
+// Helper to publish commands
+async Task PublishCommand(string topic, string command, string requestId,
+    object? payload = null)
+{
+    var msg = new Dictionary<string, object> { ["command"] = command, ["requestId"] = requestId };
+    if (payload != null) msg["payload"] = payload;
+
+    var json = JsonSerializer.Serialize(msg);
+    await client.PublishStringAsync(topic, json, MqttQualityOfServiceLevel.AtMostOnce);
+    Console.WriteLine($"[publish] {command} (requestId: {requestId})");
+}
+
+// Step 1: Discover reader
+await PublishCommand(mgmtCmd, "get_version", "1");
+await Task.Delay(2000);
+
+// Step 2: Set operating mode
+await PublishCommand(ctrlCmd, "set_operating_mode", "2",
+    new { mode = "SIMPLE_INVENTORY" });
+await Task.Delay(2000);
+
+// Step 3: Start inventory
+await PublishCommand(ctrlCmd, "control_operation", "3",
+    new { action = "START" });
+
+// Step 4: Read tags for 10 seconds
+Console.WriteLine("\n--- Reading tags for 10 seconds ---\n");
+await Task.Delay(10000);
+
+// Step 5: Stop inventory
+Console.WriteLine($"\n--- Stopping inventory ({tagCount} tags read) ---\n");
+await PublishCommand(ctrlCmd, "control_operation", "4",
+    new { action = "STOP" });
+await Task.Delay(2000);
+
+// Disconnect
+await client.DisconnectAsync();
+Console.WriteLine($"[done] Total tags read: {tagCount}");
+```
+
+## Running the Program
+
+1. Ensure the configuration variables are updated with your actual IOTC credentials.
+2. Build and run:
+
+```bash
+dotnet run
+```
+
+## Expected Output
+
+```
+Connecting to mqtt.iotconnector.zebra.com:8883...
+[connected] Successfully connected to IOTC broker
+[subscribed] Listening on MGMT, CTRL, and DATA topics
+[publish] get_version (requestId: 1)
+[mgmt] get_version: OK
+  Model: RFD40
+  Serial: RFD40-1234567890
+  Firmware: 3.10.27
+[publish] set_operating_mode (requestId: 2)
+[ctrl] set_operating_mode: OK (state: )
+[publish] control_operation (requestId: 3)
+[ctrl] control_operation: OK (state: RUNNING)
+
+--- Reading tags for 10 seconds ---
+
+[tag #1] EPC: E2801160600002071131F3A5  RSSI: -45 dBm
+[tag #2] EPC: 3034257BF400B78000000041  RSSI: -52 dBm
+...
+
+--- Stopping inventory (6 tags read) ---
+
+[publish] control_operation (requestId: 4)
+[ctrl] control_operation: OK (state: IDLE)
+[done] Total tags read: 6
+```
+
+## Next Steps
+
+- [MQTT Reference](../../mqtt-reference.mdx): Full command and event reference
+- Explore advanced operating modes for filtered inventory and tag access operations

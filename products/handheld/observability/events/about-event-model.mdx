@@ -1,0 +1,104 @@
+---
+sidebar_position: 1
+title: "About the Event Model"
+description: "Overview of the six event types published by the RFD40/RFD90 via MQTT and their roles in the system."
+---
+
+# About the Event Model
+
+The RFD40/RFD90 reader sled publishes six distinct event types over MQTT. Each event type serves a different purpose, from tag data delivery to device health monitoring to connection tracking. Understanding the event model helps you subscribe to the right topics and build appropriate processing logic.
+
+## Event Types Overview
+
+| Event Type | Topic Interface | Trigger | Primary Consumer |
+|---|---|---|---|
+| `dataEVT` | `DATA` | Tag read during RFID operation | Inventory / asset tracking application |
+| `heartBeatEVT` | `DATA` | Periodic timer (configurable interval) | Fleet management / monitoring dashboard |
+| `alerts` | `DATA` | Threshold breach (battery, temperature, etc.) | Operations / alerting system |
+| `alert_short` | `DATA` | Same as `alerts`, compact format | Bandwidth-constrained monitoring |
+| `exceptionEVT` | `DATA` | Error condition on the device | Error handling / diagnostics |
+| `mqttConnEVT` | `DATA` | MQTT connection state change | Fleet connectivity dashboard |
+
+## Event Topic Structure
+
+All events follow the standard MQTT topic pattern:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+- **`dataEVT`** is published on `data1event` or `data2event` channels
+- **`heartBeatEVT`**, **`alerts`**, **`alert_short`**, **`exceptionEVT`**, and **`mqttConnEVT`** are published on their respective named channels under the `DATA` interface
+
+## Event Categories
+
+### Data Events
+
+`dataEVT` is the core operational event. It carries RFID tag reads and is the highest-volume event type. During active scanning, a reader can generate hundreds to thousands of these per second.
+
+### Health Events
+
+`heartBeatEVT` provides periodic snapshots of device health: battery level, connection quality, temperature, and operating state. These events are the backbone of fleet monitoring.
+
+### Alert Events
+
+`alerts` and `alert_short` fire when a monitored metric crosses a configured threshold. They are low-frequency, high-importance events that should trigger operational responses.
+
+- **`alerts`**: Full alert payload with all context fields
+- **`alert_short`**: Compact payload with essential fields only, for environments where bandwidth is limited
+
+### Exception Events
+
+`exceptionEVT` reports error conditions on the device; firmware errors, hardware faults, failed operations. These events are critical for diagnostics and should be logged and monitored.
+
+### Connection Events
+
+`mqttConnEVT` reports MQTT connection state transitions: connected, disconnected, reconnecting. These events enable fleet connectivity tracking without relying on the MQTT broker's presence detection.
+
+## Event Volume Expectations
+
+| Event Type | Typical Frequency |
+|---|---|
+| `dataEVT` | 10–1000+ per second (during scanning) |
+| `heartBeatEVT` | 1 per 30–300 seconds (configurable) |
+| `alerts` | Sporadic, only on threshold breach |
+| `alert_short` | Sporadic; mirrors `alerts` in compact form |
+| `exceptionEVT` | Rare, only on error conditions |
+| `mqttConnEVT` | Rare, only on connection state changes |
+
+## Configuring Events
+
+All event types except `mqttConnEVT` can be enabled, disabled, or tuned via the `config_events` command. You control:
+
+- Which events are active
+- Heartbeat interval
+- Alert thresholds
+- Data channel assignment
+
+See [How to Configure Event Reporting](./configure-event-reporting.mdx) for the complete configuration guide.
+
+## Subscribing to Events
+
+For a comprehensive monitoring setup, subscribe to all event channels:
+
+```
+{tenantId}/DATA/clients/data1event/{deviceSerial}
+{tenantId}/DATA/clients/data2event/{deviceSerial}
+{tenantId}/DATA/clients/heartbeat/{deviceSerial}
+{tenantId}/DATA/clients/alerts/{deviceSerial}
+{tenantId}/DATA/clients/exceptions/{deviceSerial}
+{tenantId}/DATA/clients/connection/{deviceSerial}
+```
+
+For fleet-wide monitoring, use a wildcard for the device serial:
+
+```
+{tenantId}/DATA/clients/heartbeat/+
+{tenantId}/DATA/clients/alerts/+
+```
+
+## Related Topics
+
+- [Event Types Reference](./event-types-reference.mdx): complete payload schemas for all event types
+- [How to Configure Event Reporting](./configure-event-reporting.mdx): enable/disable and tune events
+- [About Heartbeat Events](./about-heartbeat-events.mdx): deep dive into health monitoring

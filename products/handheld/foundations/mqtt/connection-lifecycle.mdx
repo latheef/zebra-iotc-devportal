@@ -1,0 +1,160 @@
+---
+sidebar_position: 4
+title: "About Connection Lifecycle & Keep-Alive"
+---
+
+# About Connection Lifecycle & Keep-Alive
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+The MQTT connection lifecycle for handheld RFID readers is more complex than for fixed readers due to the Bluetooth intermediary and battery power constraints. This page explains how connections are established, maintained, and recovered, and how to configure keep-alive and session persistence for optimal reliability and battery life.
+
+## Connection Establishment
+
+The MQTT connection for a handheld reader follows a multi-step process:
+
+### Step 1: Bluetooth Pairing
+
+The reader sled pairs with the host mobile device via Bluetooth. This is a one-time operation per device pair, once paired, the devices reconnect automatically when in range.
+
+### Step 2: MQTT Proxy Activation
+
+The Zebra RFID Mobile App (or custom SDK application) on the host device starts the MQTT proxy service. This service opens a TCP/TLS connection to the configured MQTT broker.
+
+### Step 3: MQTT CONNECT
+
+The proxy sends an MQTT CONNECT packet to the broker containing:
+
+| Field | Description | Typical Value |
+|-------|-------------|---------------|
+| Client ID | Unique identifier for this reader connection | `iotc-{deviceSerial}` |
+| Username | Authentication credential | Tenant-specific |
+| Password | Authentication credential | Tenant-specific |
+| Keep-Alive | Maximum idle interval in seconds | `60` |
+| Clean Session | Whether to resume a previous session | `false` (recommended) |
+| Will Topic | Topic for LWT message | `{tenantId}/mgmt/clients/{channel}/{deviceSerial}/event` |
+| Will Message | Offline notification payload | `{"event": "device_offline", ...}` |
+| Will QoS | QoS for LWT message | `1` |
+| Will Retain | Whether LWT is retained | `true` |
+
+### Step 4: CONNACK
+
+The broker validates credentials and responds with a CONNACK packet:
+
+| Return Code | Meaning |
+|-------------|---------|
+| `0` | Connection accepted |
+| `1` | Unacceptable protocol version |
+| `2` | Client identifier rejected |
+| `4` | Bad username or password |
+| `5` | Not authorized |
+
+### Step 5: Subscription Setup
+
+Upon successful connection, the reader subscribes to its command topics:
+
+```
+{tenantId}/mgmt/clients/{channel}/{deviceSerial}/command
+{tenantId}/ctrl/clients/{channel}/{deviceSerial}/command
+```
+
+The application client subscribes to the corresponding response, event, and data topics.
+
+## Keep-Alive Mechanism
+
+MQTT keep-alive prevents the broker from treating an idle but connected client as disconnected. The mechanism works as follows:
+
+1. The client declares a keep-alive interval (in seconds) in the CONNECT packet
+2. If the client does not send any MQTT packet within the keep-alive interval, it must send a **PINGREQ** packet
+3. The broker responds with a **PINGRESP** packet
+4. If the broker receives no packet within **1.5× the keep-alive interval**, it considers the client disconnected and publishes the LWT
+
+### Recommended Keep-Alive Values
+
+| Scenario | Keep-Alive | Rationale |
+|----------|-----------|-----------|
+| Active inventory | 30–60 seconds | Frequent data publishing acts as implicit keep-alive |
+| Intermittent use (retail associate) | 60 seconds | Balance responsiveness with moderate power draw |
+| Low-frequency monitoring | 120 seconds | Reduces PING traffic, conserves battery |
+| Battery-critical mode | 300 seconds | Minimize all radio activity |
+
+### Battery Impact
+
+Each PINGREQ/PINGRESP exchange activates the Bluetooth radio and the host device's Wi-Fi stack. At a 60-second keep-alive, this adds approximately 1% battery drain per hour in idle mode. At 300 seconds, the drain drops to ~0.2% per hour.
+
+## Clean Session vs Persistent Session
+
+The **Clean Session** flag in the CONNECT packet controls session persistence:
+
+### Clean Session = `true`
+
+- The broker discards any prior session state for this Client ID
+- All previous subscriptions are removed
+- Any queued QoS 1 messages are discarded
+- The client must re-subscribe to all topics after each connection
+
+### Clean Session = `false` (Recommended)
+
+- The broker retains the session state for this Client ID across disconnections
+- Subscriptions persist; the client does not need to re-subscribe
+- QoS 1 messages published while the client was offline are queued and delivered upon reconnection
+- The broker returns **Session Present = 1** in the CONNACK if a prior session exists
+
+IOTC recommends `Clean Session = false` for production deployments. This ensures that:
+- Critical MGMT events published during brief disconnections are not lost
+- The reader does not need to re-subscribe after every Bluetooth reconnection
+- The broker queues important messages during transient network outages
+
+## Bluetooth Disconnection Behavior
+
+When the Bluetooth connection between the reader and host device is interrupted:
+
+### Immediate Effects
+
+1. The MQTT proxy on the host device can no longer communicate with the reader
+2. No new tag data or events are published
+3. Commands sent by the application are queued by the broker (QoS 1) but cannot reach the reader
+
+### Broker Behavior
+
+- The MQTT connection remains open for up to **1.5× the keep-alive interval** after the last received packet
+- If Bluetooth reconnects before this timeout, the MQTT session continues transparently
+- If the timeout expires, the broker publishes the LWT message and closes the session
+
+### Reconnection
+
+When Bluetooth reconnects:
+1. The MQTT proxy re-establishes the TCP/TLS connection to the broker
+2. The CONNECT packet uses `Clean Session = false` to resume the prior session
+3. Queued QoS 1 messages (commands sent during disconnection) are delivered to the reader
+4. The reader resumes normal operation
+
+### Typical Reconnection Times
+
+| Scenario | Bluetooth Reconnect | MQTT Re-establish | Total Downtime |
+|----------|-------------------|-------------------|----------------|
+| Brief out-of-range (< 10 sec) | 1–3 seconds | 1–2 seconds | 2–5 seconds |
+| Extended out-of-range (30+ sec) | 3–10 seconds | 2–5 seconds | 5–15 seconds |
+| Host device sleep/wake | 2–5 seconds | 1–3 seconds | 3–8 seconds |
+| Reader sled power cycle | 5–15 seconds | 2–5 seconds | 7–20 seconds |
+
+## Graceful Disconnection
+
+When the application intentionally disconnects a reader (end of shift, maintenance):
+
+1. Send a `stop_inventory` command if inventory is active
+2. Wait for the response confirming inventory stopped
+3. Send an MQTT DISCONNECT packet; this tells the broker not to publish the LWT
+4. Close the TCP connection
+
+This prevents false "device offline" alerts when readers are intentionally taken offline.
+
+## Connection Monitoring
+
+Applications should implement connection monitoring to track the online/offline state of each reader:
+
+- **Subscribe** to the reader's event topic and watch for `device_online` and `device_offline` events
+- **Use retained messages**: The reader's last status message is retained on the broker, so your application gets the current state immediately upon subscribing
+- **Implement heartbeat tracking**: If no message (data, event, or response) is received from a reader within 2× the keep-alive interval, consider it potentially offline

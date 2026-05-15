@@ -1,0 +1,121 @@
+---
+sidebar_position: 2
+title: Get Version
+description: Retrieve firmware version, device model, serial number, SKU, and component versions.
+---
+
+# Get Version
+
+Retrieve the hardware and software version information for a Zebra handheld RFID reader. The response includes the device model, serial number, SKU, and version strings for firmware, Bluetooth, radio, OS, bootloader, and cloud agent components.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `get_version` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "get_version",
+  "requestId": "req-001"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"get_version"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response with this request. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "get_version",
+  "requestId": "req-001",
+  "responseCode": 0,
+  "deviceVersion": {
+    "model": "RFD40",
+    "deviceSerialNo": "RFD40-212735201D0053",
+    "sku": "RFD40-STD-G510-WR",
+    "firmwareVersion": "2.1.0.45",
+    "bluetoothVersion": "5.1",
+    "radioVersion": "3.4.12",
+    "osVersion": "1.8.3",
+    "bootLoaderVersion": "1.2.0",
+    "cloudAgentVersion": "1.5.7"
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echo of the command name. |
+| `requestId` | string | Echo of the request identifier. |
+| `responseCode` | integer | Result code indicating success or failure. |
+| `deviceVersion` | object | Container for all version information fields. |
+| `deviceVersion.model` | string | Device model identifier (e.g., `"RFD40"`, `"RFD90"`). |
+| `deviceVersion.deviceSerialNo` | string | Unique device serial number. |
+| `deviceVersion.sku` | string | Stock Keeping Unit identifier. |
+| `deviceVersion.firmwareVersion` | string | Main firmware version string. |
+| `deviceVersion.bluetoothVersion` | string | Bluetooth module version. |
+| `deviceVersion.radioVersion` | string | RFID radio firmware version. |
+| `deviceVersion.osVersion` | string | Operating system version. |
+| `deviceVersion.bootLoaderVersion` | string | Bootloader version. |
+| `deviceVersion.cloudAgentVersion` | string | IoT Connector cloud agent version. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success. |
+| `1` | General failure. |
+| `3` | Device busy or unavailable. |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "get_version",
+  "requestId": "ver-20260414-001"
+}
+```
+
+### Response
+
+```json
+{
+  "command": "get_version",
+  "requestId": "ver-20260414-001",
+  "responseCode": 0,
+  "deviceVersion": {
+    "model": "RFD90",
+    "deviceSerialNo": "RFD40-212735201D0053",
+    "sku": "RFD90-UHF-G710-US",
+    "firmwareVersion": "3.0.1.12",
+    "bluetoothVersion": "5.2",
+    "radioVersion": "4.1.8",
+    "osVersion": "2.0.1",
+    "bootLoaderVersion": "1.3.0",
+    "cloudAgentVersion": "2.0.3"
+  }
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

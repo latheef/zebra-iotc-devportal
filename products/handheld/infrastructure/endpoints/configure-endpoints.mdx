@@ -1,0 +1,212 @@
+---
+sidebar_position: 3
+title: How to Configure MQTT Endpoints
+description: "Set MQTT broker host, port, TLS settings, and credentials for each endpoint type on handheld RFID readers"
+---
+
+# How to Configure MQTT Endpoints
+
+Use the `config_endpoint` command to configure where the reader connects for management, control, and data traffic. This guide covers setting broker parameters, enabling TLS, configuring authentication, and validating the configuration.
+
+**Publish to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+> **MDM endpoint restriction:** In some deployments, the MDM endpoint is locked by the device management platform and cannot be modified via MQTT commands. If you receive response code `15` ("Configuration locked"), the MDM endpoint must be configured through the MDM platform.
+
+---
+
+## Basic Configuration
+
+### Redirect the DATA Endpoint to a Customer Broker
+
+The most common configuration change: point the DATA endpoint to your own MQTT broker so tag data flows directly to your application infrastructure.
+
+```json
+{
+  "requestId": "req-cfg-001",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "host": "mqtt.yourcompany.com",
+    "port": 8883,
+    "tlsEnabled": true,
+    "caCertificateId": "your-broker-ca",
+    "username": "RFD40-12345678",
+    "password": "device-specific-password"
+  }
+}
+```
+
+**Successful response:**
+
+```json
+{
+  "requestId": "req-cfg-001",
+  "command": "config_endpoint",
+  "responseCode": 0,
+  "responseMessage": "Success"
+}
+```
+
+After a successful configuration change, the reader disconnects from the previous broker and reconnects to the new one. This typically takes 2–5 seconds.
+
+---
+
+## Configuration with Mutual TLS
+
+For certificate-based authentication (no username/password):
+
+```json
+{
+  "requestId": "req-cfg-002",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "host": "mqtt.yourcompany.com",
+    "port": 8883,
+    "tlsEnabled": true,
+    "caCertificateId": "your-broker-ca",
+    "clientCertificateId": "reader-data-cert"
+  }
+}
+```
+
+> **Certificate prerequisite:** Both `caCertificateId` and `clientCertificateId` must reference certificates already installed on the reader. See [Manage TLS/SSL Certificates](../security/manage-certificates).
+
+---
+
+## Connection Parameters
+
+Fine-tune the MQTT connection behavior:
+
+```json
+{
+  "requestId": "req-cfg-003",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "CTRL",
+    "host": "ctrl-broker.site.local",
+    "port": 8883,
+    "tlsEnabled": true,
+    "caCertificateId": "site-local-ca",
+    "username": "reader-ctrl",
+    "password": "ctrl-password",
+    "keepAlive": 30,
+    "cleanSession": false,
+    "autoReconnect": true,
+    "reconnectInterval": 5
+  }
+}
+```
+
+### Parameter Reference
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `endpointType` | String | N/A | **Required.** `MDM`, `CTRL`, or `DATA`. |
+| `host` | String | N/A | **Required.** Broker hostname or IP address. |
+| `port` | Integer | `8883` | Broker port. Use `8883` for TLS, `1883` for plaintext (development only). |
+| `tlsEnabled` | Boolean | `true` | Enable TLS encryption. |
+| `caCertificateId` | String | N/A | ID of the installed CA certificate for broker validation. Required when `tlsEnabled` is `true`. |
+| `clientCertificateId` | String | N/A | ID of the installed client certificate for mTLS. Optional. |
+| `username` | String | N/A | MQTT username. Not required if using client certificate authentication. |
+| `password` | String | N/A | MQTT password. Not required if using client certificate authentication. |
+| `keepAlive` | Integer | `60` | MQTT keep-alive interval in seconds. Range: 10–300. |
+| `cleanSession` | Boolean | `false` | MQTT clean session flag. `false` preserves subscriptions across reconnections. |
+| `autoReconnect` | Boolean | `true` | Automatically reconnect after disconnection. |
+| `reconnectInterval` | Integer | `5` | Base reconnection interval in seconds. Backoff is exponential up to 5 minutes. |
+
+---
+
+## Partial Updates
+
+You only need to include the fields you want to change. Omitted fields retain their current values:
+
+```json
+{
+  "requestId": "req-cfg-004",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "keepAlive": 45,
+    "reconnectInterval": 10
+  }
+}
+```
+
+This updates only the keep-alive and reconnect interval for the DATA endpoint. Host, port, TLS, and authentication settings remain unchanged.
+
+---
+
+## Configuration Validation
+
+After configuring an endpoint, verify the connection was established:
+
+```json
+{
+  "requestId": "req-cfg-005",
+  "command": "get_endpoint_config",
+  "payload": {
+    "endpointType": "DATA"
+  }
+}
+```
+
+Check `connectionStatus` in the response. If it shows `DISCONNECTED` or `ERROR`, the configuration may be incorrect.
+
+**Common error codes from `config_endpoint`:**
+
+| Code | Meaning | Resolution |
+|------|---------|------------|
+| `1` | Invalid parameter | Check field names and value types |
+| `5` | Certificate not found | Install the referenced CA or client certificate first |
+| `10` | Host unreachable | Verify hostname, DNS resolution, and firewall rules |
+| `15` | Configuration locked | MDM endpoint is managed by the MDM platform; configure through MDM |
+| `16` | Invalid port | Port must be 1–65535 |
+
+---
+
+## Reverting to Default Configuration
+
+To restore an endpoint to the Zebra-hosted broker defaults:
+
+```json
+{
+  "requestId": "req-cfg-006",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "restoreDefaults": true
+  }
+}
+```
+
+This resets the endpoint to the factory-provisioned Zebra broker settings.
+
+---
+
+## Best Practices
+
+1. **Always use TLS** (`port: 8883`, `tlsEnabled: true`). Never use plaintext MQTT (port 1883) in production.
+2. **Set `cleanSession: false`** so the broker queues messages while the reader is temporarily disconnected.
+3. **Keep `keepAlive` between 30–60 seconds** for a good balance between responsiveness and network overhead.
+4. **Test on one reader first** before rolling out endpoint changes to the fleet.
+5. **Document your endpoint topology**: which readers connect to which brokers for which interfaces.
+
+---
+
+## Next Steps
+
+- [View Endpoint Configuration](./view-endpoint-config): verify current settings
+- [About MQTT Endpoint Configuration](./about-endpoint-config): understand endpoint types
+- [Multi-Endpoint Architectures](./multi-endpoint-architectures): design patterns for multi-broker deployments
+- [Secure the MQTT Connection with TLS](../security/secure-mqtt-connection): TLS setup guide

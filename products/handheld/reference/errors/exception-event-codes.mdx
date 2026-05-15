@@ -1,0 +1,138 @@
+---
+sidebar_position: 3
+title: "Exception Event Codes"
+---
+
+# Exception Event Codes
+
+📕 **REFERENCE**: Event codes published in `exceptionEVT` payloads on the device event topic.
+
+## Overview
+
+The IoT Connector publishes exception events when the device encounters abnormal conditions that do not occur as direct responses to commands. These events are delivered asynchronously on the device event topic:
+
+```
+zebra/iotc/event/{deviceId}
+```
+
+Exception events use the `exceptionEVT` event type and contain a structured payload with an event code, severity, and descriptive message.
+
+## Exception Event Payload Structure
+
+```json
+{
+  "eventType": "exceptionEVT",
+  "eventCode": 1001,
+  "severity": "WARNING",
+  "message": "Battery level below 20%",
+  "timestamp": "2026-05-14T10:30:00.000Z",
+  "deviceId": "RFD40-123456"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `eventType` | String | Always `"exceptionEVT"` for exception events. |
+| `eventCode` | Integer | Numeric code identifying the specific exception condition. |
+| `severity` | String | One of `INFO`, `WARNING`, `ERROR`, or `CRITICAL`. |
+| `message` | String | Human-readable description of the exception. |
+| `timestamp` | String | ISO 8601 timestamp when the exception occurred. |
+| `deviceId` | String | The unique identifier of the device that raised the exception. |
+
+## Severity Levels
+
+| Severity | Meaning |
+|---|---|
+| `INFO` | Informational event; no action required. |
+| `WARNING` | Potential issue that may require attention if it persists. |
+| `ERROR` | An error condition that impacts device functionality. |
+| `CRITICAL` | Severe condition requiring immediate attention; device operation may be compromised. |
+
+## Exception Event Code Table
+
+### Battery & Power Events (1000–1099)
+
+| Code | Severity | Name | Description |
+|---:|---|---|---|
+| 1001 | WARNING | Battery Low | Battery level has dropped below 20%. Consider charging the device. |
+| 1002 | CRITICAL | Battery Critical | Battery level has dropped below 5%. The device may shut down imminently. |
+| 1003 | INFO | Battery Charging | Device has been connected to a charging source. |
+| 1004 | INFO | Battery Fully Charged | Battery has reached full charge. |
+| 1005 | WARNING | Battery Health Degraded | Battery health has dropped below 80% of original capacity. Consider replacement. |
+| 1006 | ERROR | Unexpected Power Loss | Device experienced an unexpected power interruption. |
+
+### Connectivity Events (1100–1199)
+
+| Code | Severity | Name | Description |
+|---:|---|---|---|
+| 1100 | ERROR | MQTT Connection Lost | The connection to the MQTT broker was lost unexpectedly. The device will attempt to reconnect. |
+| 1101 | INFO | MQTT Reconnected | The device has successfully reconnected to the MQTT broker after a disconnection. |
+| 1102 | WARNING | Wi-Fi Signal Weak | The Wi-Fi signal strength has dropped below the acceptable threshold (RSSI below -75 dBm). |
+| 1103 | ERROR | Wi-Fi Disconnected | The Wi-Fi connection to the access point was lost. |
+| 1104 | INFO | Wi-Fi Connected | The device has connected to a Wi-Fi network. |
+| 1105 | ERROR | DNS Resolution Failed | The device could not resolve the MQTT broker hostname. |
+| 1106 | WARNING | High Latency Detected | Round-trip time to the MQTT broker exceeds 500 ms. |
+| 1107 | ERROR | Bluetooth Disconnected | The Bluetooth connection to the host mobile device was lost. |
+| 1108 | INFO | Bluetooth Connected | The device has paired and connected to a host mobile device via Bluetooth. |
+
+### RFID Operation Events (1200–1299)
+
+| Code | Severity | Name | Description |
+|---:|---|---|---|
+| 1200 | ERROR | Antenna Fault | An antenna fault was detected. RFID operations on the affected antenna will not function. |
+| 1201 | WARNING | High Tag Population | The tag population in the field exceeds the optimal threshold. Read rates may be reduced. |
+| 1202 | ERROR | Inventory Aborted | The inventory operation was terminated unexpectedly due to an internal error. |
+| 1203 | WARNING | Temperature Warning | The device internal temperature is approaching the operational limit. Transmit power may be automatically reduced. |
+| 1204 | CRITICAL | Temperature Shutdown | The device has exceeded its safe operating temperature and is suspending RFID operations to cool down. |
+| 1205 | INFO | Region Changed | The RFID regulatory region configuration was updated. |
+
+### Certificate & Security Events (1300–1399)
+
+| Code | Severity | Name | Description |
+|---:|---|---|---|
+| 1300 | WARNING | Certificate Expiring Soon | A TLS certificate on the device will expire within 30 days. |
+| 1301 | ERROR | Certificate Expired | A TLS certificate on the device has expired. Secure connections using this certificate will fail. |
+| 1302 | ERROR | TLS Connection Rejected | The MQTT broker rejected the device's TLS client certificate. |
+
+### Firmware & System Events (1400–1499)
+
+| Code | Severity | Name | Description |
+|---:|---|---|---|
+| 1400 | INFO | Firmware Update Available | A new firmware version is available for the device. |
+| 1401 | INFO | Firmware Update Started | The device has begun downloading and applying a firmware update. |
+| 1402 | INFO | Firmware Update Complete | The firmware update was applied successfully. A reboot may be required. |
+| 1403 | ERROR | Firmware Update Failed | The firmware update process failed. See error details in the message field. |
+| 1404 | INFO | Device Rebooting | The device is initiating a reboot. It will reconnect after restarting. |
+| 1405 | WARNING | Storage Nearly Full | Device internal storage usage exceeds 90%. Queued messages may be discarded. |
+
+## Subscribing to Exception Events
+
+Subscribe to the device event topic to receive exception events alongside other device events (tag reads, heartbeats, etc.):
+
+```
+zebra/iotc/event/{deviceId}
+```
+
+Filter for exception events by checking the `eventType` field:
+
+```python
+def on_message(client, userdata, msg):
+    payload = json.loads(msg.payload.decode())
+
+    if payload.get("eventType") == "exceptionEVT":
+        code = payload["eventCode"]
+        severity = payload["severity"]
+        message = payload["message"]
+        handle_exception(code, severity, message)
+```
+
+> **Warning:** Exception events are published on a best-effort basis. If the device loses connectivity, exception events that occur during the disconnection period are not guaranteed to be delivered retroactively. Design your monitoring to detect missing heartbeats as an additional signal of device issues.
+
+## Recommended Actions by Severity
+
+| Severity | Recommended Action |
+|---|---|
+| INFO | Log for audit trail. No immediate action required. |
+| WARNING | Log and monitor. Investigate if the condition persists or occurs frequently. |
+| ERROR | Alert operations team. Investigate root cause and take corrective action. |
+| CRITICAL | Immediate response required. Device operation may be degraded or halted. |

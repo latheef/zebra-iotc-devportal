@@ -1,0 +1,546 @@
+---
+sidebar_position: 14
+title: Troubleshooting
+---
+
+# Troubleshooting
+
+Something is broken and you need it fixed. This guide is organized by symptom; find what you are seeing, read why it happens, follow the steps to resolve it.
+
+For a quick code lookup, jump to [Section 14.4: Response Code Reference](#144-response-code-reference-quick-lookup). For a diagnostic sequence to run right now, jump to [Section 14.6: Diagnostic Command Sequences](#146-diagnostic-command-sequences).
+
+---
+
+## 14.1 Reader Won't Connect to Broker
+
+The reader appears powered on and operational, but no heartbeat events arrive, no command responses come back, and the reader is not visible on the broker's connected-clients list.
+
+### TLS Handshake Failure
+
+**Symptom:** Reader does not appear in the broker's connected-client list. Broker logs show `SSL_ERROR`, `HANDSHAKE_FAILURE`, or `UNKNOWN_CA`. On AWS IoT Core, CloudWatch logs show `AUTHORIZATION_FAILURE`.
+
+**Cause:** The TLS handshake fails before the MQTT session is established; the reader and broker cannot agree on a trusted certificate chain.
+
+| Root Cause | What Is Happening |
+|-----------|-------------------|
+| **Missing CA certificate** | Reader does not have the broker's CA certificate installed. Cannot verify the server certificate. |
+| **Expired certificate** | Either the client or server certificate has passed its `validTo` date. |
+| **Hostname mismatch** | Broker certificate is issued for `mqtt.example.com` but the endpoint is configured to `10.0.1.50` or a different hostname. |
+| **Wrong certificate type** | A `wifi`-type certificate was installed where an `mqtt`-type is needed. |
+
+**Solution:**
+
+1. **Verify installed certificates:**
+
+   ```json
+   {
+     "command": "get_installed_certificate",
+     "requestId": "tls-debug-001"
+   }
+   ```
+
+   Check each certificate's `type`, `validTo`, `issuer`, and `subject`. The `mqtt`-type certificate's `issuer` must match the broker's CA.
+
+2. **Verify endpoint hostname:**
+
+   ```json
+   {
+     "command": "get_endpoint_config",
+     "requestId": "tls-debug-002"
+   }
+   ```
+
+   The `host` value must match the CN or SAN of the broker's server certificate.
+
+3. **Reinstall the correct CA** via `install_certificate` with `type: "mqtt"`. See [Securing the Connection](/handheld/mqtt/securing-the-connection).
+
+---
+
+### DNS Resolution Failure
+
+**Symptom:** Reader is on Wi-Fi (`get_wifi` shows `"connected": true`), but never connects to the broker. Broker logs show no connection attempt at all.
+
+**Cause:** Reader cannot resolve the broker's hostname. The connection fails at the DNS layer, before any TCP or TLS traffic is generated.
+
+**Solution:**
+
+1. Resolve the broker hostname from a device on the same network (`nslookup mqtt-broker.enterprise.com`). If it fails, the DNS record is missing.
+2. As a diagnostic shortcut, reconfigure the endpoint to use the broker's IP address. If the reader connects, confirm the problem is DNS. Fix DNS; hardcoded IPs are fragile in production.
+
+> If you use an IP address as the endpoint, the broker's TLS certificate must include that IP in its Subject Alternative Name (SAN). Most certificates are issued for hostnames only.
+
+---
+
+### Firewall Blocking MQTT Port
+
+**Symptom:** DNS resolves correctly, but reader still does not connect. A TCP connectivity test on port 8883 from the reader's network segment times out.
+
+**Solution:**
+
+1. Test TCP connectivity on port 8883 from a device on the same VLAN/subnet.
+2. Request a firewall rule to allow outbound TCP on port 8883 from the reader VLAN to the broker.
+3. Verify the reader's configured port matches the broker's listener via `get_endpoint_config`.
+
+---
+
+### Certificate Mismatch: Mutual TLS
+
+**Symptom:** Reader makes a TCP connection to the broker, but TLS handshake fails. Broker logs show `PEER_CERTIFICATE_UNKNOWN`, `CERTIFICATE_REQUIRED`, or `BAD_CERTIFICATE`.
+
+**Cause:** Broker requires mutual TLS (mTLS). The reader has no `client`-type certificate installed, or the installed client certificate was not signed by a CA the broker trusts.
+
+**Solution:**
+
+1. Issue `get_installed_certificate` and look for `"type": "client"`.
+2. If missing, install the client certificate and private key:
+
+   ```json
+   {
+     "command": "install_certificate",
+     "requestId": "mtls-fix-001",
+     "certificate": {
+       "name": "reader-client-cert",
+       "type": "client",
+       "certificateData": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+       "privateKeyData": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+     }
+   }
+   ```
+
+   See [Securing the Connection](/handheld/mqtt/securing-the-connection) for the full mTLS procedure.
+
+---
+
+## 14.2 No Tag Data After Starting Inventory
+
+You send `control_operation` START and get response code `0` (success), but no `dataEVT` messages appear on the DATA topic.
+
+### Region Not Configured
+
+**Symptom:** `control_operation` START returns response code **`6`**; inventory does not start.
+
+**Cause:** The reader's regulatory region has not been set. RFID radios must be configured with the correct country/region to comply with local RF regulations. **Region is not configurable via MQTT** : it must be set through **123RFID Desktop** via a USB or Bluetooth connection.
+
+**Solution:**
+
+1. Connect the reader to 123RFID Desktop via USB or Bluetooth.
+2. Set the correct region for the deployment country.
+3. Verify via MQTT:
+
+   ```json
+   {
+     "command": "get_current_region",
+     "requestId": "region-check-001"
+   }
+   ```
+
+   Confirm a valid `country` and `regulatoryStandard` (e.g., `"FCC"` for the US, `"ETSI"` for the EU).
+
+4. Retry `control_operation` START.
+
+---
+
+### Operating Mode Misconfiguration
+
+**Symptom:** START returns code `0` but no `dataEVT` arrives. Or START returns code **`22`** (advanced configuration not set) or code **`11`** (inventory already in progress).
+
+**Solution:**
+
+1. Check current operating mode:
+
+   ```json
+   {
+     "command": "get_operating_mode",
+     "requestId": "mode-check-001"
+   }
+   ```
+
+2. Switch to a preset profile to rule out configuration issues:
+
+   ```json
+   {
+     "command": "set_operating_mode",
+     "requestId": "mode-fix-001",
+     "operatingMode": {
+       "operatingModes": {
+         "profiles": "BALANCED_PERFORMANCE"
+       }
+     }
+   }
+   ```
+
+3. If code `11` (inventory in progress): Stop the current operation first, then retry:
+
+   ```json
+   {
+     "command": "control_operation",
+     "requestId": "stop-001",
+     "ctrlOprPayload": {
+       "controlType": "RFID",
+       "operation": "STOP"
+     }
+   }
+   ```
+
+See [Controlling RFID Operations](/handheld/mqtt/controlling-operations) for operating mode details.
+
+---
+
+### Post-Filter Too Aggressive
+
+**Symptom:** START returns code `0`. Reader is actively scanning (`get_status` shows `radioActivity: "ACTIVE"`). But zero or far fewer `dataEVT` messages arrive than expected.
+
+**Cause:** A post-filter configured via `set_post_filter` is discarding tag reads before publication. If the filter criteria do not match any tags present, every read is silently dropped.
+
+**Solution:**
+
+1. Check the current post-filter:
+
+   ```json
+   {
+     "command": "get_post_filter",
+     "requestId": "filter-check-001"
+   }
+   ```
+
+2. Disable temporarily to confirm:
+
+   ```json
+   {
+     "command": "set_post_filter",
+     "requestId": "filter-clear-001",
+     "postFilter": {
+       "enable": false
+     }
+   }
+   ```
+
+3. Restart inventory. If `dataEVT` messages now appear, the post-filter was suppressing them. See [Controlling RFID Operations](/handheld/mqtt/controlling-operations) for filter reconfiguration.
+
+---
+
+### Radio Not Connected (Bluetooth Pairing)
+
+**Symptom:** START returns code `0`, but `get_status` shows `radioConnection: "DISCONNECTED"`. No `dataEVT` messages arrive.
+
+**Cause:** The RFD40/RFD90 reader's RFID radio communicates with the host terminal via Bluetooth. If this pairing is lost, the IoT Connector agent can communicate over Wi-Fi (MQTT works) but cannot command the RFID radio.
+
+**Solution:**
+
+1. Verify via get_status: check `deviceStatus.radioConnection` and `terminalConnection.status`.
+2. Re-pair the reader with its host terminal via Bluetooth using 123RFID Desktop or the device's Bluetooth menu.
+3. After pairing, `radioConnection` should change to `"CONNECTED"`. Retry START.
+
+---
+
+## 14.3 Intermittent Tag Reads or Low Read Rates
+
+Inventory runs and tags are being read, but far fewer than expected, or tags appear and disappear between cycles.
+
+### Transmit Power Too Low
+
+**Symptom:** Tags close to the reader are read reliably, but tags beyond a certain distance are missed. Effective read range is shorter than expected.
+
+**Solution:**
+
+1. Check current transmit power:
+
+   ```json
+   {
+     "command": "get_operating_mode",
+     "requestId": "power-check-001"
+   }
+   ```
+
+   `advancedConfigurations.transmitPower` is in **1/10 dBm**; `270` = 27.0 dBm.
+
+2. Check max allowed power:
+
+   ```json
+   {
+     "command": "get_current_region",
+     "requestId": "region-power-001"
+   }
+   ```
+
+   Inspect `maxTxPowerSupported`. FCC maximum is typically `300` (30.0 dBm).
+
+3. Set the ADVANCED profile and increase transmit power. See [Controlling RFID Operations](/handheld/mqtt/controlling-operations).
+
+---
+
+### Wrong Link Profile for Environment
+
+**Symptom:** Read rates fluctuate significantly between cycles. Tags at consistent distances appear and disappear unpredictably.
+
+**Cause:** The link profile defines RF modulation and data rate. A high-data-rate profile performs well in a clean lab but fails in a warehouse with metal racking, other active readers, or fast-moving tags.
+
+**Solution:**
+
+1. Check current link profile via `get_operating_mode` → `advancedConfigurations.linkProfile`.
+
+2. Match profile to environment:
+
+   | Environment | Recommended Profile |
+   |------------|-------------------|
+   | Lab/bench | `FM0_320K` |
+   | Warehouse with metal racking | `M4_256K` |
+   | Conveyor / vehicle-mounted | `M4_320K` |
+   | Metal manufacturing floor | `M8_240K` |
+
+3. If uncertain, start with the `DENSE_READERS` preset; it uses a conservative profile for challenging environments.
+
+---
+
+### Tag Population Exceeds Q Algorithm Estimate
+
+**Symptom:** Read count is consistently lower than the known tag population. For example, 500 tags are present but only 350–420 are reported per cycle.
+
+**Cause:** The Gen2 anti-collision algorithm uses `tagPopulation` to estimate how many time slots to allocate. If `tagPopulation` is set to `50` but 500 tags are present, the algorithm starts with far too few slots, causing excessive collisions.
+
+**Solution:**
+
+Set `tagPopulation` to the expected tag count. Overestimate rather than underestimate; empty slots waste milliseconds; collisions lose 20–30% of reads per cycle:
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "q-fix-001",
+  "operatingMode": {
+    "operatingModes": {
+      "profiles": "ADVANCED",
+      "advancedConfigurations": {
+        "tagPopulation": 500
+      }
+    }
+  }
+}
+```
+
+---
+
+### Environmental RF Interference
+
+**Symptom:** Read rates fluctuate dramatically at different times of day or when specific equipment is operating nearby. Moving the reader changes performance significantly.
+
+**Common interference sources:**
+
+| Source | Frequency Range | Pattern |
+|--------|----------------|---------|
+| Other RFID readers | 902–928 MHz | Constant during operation; correlates with adjacent reader zones |
+| Microwave ovens | ~915 MHz (harmonic) | Intermittent; correlates with break room activity |
+| Wireless sensors / IoT devices | 900 MHz ISM | Varies with reporting intervals |
+| Warehouse automation equipment | Broad spectrum | Correlates with conveyor or AGV activity |
+
+**Solution:**
+
+1. Log `dataEVT` read rates over 24 hours and correlate dips with operational schedules.
+2. Switch to the `DENSE_READERS` preset or `M4_256K` link profile; more resistant to adjacent-channel interference.
+3. Stagger reader activation using `radioStartConditions.startDelay` to coordinate multi-reader deployments.
+
+---
+
+## 14.4 Response Code Reference (Quick Lookup) {#144-response-code-reference-quick-lookup}
+
+Every command response includes a `response.code` field.
+
+| Code | Meaning | Severity | Recommended Action |
+|------|---------|----------|-------------------|
+| **0** | Success | Info | None; command executed successfully. |
+| **1** | Accepted (queued) | Info | Wait for follow-up event or poll for status. |
+| **2** | Invalid payload | Error | JSON is malformed, missing required fields, or contains invalid values. Validate against the API reference. |
+| **3** | Unable to retrieve | Warning | Information temporarily unavailable. Reader may be in a transitional state. Retry after 2–3 seconds. |
+| **4** | Firmware update in progress | Warning | Firmware update being applied. Wait for reader to reboot and reconnect. |
+| **6** | Region not configured | Error | Regulatory region not set. Use 123RFID Desktop. See [Section 14.2](#region-not-configured). |
+| **10** | Configuration already exists | Error | Endpoint, SSID, or certificate name already exists. Use `MODIFY` or delete and re-create. |
+| **11** | Inventory in progress *(Control Domain)* | Warning | RFID operation already running. Send `control_operation` STOP first. |
+| **11** | Configuration does not exist *(Management Domain)* | Error | Name specified for MODIFY or DELETE not found. Verify the `name` value. |
+| **12** | No operation in progress | Warning | STOP sent but no inventory running. Harmless, no action needed. |
+| **15** | SSID not found | Error | SSID not detected or no matching profile. Verify SSID spelling (case-sensitive) and AP range. |
+| **17** | SSID missing | Error | `ssid` field missing from Wi-Fi configuration. Add the `ssid` field. |
+| **18** | Certificate parse error | Error | Certificate cannot be parsed. Verify PEM encoding, newline escaping in JSON, and `BEGIN/END` markers. |
+| **19** | Firmware download failed | Error | Cannot download firmware package. Verify URL is accessible from the reader's network. |
+| **20** | Firmware validation failed | Error | Downloaded package failed integrity validation. Re-download and verify checksum. |
+| **21** | Insufficient battery | Error | Battery below minimum threshold (~30%) for firmware update. Charge reader before retrying. |
+| **22** | Advanced configuration not set *(Control Domain)* | Error | Operating mode is `ADVANCED` but `advancedConfigurations` is missing. See [Controlling RFID Operations](/handheld/mqtt/controlling-operations). |
+| **23** | Invalid enum value | Error | Field value not in allowed set. Check API reference for valid enum values. |
+| **24** | Max pre-filters exceeded | Error | `select` array contains more than 32 entries. Reduce the number of select filters. |
+| **28** | Pattern length exceeded | Error | Tag match pattern exceeds maximum allowed length. Shorten the EPC pattern or mask. |
+
+> **Note on dual-meaning codes:** Codes **11** and **22** have different meanings depending on the command domain. Check which command you issued to determine which interpretation applies.
+
+---
+
+## 14.5 Common Error Patterns and Recovery Sequences
+
+### "Ghost Inventory": START Succeeds, Radio Is Disconnected
+
+**What you see:**
+1. `control_operation` START → code `0` (success).
+2. No `dataEVT` messages arrive.
+3. `get_status` → `radioActivity: "ACTIVE"`, but `radioConnection: "DISCONNECTED"`.
+
+**What is happening:** The IoT Connector accepted START and set state to ACTIVE, but the Bluetooth connection to the RFID radio hardware is down. The agent believes it is running inventory; the radio is not scanning.
+
+**Recovery:** Send STOP → re-pair via Bluetooth → verify `radioConnection: "CONNECTED"` → retry START.
+
+---
+
+### "Config Rejected Loop": Code 10 on Every Config Push
+
+**What you see:** `config_endpoint` → code `10` (config already exists) on every attempt.
+
+**What is happening:** An endpoint with the same name already exists. `ADD` operation rejects duplicates.
+
+**Recovery:** Issue `get_endpoint_config` to see current names, then use `operation: "MODIFY"` to update the existing endpoint.
+
+---
+
+### "Silent Firmware Failure": Reader Stops Responding After Firmware Update
+
+**What you see:** Firmware update starts (code `0`), reader disconnects (expected), but never reconnects within 90 seconds.
+
+**What is happening:** Firmware may have failed validation, or the new version has configuration incompatibilities. Reader may be in a boot loop.
+
+**Recovery:**
+1. Wait up to 5 minutes, some updates require extended first-boot initialization.
+2. Check if reader is on the network (check DHCP leases).
+3. If on the network but not connecting, use 123RFID Desktop over USB to verify endpoint configuration.
+4. If not on the network at all, connect via USB and diagnose. Factory reset may be required.
+
+---
+
+### "Certificate Rotation Lockout": Fleet Goes Offline After Cert Change
+
+**What you see:** `install_certificate` returned code `0` on readers, but some/all disconnect and don't return.
+
+**What is happening:** The new certificate and broker's certificate don't share a valid trust chain. Either the broker was updated before the readers received the new CA, or vice versa; an overlap window was not maintained.
+
+**Recovery:**
+- For readers still reachable: verify certificate status and broker certificate chain.
+- For disconnected readers: requires physical access (USB/123RFID Desktop) or MDM intervention.
+- See [Securing the Connection](/handheld/mqtt/securing-the-connection) for the overlap-window rotation procedure.
+
+---
+
+### "Data Flood Drowns Management": Heartbeats Stop During High-Volume Inventory
+
+**What you see:** Multiple readers start inventory simultaneously. `dataEVT` floods in. Heartbeat events stop or arrive with 2–3× delay. Fleet monitoring shows readers as "stale."
+
+**What is happening:** Broker or subscriber pipeline is saturated with tag data. Management traffic is queued behind the data flood.
+
+**Recovery:**
+1. Stagger inventory start times using `radioStartConditions.startDelay`.
+2. Enable post-filters to suppress duplicate reads before they reach the broker.
+3. Long-term: separate DATA and MGMT traffic onto different brokers. See [Cloud Integration Patterns](/handheld/cloud-integration).
+
+---
+
+## 14.6 Diagnostic Command Sequences {#146-diagnostic-command-sequences}
+
+Replace `<TENANT_ID>` and `<DEVICE_SERIAL>` with your actual values before publishing.
+
+### Sequence 1: "Is It Alive?"
+
+**Question:** Is the reader connected, responsive, and healthy?
+
+Publish to `<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>`:
+
+```json
+{
+  "command": "get_status",
+  "requestId": "diag-alive-001"
+}
+```
+
+**What to look for:**
+
+| Field | Healthy Value | Problem Indicator |
+|-------|--------------|-------------------|
+| `response.code` | `0` | `3` = unavailable; `4` = firmware update |
+| `deviceStatus.radioConnection` | `"CONNECTED"` | `"DISCONNECTED"` = Bluetooth pairing lost |
+| `deviceStatus.radioActivity` | `"INACTIVE"` (no scan) | `"ACTIVE"` with no scan started = stuck operation |
+| `deviceStatus.batteryStatus.chargePercentage` | > 20 | < 20 = reader will shut down soon |
+| `deviceStatus.temperature` | 0–45°C | > 50°C = thermal throttling risk |
+| `deviceStatus.ntp.reach` | > 0 | `0` = network/DNS issue |
+
+Follow with `get_version` to confirm firmware version and model.
+
+---
+
+### Sequence 2: "Why Can't It Scan?"
+
+**Question:** Reader is alive, but inventory produces no tag data.
+
+**Step 1: Check region:**
+
+```json
+{
+  "command": "get_current_region",
+  "requestId": "diag-scan-001"
+}
+```
+
+| Field | Healthy Value |
+|-------|--------------|
+| `regionInfo.country` | Matches deployment country |
+| `regionInfo.regulatoryStandard` | `"FCC"`, `"ETSI"`, etc. |
+| `regionInfo.maxTxPowerSupported` | Expected max (e.g., `300` for FCC) |
+
+**Step 2: Check operating mode:**
+
+```json
+{
+  "command": "get_operating_mode",
+  "requestId": "diag-scan-002"
+}
+```
+
+Check: `profiles`, `advancedConfigurations.transmitPower`, `advancedConfigurations.linkProfile`, `query.tagPopulation`.
+
+**Step 3: Check post-filter** (publish to CTRL topic):
+
+```json
+{
+  "command": "get_post_filter",
+  "requestId": "diag-scan-003"
+}
+```
+
+If a restrictive filter is enabled, temporarily disable it to test.
+
+---
+
+### Sequence 3: "What's Its Full Config?"
+
+**Question:** Complete configuration snapshot for support escalation or comparison against a golden baseline.
+
+```json
+{
+  "command": "get_config",
+  "requestId": "diag-config-001"
+}
+```
+
+**Key areas to inspect:**
+
+| Section | Fields to Check | Common Issues |
+|---------|----------------|---------------|
+| `deviceVersion` | `firmwareVersion`, `cloudAgentVersion` | Firmware mismatch vs. fleet standard |
+| `deviceStatus` | `radioConnection`, `batteryStatus` | Radio disconnected, battery critical |
+| `regionInfo` | `country`, `regulatoryStandard` | Region not set or wrong region |
+| `endpointConfig` | `host`, `port`, `tls` per interface | Misconfigured endpoint, TLS disabled |
+| `wifiConfig.profiles[]` | `ssid`, `connected`, `signalStrength` | Not connected, weak signal, wrong SSID |
+| `certificates` | `name`, `type`, `validTo` | Missing, expired, or wrong cert type |
+| `eventConfig` | `heartBeatInterval`, `enabledEvents` | Heartbeats disabled |
+
+> **Payload size note:** The `get_config` response can be 5–15 KB depending on the number of configured endpoints, Wi-Fi profiles, and certificates. Ensure your MQTT client's maximum message size is configured accordingly.
+- Check that tags are within range and powered by the RF field.
+- Verify transmit power is set high enough for your environment.
+- Ensure you are subscribed to the data topic.
+
+### Low read rate or missed tags
+
+- Increase transmit power.
+- Adjust the session parameter (use S0 for single-reader environments).
+- Check for RF interference from other readers or equipment.

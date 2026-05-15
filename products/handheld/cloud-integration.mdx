@@ -1,0 +1,587 @@
+---
+sidebar_position: 13
+title: Cloud Integration
+description: "AWS IoT Core, Azure IoT Hub, and self-hosted broker integration patterns"
+---
+
+# Cloud Integration Patterns
+
+Zebra RFID readers speak standard MQTT. They connect to a broker, publish to topics, subscribe to topics, and exchange JSON payloads. Nothing about the wire protocol is proprietary. This is a deliberate design decision, and it creates a genuine advantage when integrating with cloud platforms.
+
+But "standard MQTT" does not mean "plug and play." Every cloud IoT platform imposes its own abstractions on top of the underlying protocol. AWS IoT Core is a real MQTT broker, but it wraps device connectivity in Things, policies, and rules. Azure IoT Hub is not an MQTT broker at all; it uses MQTT as a transport protocol for its own opinionated messaging model. Self-hosted brokers give you full control but demand that you solve clustering, backpressure, and operational monitoring yourself.
+
+This chapter addresses the impedance mismatch between Zebra's edge devices and each integration target. The topic hierarchy, QoS semantics, and data volumes established in [Chapter 3](/handheld/mqtt/core-concepts) are the constants. The platform-specific constraints are the variables.
+
+---
+
+## 13.1 AWS IoT Core
+
+AWS IoT Core is the closest to a standard MQTT broker among the major hyperscaler offerings. It supports MQTT 3.1.1 (and 5.0), accepts arbitrary topic strings, and allows publish/subscribe on any topic permitted by the device's policy. Zebra's five-level topic hierarchy maps onto AWS IoT Core with minimal translation. The integration work is primarily in identity registration, policy construction, and understanding the platform's throughput boundaries.
+
+### Thing Registration
+
+Each reader registers as an AWS IoT **Thing**. The Thing name should match the reader's serial number; the same `deviceSerialNo` returned by `get_version` and used as level 5 in every topic.
+
+```
+Thing Name:  RFD40-212735201D0053
+Thing Type:  ZebraRFIDReader  (optional; useful for fleet queries)
+Thing Group: site-warehouse-east  (optional; maps to deployment location)
+```
+
+AWS IoT Things are identity containers. The Thing itself does not affect MQTT behavior; it is the **certificate** and **policy** attached to the Thing that determine what the reader can access. Each reader must have:
+
+1. **A unique X.509 certificate**: generated through AWS IoT or your own CA (registered with AWS IoT). The reader presents this certificate during TLS handshake. Install it on the reader via `install_certificate` with type `"client"` ([Chapter 7](/handheld/mqtt/securing-the-connection)).
+
+2. **An IoT policy**: attached to the certificate, not to the Thing. The policy governs which MQTT topics the reader can publish to, subscribe to, and receive messages from.
+
+3. **The AWS IoT Root CA**: installed on the reader via `install_certificate` with type `"mqtt"` so the reader trusts the AWS IoT Core endpoint's server certificate.
+
+### Topic Mapping
+
+Zebra's topic pattern maps directly onto AWS IoT Core topics. No translation is required; the reader publishes and subscribes to the same five-level topics on AWS IoT Core as it would on any standard MQTT broker:
+
+| Zebra Topic | AWS IoT Core Topic | Direction |
+|-------------|-------------------|-----------|
+| `acme/MGMT/clients/cmnd/{serial}` | `acme/MGMT/clients/cmnd/{serial}` | Cloud → Device |
+| `acme/MGMT/clients/resp/{serial}` | `acme/MGMT/clients/resp/{serial}` | Device → Cloud |
+| `acme/MGMT/clients/event/{serial}` | `acme/MGMT/clients/event/{serial}` | Device → Cloud |
+| `acme/DATA/clients/data1event/{serial}` | `acme/DATA/clients/data1event/{serial}` | Device → Cloud |
+| `acme/CTRL/clients/cmnd/{serial}` | `acme/CTRL/clients/cmnd/{serial}` | Cloud → Device |
+| `acme/CTRL/clients/resp/{serial}` | `acme/CTRL/clients/resp/{serial}` | Device → Cloud |
+
+This one-to-one mapping is the cleanest integration story among the hyperscalers. Configure the reader's MQTT endpoint (via `config_endpoint`) to point to your AWS IoT Core endpoint:
+
+```
+Host:  a1b2c3d4e5f6g7-ats.iot.us-east-1.amazonaws.com
+Port:  8883
+TLS:   Required (mutual TLS; AWS IoT Core requires client certificate authentication)
+```
+
+### IAM Policy Construction
+
+AWS IoT policies use a JSON syntax similar to IAM policies but with IoT-specific action and resource namespaces. The policy must grant the reader permission to publish, subscribe, and receive on exactly the topics it needs, and nothing more.
+
+**Scoped policy for a single reader:**
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "iot:Connect",
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Publish",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/MGMT/clients/resp/${iot:Connection.Thing.ThingName}",
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/MGMT/clients/event/${iot:Connection.Thing.ThingName}",
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/CTRL/clients/resp/${iot:Connection.Thing.ThingName}",
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/DATA/clients/data1event/${iot:Connection.Thing.ThingName}",
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/DATA/clients/data2event/${iot:Connection.Thing.ThingName}",
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/DATA/clients/rfid/${iot:Connection.Thing.ThingName}"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Subscribe",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/acme/MGMT/clients/cmnd/${iot:Connection.Thing.ThingName}",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/acme/CTRL/clients/cmnd/${iot:Connection.Thing.ThingName}"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Receive",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/MGMT/clients/cmnd/${iot:Connection.Thing.ThingName}",
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/CTRL/clients/cmnd/${iot:Connection.Thing.ThingName}"
+      ]
+    }
+  ]
+}
+```
+
+The `${iot:Connection.Thing.ThingName}` policy variable dynamically resolves to the connecting Thing's name. This allows a **single policy template** to be reused across all readers, each reader's certificate is attached to a Thing named after its serial number, and the policy scopes its permissions to that serial number's topics automatically.
+
+> **⚠ WARNING:** Avoid overly permissive wildcard policies such as `arn:aws:iot:*:*:topic/*` or `arn:aws:iot:*:*:topicfilter/acme/#`. A compromised reader with a broad policy can publish to or subscribe to any topic in the tenant, including command topics for other readers. Use the scoped policy pattern above to enforce per-device topic isolation.
+
+**Fleet management application policy.** Your backend application (the fleet manager) needs broader access; it publishes commands to any reader's `cmnd` topic and subscribes to responses and events from all readers:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "iot:Connect",
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/fleet-manager-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Publish",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/MGMT/clients/cmnd/*",
+        "arn:aws:iot:us-east-1:123456789012:topic/acme/CTRL/clients/cmnd/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Subscribe",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/acme/MGMT/clients/resp/+",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/acme/MGMT/clients/event/+",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/acme/CTRL/clients/resp/+",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/acme/DATA/clients/data1event/+"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Receive",
+      "Resource": "arn:aws:iot:us-east-1:123456789012:topic/acme/*/clients/*/+"
+    }
+  ]
+}
+```
+
+### Rules Engine: Routing by Interface
+
+AWS IoT Core's Rules Engine evaluates incoming messages against SQL-like queries and routes them to downstream AWS services. Use topic-based rules to separate Zebra's traffic types into the appropriate processing pipelines:
+
+| Rule | Topic Filter | Downstream Target | Purpose |
+|------|-------------|-------------------|---------|
+| Tag data ingestion | `acme/DATA/clients/data1event/+` | Kinesis Data Streams | High-throughput tag data into a stream processor |
+| Fleet events | `acme/MGMT/clients/event/+` | SQS / Lambda | Heartbeats, alerts, exceptions into operational pipeline |
+| Command responses | `acme/MGMT/clients/resp/+` | Lambda / IoT Analytics | Correlate responses with issued commands |
+
+**Rule SQL example: routing tag data to Kinesis:**
+
+```sql
+SELECT *, topic(5) AS deviceSerial, timestamp() AS ingestTime
+FROM 'acme/DATA/clients/data1event/+'
+```
+
+This rule extracts the device serial number from topic level 5 (using the `topic()` function), stamps the message with an ingestion timestamp, and routes it to a Kinesis Data Stream for downstream processing.
+
+### AWS IoT Core Limits That Affect RFID Workloads
+
+| Limit | Default Value | Impact on RFID |
+|-------|--------------|----------------|
+| Maximum message size | 128 KB | Sufficient for all Zebra payloads. Individual `dataEVT` messages are typically 1–5 KB. |
+| Publish requests per second (per account) | 20,000 | A fleet of 500 readers running continuous inventory at high read rates can approach this. Request a quota increase proactively. |
+| Inbound publish rate per connection | 100 msgs/sec | Limits how many commands your fleet manager can send per second on a single MQTT connection. Use connection pooling or batch command scheduling. |
+| Rule engine actions per second | 1,000 per rule | Size your Kinesis shards and Lambda concurrency accordingly. |
+| Subscriptions per connection | 50 | Your fleet manager subscribes to 4 topic filters per interface × few wildcards; well within limits. |
+
+The most likely quota to encounter first is the per-account publish rate. During a fleet-wide inventory operation, each reader may produce 10–50 `dataEVT` messages per second. With 500 readers, that is 5,000–25,000 publishes per second, potentially exceeding the default quota. Monitor `PublishIn.ThrottleCount` in CloudWatch and request a quota increase before the fleet reaches this threshold.
+
+> **Cross-reference:** For MQTT endpoint configuration on the reader, see the [config_endpoint API Reference](01_02_01_01_Management-Domain/mqtt-reference-config-endpoint.md). For TLS certificate installation, see [Chapter 7](/handheld/mqtt/securing-the-connection).
+
+---
+
+## 13.2 Azure IoT Hub
+
+Azure IoT Hub is not an MQTT broker. This distinction is the single most important architectural fact for this integration and the source of most friction.
+
+An MQTT broker accepts arbitrary topic strings, routes messages based on topic subscriptions, and treats all connected clients symmetrically. Azure IoT Hub uses MQTT as a *transport protocol*; it accepts MQTT connections but enforces its own topic structure, message routing model, and asymmetric device/service roles. You cannot publish to or subscribe to arbitrary topics. You use Azure's prescribed topic patterns, and Azure's internal routing engine decides where messages go.
+
+This creates a fundamental impedance mismatch with Zebra's topic hierarchy. The reader expects to publish to `acme/MGMT/clients/event/RFD40-12345678`, but Azure IoT Hub expects the device to publish to `devices/{deviceId}/messages/events/`. The reader expects to subscribe to `acme/MGMT/clients/cmnd/RFD40-12345678`, but Azure IoT Hub delivers commands on `devices/{deviceId}/messages/devicebound/#`.
+
+There are two integration approaches, each with distinct trade-offs.
+
+### Approach 1: Azure IoT Hub with Topic Translation
+
+In this approach, the reader connects directly to Azure IoT Hub as a registered device. The reader's MQTT endpoint is configured to use Azure's prescribed topics rather than Zebra's standard hierarchy.
+
+**Device registration.** Register each reader as an IoT Hub device using its serial number as the device ID:
+
+```
+Device ID:  RFD40-212735201D0053
+Authentication:  X.509 certificate (self-signed or CA-signed)
+```
+
+For fleet-scale provisioning, use the Azure Device Provisioning Service (DPS) with enrollment groups based on an intermediate CA certificate. Each reader presenting a certificate signed by that CA is automatically registered and assigned to an IoT Hub instance.
+
+**Topic mapping: the translation layer.** Configure the reader's MQTT endpoint (via `config_endpoint`) to use Azure's topic patterns:
+
+| Zebra Standard Topic | Azure IoT Hub Equivalent | Notes |
+|---------------------|------------------------|-------|
+| `{tenant}/MGMT/clients/event/{serial}` | `devices/{deviceId}/messages/events/` | D2C telemetry, all device-originated messages |
+| `{tenant}/DATA/clients/data1event/{serial}` | `devices/{deviceId}/messages/events/` | Same D2C path as events; differentiated by message properties |
+| `{tenant}/MGMT/clients/resp/{serial}` | `devices/{deviceId}/messages/events/` | Responses also route through D2C |
+| `{tenant}/MGMT/clients/cmnd/{serial}` | `devices/{deviceId}/messages/devicebound/#` | C2D messages; device subscribes |
+
+The immediate problem is visible: Azure collapses all device-to-cloud messages onto a single topic path (`devices/{deviceId}/messages/events/`). Heartbeat events, tag data, command responses, and exception alerts all enter Azure through the same D2C channel. Differentiation requires **message properties**; key-value pairs attached to the MQTT message as topic suffixes:
+
+```
+devices/RFD40-212735201D0053/messages/events/$.ct=application%2Fjson&interfaceType=MGMT&channelType=event
+```
+
+The `interfaceType` and `channelType` custom properties allow Azure's message routing rules to separate traffic downstream.
+
+**Message routing rules.** Azure IoT Hub's built-in message routing evaluates conditions on message properties and routes matching messages to different endpoints:
+
+| Route Name | Condition | Endpoint | Purpose |
+|-----------|-----------|----------|---------|
+| `tag-data` | `interfaceType = 'DATA'` | Event Hubs (dedicated instance) | High-throughput tag data into stream processing |
+| `fleet-events` | `interfaceType = 'MGMT' AND channelType = 'event'` | Service Bus Queue | Heartbeats, alerts, exceptions |
+| `command-responses` | `interfaceType = 'MGMT' AND channelType = 'resp'` | Service Bus Topic | Response correlation |
+| `fallback` | `true` (default) | Built-in Events endpoint | Catch-all for unmatched messages |
+
+**Cloud-to-Device (C2D) commands.** Your backend service sends commands to readers using the Azure IoT Hub Service SDK (not by publishing to an MQTT topic):
+
+```
+// Conceptual; Azure IoT Hub Service SDK (C#)
+var commandPayload = new Message(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new {
+    command = "control_operation",
+    requestId = "req-001",
+    operation = new { operationType = "START" }
+})));
+
+commandPayload.Properties.Add("interfaceType", "CTRL");
+await serviceClient.SendAsync("RFD40-212735201D0053", commandPayload);
+```
+
+The reader receives this on `devices/RFD40-212735201D0053/messages/devicebound/#`. The JSON payload is identical to what the reader would receive on a standard MQTT broker, only the delivery mechanism differs.
+
+**Limitations of this approach:**
+- **Topic rigidity.** The reader cannot use its native topic hierarchy. Endpoint configuration must be customized per reader to use Azure's topic patterns.
+- **Collapsed D2C channel.** All device-to-cloud messages share one path. Separation depends on message properties, which must be configured correctly on the reader side.
+- **No direct device-to-device.** Azure IoT Hub does not support device-to-device messaging. If your architecture requires one reader to communicate with another (rare, but possible in some orchestration patterns), you need a service-side relay.
+
+### Approach 2: Azure Event Grid MQTT Broker
+
+Azure Event Grid's MQTT broker capability (generally available) provides a standards-compliant MQTT broker that supports arbitrary topic hierarchies. This is the cleaner integration path for Zebra readers because it eliminates the topic translation problem entirely.
+
+**How it works:** Event Grid's MQTT broker accepts standard MQTT 3.1.1 and 5.0 connections. Readers connect and use their native Zebra topic hierarchy; `acme/MGMT/clients/event/RFD40-12345678`, without modification. Event Grid routes messages based on topic filters to Event Grid subscriptions, which can deliver to Azure Functions, Event Hubs, Service Bus, Storage, or any webhook endpoint.
+
+**Topic space configuration.** Define a topic space that matches Zebra's hierarchy:
+
+```json
+{
+  "name": "zebra-rfid-topics",
+  "topicTemplates": [
+    "acme/MGMT/clients/+/+",
+    "acme/CTRL/clients/+/+",
+    "acme/DATA/clients/+/+",
+    "acme/MDM/clients/+/+"
+  ]
+}
+```
+
+**Client authentication.** Register each reader as an Event Grid MQTT client with X.509 certificate authentication. The client's `authenticationName` maps to the certificate's common name (CN) or subject alternative name (SAN).
+
+**When to use which approach:**
+
+| Factor | IoT Hub (Approach 1) | Event Grid MQTT (Approach 2) |
+|--------|---------------------|------------------------------|
+| Topic hierarchy | Azure-prescribed; requires translation | Standard MQTT; native Zebra topics |
+| Device management | Built-in (device twins, jobs, DPS) | External; manage through your layer |
+| C2D commands | Built-in service SDK | Standard MQTT publish |
+| Message routing | Built-in routing rules with conditions | Event Grid subscriptions with filters |
+| Protocol fidelity | Low; MQTT as transport for Azure's model | High; standard MQTT broker behavior |
+| Ecosystem integration | Deep Azure IoT Ecosystem (IoT Central, Defender for IoT) | Event Grid ecosystem (Functions, Logic Apps) |
+
+If your organization already uses Azure IoT Hub for other device fleets and needs device twin, DPS, and Defender for IoT integration, Approach 1 is the pragmatic choice despite the topic translation overhead. If you prioritize MQTT protocol fidelity and want the reader's native topic hierarchy preserved end-to-end, Approach 2 is architecturally cleaner.
+
+> **Cross-reference:** For X.509 certificate installation on the reader, see [Chapter 7](/handheld/mqtt/securing-the-connection). For reader endpoint configuration, see the [config_endpoint API Reference](01_02_01_01_Management-Domain/mqtt-reference-config-endpoint.md).
+
+---
+
+## 13.3 Self-Hosted Brokers
+
+Self-hosted brokers give you complete control over configuration, security, and scaling; at the cost of complete responsibility for operations, high availability, and capacity planning. This section addresses the three questions that determine whether a self-hosted deployment survives production: which broker, how to configure it for RFID workloads, and when to scale beyond a single instance.
+
+### Mosquitto: Development and Small Deployments
+
+Eclipse Mosquitto is the most widely deployed open-source MQTT broker. It is lightweight, standards-compliant, easy to install, and adequate for development, testing, and small-scale production deployments (fewer than 50 readers with moderate data volumes).
+
+**Mosquitto's strengths for Zebra RFID development:**
+
+- Zero-configuration startup; install, run, connect readers.
+- Full MQTT 3.1.1 and 5.0 support, including all QoS levels, retained messages, and persistent sessions.
+- TLS and client certificate authentication.
+- ACL-based topic authorization.
+- Runs on Linux, Windows, macOS, containers, including on the same machine as your development application.
+
+**Mosquitto configuration for development and lab use:**
+
+```
+# mosquitto.conf: Lab/Development configuration
+listener 8883
+protocol mqtt
+
+# TLS configuration
+cafile /etc/mosquitto/ca_certificates/ca.crt
+certfile /etc/mosquitto/certs/server.crt
+keyfile /etc/mosquitto/certs/server.key
+require_certificate true
+
+# Connection limits
+max_connections 100
+
+# QoS 0 message handling: no persistent storage needed for tag data
+max_queued_messages 1000
+max_queued_bytes 0
+
+# Logging
+log_type all
+log_dest file /var/log/mosquitto/mosquitto.log
+```
+
+This configuration is appropriate for a lab with 5–20 readers running intermittent inventory operations. It will not survive production workloads.
+
+### Where Mosquitto Breaks
+
+> **⚠ WARNING:** A single-instance Mosquitto broker is not appropriate for production RFID workloads with more than approximately 50 readers. The failure modes described below are gradual; performance degrades over weeks before a hard failure, which makes them dangerous. By the time the broker stops accepting connections, the underlying resource exhaustion has been building for days.
+
+**Failure mode 1: Memory growth under sustained QoS 0 load.** During continuous inventory, each reader produces 10–50 `dataEVT` messages per second. With 200 readers, that is 2,000–10,000 messages per second flowing through the broker. Mosquitto processes messages single-threaded. When subscriber processing falls behind publisher ingestion, even briefly, due to a garbage collection pause in your consuming application or a network hiccup; messages queue in the broker's memory. With no backpressure mechanism, memory grows until the OS kills the process or the broker becomes unresponsive.
+
+**Failure mode 2: No clustering.** Mosquitto is a single-instance broker. If the instance fails, all readers disconnect and buffer messages locally until they reconnect. There is no failover. In a production deployment, this means your fleet monitoring, tag data pipeline, and command channel are all offline until the broker restarts. The blast radius is 100% of the fleet.
+
+**Failure mode 3: No shared subscriptions.** When your backend needs multiple consumer instances for horizontal scaling (e.g., three tag-data processors behind a load balancer), each consumer subscribes to the same topic filter. On a standard broker, every subscriber receives every message, meaning total processing load scales linearly with subscriber count. Shared subscriptions (an MQTT 5.0 feature) distribute messages across subscribers in a consumer group, but Mosquitto's shared subscription support is limited and not suitable for high-throughput balancing.
+
+**Failure mode 4: No operational metrics.** Mosquitto provides `$SYS` topics for basic statistics (connected clients, messages received/sent, bytes transferred). It does not provide per-topic throughput, per-client message rates, queue depths per subscription, or latency percentiles. In a production RFID deployment, these metrics are essential for capacity planning and incident response.
+
+### Enterprise Brokers: HiveMQ and EMQX
+
+When the deployment crosses the Mosquitto boundary (roughly 50+ readers, sustained inventory operations, or availability requirements beyond "restart and reconnect"), an enterprise-grade broker becomes necessary. HiveMQ and EMQX are the two most common choices for IoT deployments at this scale.
+
+**What enterprise brokers provide that Mosquitto does not:**
+
+| Capability | Why It Matters for RFID |
+|-----------|------------------------|
+| **Horizontal clustering** | Multiple broker nodes share client connections and message routing. A node failure redistributes its clients to surviving nodes, no fleet-wide disconnection. |
+| **Shared subscriptions** | Tag data messages from `acme/DATA/clients/data1event/+` are distributed across a consumer group. Three tag-data processors each handle 1/3 of the messages instead of all three processing every message. |
+| **Backpressure and flow control** | When consumers fall behind, the broker applies flow control rather than consuming unbounded memory. Slow consumers see message drops (QoS 0) or delivery delays (QoS 1); the broker remains stable. |
+| **Operational metrics and dashboards** | Per-client message rates, per-topic throughput, cluster health, queue depths, latency distributions. Essential for monitoring a production RFID deployment. |
+| **Persistent session management** | Readers that disconnect and reconnect receive queued QoS 1 messages reliably, even if they reconnect to a different cluster node. |
+
+### RFID-Specific Broker Configuration
+
+Regardless of which enterprise broker you choose, RFID workloads have specific configuration requirements that differ from general-purpose IoT deployments:
+
+**1. QoS 0 memory management.** The majority of RFID message volume is tag data; `dataEVT` messages published at QoS 0 on the DATA interface. QoS 0 messages are fire-and-forget: they do not require persistent storage, acknowledgment tracking, or retry queues. Configure the broker to treat QoS 0 messages as transient; allocate memory buffers for in-flight routing but do not persist them to disk.
+
+For HiveMQ, configure the `<mqtt>` section:
+
+```xml
+<!-- hivemq-config.xml; QoS 0 optimization -->
+<mqtt>
+    <queued-messages>
+        <max-queue-size>1000</max-queue-size>
+        <strategy>discard-oldest</strategy>
+    </queued-messages>
+    <max-packet-size>131072</max-packet-size>
+</mqtt>
+```
+
+The `discard-oldest` strategy ensures that when a subscriber's queue is full, the oldest messages are dropped rather than the broker consuming unbounded memory. For QoS 0 tag data, this is the correct behavior; old tag reads are replaced by new reads within seconds.
+
+For EMQX, configure message queue limits:
+
+```
+# emqx.conf: QoS 0 optimization
+mqtt.max_mqueue_len = 1000
+mqtt.mqueue_store_qos0 = false
+mqtt.max_packet_size = 128KB
+```
+
+Setting `mqueue_store_qos0 = false` tells EMQX not to queue QoS 0 messages for offline clients. If a subscriber disconnects, QoS 0 messages published during the disconnection period are dropped, which is the correct semantic for transient tag data.
+
+**2. Connection pool sizing.** Each reader maintains a persistent MQTT connection per configured endpoint. In the default configuration (single endpoint), that is one connection per reader. In a multi-broker configuration (Section 13.4), each reader may hold 2–4 connections (one per interface). Size the broker's connection capacity accordingly:
+
+| Fleet Size | Connections per Reader | Total Connections | Broker Sizing |
+|-----------|----------------------|-------------------|---------------|
+| 100 | 1 (single endpoint) | 100 | Single node |
+| 500 | 1 | 500 | Single large node or 2-node cluster |
+| 500 | 4 (per-interface endpoints) | 2,000 | 3+ node cluster |
+| 2,000 | 1 | 2,000 | 3+ node cluster |
+| 2,000 | 4 | 8,000 | 5+ node cluster with load balancing |
+
+Add headroom for backend application connections (fleet manager, tag data consumers, monitoring dashboards), typically 10–50 additional connections.
+
+**3. Shared subscriptions for tag data consumers.** Shared subscriptions distribute messages from a topic across a group of subscribers rather than duplicating to each. This is the standard pattern for scaling tag data consumption horizontally.
+
+```
+# Standard subscription: every consumer gets every message
+SUBSCRIBE acme/DATA/clients/data1event/+
+
+# Shared subscription: messages distributed across the consumer group
+SUBSCRIBE $share/tag-processors/acme/DATA/clients/data1event/+
+```
+
+With a shared subscription, if three `tag-processors` instances subscribe, each message is delivered to exactly one of the three. This allows you to scale tag data processing by adding consumer instances behind the shared subscription group, each additional consumer handles a proportional share of the data volume.
+
+**Shared subscription strategy by interface:**
+
+| Interface | Shared Subscription? | Rationale |
+|-----------|---------------------|-----------|
+| DATA | **Yes** | High volume, stateless processing; distribute across consumers |
+| MGMT (events) | Depends | If events feed a single monitoring database, shared subscription distributes load. If multiple systems need all events (monitoring AND alerting), each system subscribes independently. |
+| MGMT (responses) | **No** | Responses must be received by the application instance that sent the command; response correlation breaks if responses are distributed across instances. |
+| CTRL (responses) | **No** | Same as MGMT responses; correlation required. |
+
+> **Cross-reference:** For QoS level guidance and the rationale for QoS 0 on tag data, see [Chapter 3, Section 3.4](/handheld/mqtt/core-concepts). For heartbeat and event monitoring pipelines that consume from the MGMT event channel, see [Chapter 10](/handheld/mqtt/monitoring-events).
+
+---
+
+## 13.4 Multi-Broker Architectures
+
+The previous sections describe how to connect readers to *a* broker, whether that broker is AWS IoT Core, Azure IoT Hub, or a self-hosted cluster. This section addresses why a single broker is often the wrong architecture for production fleet deployments, and what the alternative looks like.
+
+### Why Separate MGMT and DATA Traffic
+
+A single broker handling all four interfaces (MGMT, CTRL, DATA, MDM) mixes two fundamentally different traffic profiles on the same infrastructure:
+
+| Characteristic | MGMT / CTRL / MDM | DATA |
+|---------------|-------------------|------|
+| **Volume** | Low; commands, responses, heartbeats, alerts | Massive; hundreds of tag reads per reader per second during inventory |
+| **Message importance** | High; a missed firmware update command or lost credential push can leave a reader in a broken state | Low per-message; individual tag reads are redundant; the same tag will be read again on the next cycle |
+| **QoS** | QoS 1; delivery confirmation required | QoS 0; fire and forget |
+| **Security sensitivity** | Carries certificates, Wi-Fi credentials, configuration payloads | Carries tag EPC, RSSI, timestamp; operationally sensitive but not cryptographic material |
+| **Failure consequence** | Fleet management is blind; cannot send commands, cannot receive operational alerts | Tag data pipeline stops; business applications lose visibility into inventory |
+| **Scaling axis** | Connection count (one per reader); scales slowly as fleet grows | Message throughput; scales rapidly as readers enter active inventory |
+
+Mixing these profiles on a single broker creates a coupling risk: a burst of tag data from 200 readers running simultaneous inventory operations can saturate the broker's message processing capacity. If the broker's throughput limit is reached, tag data backpressure can delay MGMT message delivery, causing heartbeat gaps, missed alerts, and delayed command responses. Your fleet monitoring thinks readers are offline when they are actually just waiting behind a tag data queue.
+
+The dual-broker pattern eliminates this coupling by routing each traffic type to infrastructure sized for its specific characteristics.
+
+### The Dual-Broker Topology
+
+Zebra's firmware natively supports per-interface endpoint configuration through the `config_endpoint` command. Each interface (MGMT, CTRL, DATA, MDM) can be pointed at a different broker address, port, and TLS configuration. This is not a workaround; it is a designed-for capability.
+
+**Configuration example: separate MGMT and DATA brokers:**
+
+MGMT endpoint (via `config_endpoint` on the MGMT interface):
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-mgmt-001",
+  "endpointConfig": {
+    "host": "mgmt-broker.enterprise.com",
+    "port": 8883,
+    "tls": true,
+    "tenantId": "acme",
+    "keepAlive": 60,
+    "cleanSession": false
+  }
+}
+```
+
+DATA endpoint (via `config_endpoint` on the DATA interface):
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-data-001",
+  "endpointConfig": {
+    "host": "data-broker.enterprise.com",
+    "port": 8883,
+    "tls": true,
+    "tenantId": "acme",
+    "keepAlive": 30,
+    "cleanSession": true
+  }
+}
+```
+
+Note the configuration differences that reflect each broker's purpose:
+- **MGMT broker:** `cleanSession: false`; the broker preserves subscriptions and queues QoS 1 messages during brief disconnections, ensuring the reader receives commands it missed. `keepAlive: 60`; longer interval to minimize overhead on a reliability-focused broker.
+- **DATA broker:** `cleanSession: true`, no session persistence needed; stale QoS 0 tag data has no value after reconnection. `keepAlive: 30`; shorter interval to detect dropped connections quickly and free resources for active readers.
+
+### Topology Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        READER FLEET                                 │
+│                                                                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐       ┌──────────┐      │
+│  │  RFD40   │  │  RFD40   │  │  RFD90   │  ...  │  RFD90   │      │
+│  │  #0053   │  │  #0054   │  │  #1001   │       │  #1500   │      │
+│  └────┬─┬───┘  └────┬─┬───┘  └────┬─┬───┘       └────┬─┬───┘      │
+│       │ │            │ │           │ │                 │ │          │
+│       │ │ MGMT/CTRL  │ │          │ │                 │ │          │
+│       │ └──────┐     │ └────┐     │ └──────┐          │ └────┐     │
+│       │        │     │      │     │        │          │      │     │
+│  DATA │        │DATA │      │DATA │        │    DATA  │      │     │
+└───────┼────────┼─────┼──────┼─────┼────────┼──────────┼──────┼─────┘
+        │        │     │      │     │        │          │      │
+        ▼        ▼     ▼      ▼     ▼        ▼          ▼      ▼
+┌───────────────┐ ┌────────────────┐                              
+│  DATA BROKER  │ │  MGMT BROKER   │                              
+│  (cluster)    │ │  (HA pair)     │                              
+│               │ │                │                              
+│ Optimized for:│ │ Optimized for: │                              
+│ • Throughput  │ │ • Reliability  │                              
+│ • QoS 0      │ │ • QoS 1        │                              
+│ • Shared subs │ │ • mTLS + ACLs  │                              
+│ • Horizontal  │ │ • Session      │                              
+│   fan-out     │ │   persistence  │                              
+└───────┬───────┘ └───────┬────────┘                              
+        │                 │                                        
+        ▼                 ▼                                        
+┌───────────────┐ ┌────────────────┐                              
+│  TAG DATA     │ │  FLEET         │                              
+│  PIPELINE     │ │  MANAGEMENT    │                              
+│               │ │                │                              
+│ • Stream proc │ │ • Command orch │                              
+│ • Data lake   │ │ • Monitoring   │                              
+│ • Analytics   │ │ • Alerting     │                              
+│ • Business    │ │ • Firmware     │                              
+│   applications│ │   lifecycle    │                              
+└───────────────┘ └────────────────┘                              
+```
+
+**Sizing the MGMT broker.** The MGMT broker handles commands, responses, heartbeats, alerts, and exceptions. Even with a 2,000-reader fleet, this is a low-throughput workload, typically under 100 messages per second during normal operations, with brief bursts during fleet-wide command pushes. A 2-node HA cluster with mutual TLS enforcement is sufficient. Prioritize persistence, access control granularity, and monitoring over raw throughput.
+
+**Sizing the DATA broker.** The DATA broker handles tag data during active inventory operations. A 500-reader fleet with each reader producing 20 `dataEVT` messages per second generates 10,000 messages per second, and not all readers are active simultaneously. Size for peak concurrent inventory (typically 30–60% of the fleet) plus 50% headroom. A 3-node cluster with shared subscriptions distributing data across consumer instances handles this comfortably.
+
+### Geographic Broker Distribution
+
+In fleet deployments spanning multiple geographic regions (distribution centers on the East Coast, West Coast, and Central US, for example), network latency between readers and a centralized broker adds round-trip delay to every command and increases the probability of heartbeat timeouts over unreliable WAN links.
+
+The geographic distribution pattern extends the dual-broker concept:
+
+- **DATA brokers are deployed regionally**, close to their reader populations. A regional DATA broker minimizes latency for the highest-volume traffic stream. Tag data is either processed at the regional level (edge analytics) or forwarded to a central data lake via broker-to-broker bridging or a regional stream processor (Kafka, Kinesis).
+
+- **The MGMT broker remains centralized** (or uses a globally replicated cluster). Fleet management operations (firmware pushes, certificate rotation, configuration changes) are orchestrated centrally. A single management plane simplifies tooling, access control, and audit logging. MGMT traffic volume is low enough that WAN latency is acceptable.
+
+```
+                      ┌──────────────────┐
+                      │  CENTRAL MGMT    │
+                      │  BROKER (HA)     │
+                      │                  │
+                      │  Fleet commands, │
+                      │  monitoring,     │
+                      │  provisioning    │
+                      └───────┬──────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              │               │               │
+     ┌────────▼──────┐ ┌─────▼────────┐ ┌────▼─────────┐
+     │ EAST DATA     │ │ CENTRAL DATA │ │ WEST DATA    │
+     │ BROKER        │ │ BROKER       │ │ BROKER       │
+     │ (us-east-1)   │ │ (us-central) │ │ (us-west-2)  │
+     └────────┬──────┘ └──────┬───────┘ └──────┬───────┘
+              │               │                │
+        ┌─────▼─────┐  ┌─────▼─────┐   ┌──────▼────┐
+        │ 400       │  │ 300       │   │ 300       │
+        │ readers   │  │ readers   │   │ readers   │
+        │ (5 sites) │  │ (3 sites) │   │ (4 sites) │
+        └───────────┘  └───────────┘   └───────────┘
+```
+
+**When geographic distribution is warranted:**
+- Reader-to-broker round-trip latency exceeds 100ms consistently (measured via heartbeat acknowledgment delay).
+- WAN reliability causes heartbeat gaps and false offline classification ([Chapter 12, Section 12.4](/handheld/fleet/management)).
+- Regulatory requirements mandate that tag data remain within a geographic boundary before processing.
+
+For most single-region deployments (all sites within the same metropolitan area or cloud region), the dual-broker pattern without geographic distribution is sufficient.
+
+> **Cross-reference:** For `config_endpoint` fields and multi-endpoint configuration, see the [config_endpoint API Reference](01_02_01_01_Management-Domain/mqtt-reference-config-endpoint.md). For heartbeat-based online/offline detection and the importance of keepAlive tuning, see [Chapter 12, Section 12.4](/handheld/fleet/management). For the connectivity trap when changing endpoint configurations, see [Chapter 11, Section 11.1](/handheld/fleet/provisioning).
+
+---
+
+**Next:** [Chapter 14; Error Handling and Recovery →](14_error-handling-and-recovery.md)

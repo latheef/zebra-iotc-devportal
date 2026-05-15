@@ -1,0 +1,235 @@
+---
+sidebar_position: 5
+title: "How to Integrate with a Custom MQTT Broker"
+---
+
+# How to Integrate with a Custom MQTT Broker
+
+This guide covers deploying and configuring a self-managed MQTT broker for Zebra RFD40/RFD90 reader sleds. It covers broker preparation, TLS configuration, authentication, topic ACLs, and reader endpoint configuration for four popular brokers: Mosquitto, HiveMQ, EMQX, and VerneMQ.
+
+## Prerequisites
+
+- A server or VM to host the MQTT broker (Linux recommended)
+- TLS certificates (CA certificate, server certificate, and server key)
+- Reader sleds with firmware version 2.0 or later
+- Network connectivity between readers (via host mobile computer) and the broker
+
+## Step 1: Choose a Broker
+
+| Broker | License | Clustering | Best For |
+|---|---|---|---|
+| **Mosquitto** | EPL/EDL (open source) | No native clustering | Small deployments, development, PoC |
+| **HiveMQ** | Community (free) / Enterprise (paid) | Yes (Enterprise) | Enterprise production deployments |
+| **EMQX** | Open source / Enterprise | Yes | High-throughput, large-scale IoT |
+| **VerneMQ** | Apache 2.0 (open source) | Yes | Open-source clustered deployments |
+
+All four brokers support MQTT 3.1.1, which is the protocol version used by Zebra reader sleds.
+
+## Step 2: Configure TLS
+
+TLS encryption is strongly recommended for all production deployments. The configuration approach is similar across brokers.
+
+**Mosquitto** (`mosquitto.conf`):
+```
+listener 8883
+cafile /etc/mosquitto/certs/ca.pem
+certfile /etc/mosquitto/certs/server-cert.pem
+keyfile /etc/mosquitto/certs/server-key.pem
+tls_version tlsv1.2
+require_certificate false
+```
+
+**HiveMQ** (`config.xml`):
+```xml
+<tls-tcp-listener>
+    <port>8883</port>
+    <bind-address>0.0.0.0</bind-address>
+    <tls>
+        <keystore>
+            <path>/opt/hivemq/certs/keystore.jks</path>
+            <password>changeme</password>
+        </keystore>
+        <truststore>
+            <path>/opt/hivemq/certs/truststore.jks</path>
+            <password>changeme</password>
+        </truststore>
+    </tls>
+</tls-tcp-listener>
+```
+
+**EMQX** (`emqx.conf`):
+```
+listeners.ssl.default {
+  bind = "0.0.0.0:8883"
+  ssl_options {
+    cacertfile = "/etc/emqx/certs/ca.pem"
+    certfile = "/etc/emqx/certs/server-cert.pem"
+    keyfile = "/etc/emqx/certs/server-key.pem"
+    verify = verify_none
+  }
+}
+```
+
+**VerneMQ** (`vernemq.conf`):
+```
+listener.ssl.default = 0.0.0.0:8883
+listener.ssl.cafile = /etc/vernemq/certs/ca.pem
+listener.ssl.certfile = /etc/vernemq/certs/server-cert.pem
+listener.ssl.keyfile = /etc/vernemq/certs/server-key.pem
+```
+
+> **Warning:** Use TLS 1.2 or higher. TLS 1.0 and 1.1 are deprecated and should not be used in production.
+
+## Step 3: Configure Authentication
+
+Set up username/password authentication for reader connections.
+
+**Mosquitto**: create a password file:
+```bash
+mosquitto_passwd -c /etc/mosquitto/passwd reader-fleet
+```
+
+Add to `mosquitto.conf`:
+```
+allow_anonymous false
+password_file /etc/mosquitto/passwd
+```
+
+**HiveMQ**: use the File Authentication extension or integrate with LDAP/database authentication.
+
+**EMQX**: configure built-in authentication:
+```
+authentication = [
+  {
+    mechanism = password_based
+    backend = built_in_database
+  }
+]
+```
+
+Create users via the EMQX dashboard or CLI.
+
+**VerneMQ**: configure the `vmq_passwd` plugin:
+```bash
+vmq-passwd -c /etc/vernemq/vmq.passwd reader-fleet
+```
+
+## Step 4: Configure Topic ACLs
+
+Restrict readers to their own topic namespaces to prevent cross-device interference.
+
+**Mosquitto** (`aclfile`):
+```
+user reader-fleet
+topic readwrite zebra/rfid/#
+topic read $SYS/#
+```
+
+**EMQX**: use the built-in ACL or create authorization rules:
+```
+authorization {
+  sources = [
+    {
+      type = built_in_database
+    }
+  ]
+}
+```
+
+**HiveMQ**: configure topic permissions in the Extension or through the control center.
+
+**VerneMQ**: configure ACLs in `vmq.acl`:
+```
+user "reader-fleet" {
+  topic "zebra/rfid/#" readwrite
+}
+```
+
+> **Note:** For fleet deployments, consider using per-device credentials (e.g., `reader-{serial}`) with ACLs that restrict each reader to its own subtopic: `zebra/rfid/{client_id}/#`. This prevents one compromised reader from publishing on behalf of another.
+
+## Step 5: Configure the Reader's MQTT Endpoint
+
+Configure each reader to connect to your custom broker. The `config_endpoint` payload:
+
+```json
+{
+  "command_id": "custom-broker-001",
+  "config": {
+    "mqtt": {
+      "broker_host": "mqtt.yourcompany.com",
+      "broker_port": 8883,
+      "tls_enabled": true,
+      "tls_ca_path": "/certs/ca.pem",
+      "client_id": "rfd40-sn12345",
+      "username": "reader-fleet",
+      "password": "secure-password",
+      "clean_session": true,
+      "keepalive_seconds": 60,
+      "qos": 1
+    }
+  }
+}
+```
+
+For mutual TLS (client certificate authentication):
+
+```json
+{
+  "command_id": "custom-broker-002",
+  "config": {
+    "mqtt": {
+      "broker_host": "mqtt.yourcompany.com",
+      "broker_port": 8883,
+      "tls_enabled": true,
+      "tls_cert_path": "/certs/reader-cert.pem",
+      "tls_key_path": "/certs/reader-private.key",
+      "tls_ca_path": "/certs/ca.pem",
+      "client_id": "rfd40-sn12345",
+      "clean_session": true,
+      "keepalive_seconds": 60,
+      "qos": 1
+    }
+  }
+}
+```
+
+## Step 6: Verify Broker Connectivity
+
+After configuring the reader, verify the connection:
+
+1. Check the broker's log for the reader's connection event
+2. Subscribe to the reader's status topic from a test client:
+
+```bash
+mosquitto_sub -h mqtt.yourcompany.com -p 8883 \
+  --cafile ca.pem -u admin -P admin-pass \
+  -t "zebra/rfid/rfd40-sn12345/status"
+```
+
+3. Confirm tag events are flowing when the reader performs an inventory
+
+## Production Hardening
+
+**High availability:** For production deployments, deploy the broker in a clustered configuration (HiveMQ, EMQX, or VerneMQ) behind a load balancer. Mosquitto does not support native clustering; use it only for small deployments or development.
+
+**Monitoring:** Enable broker metrics and integrate with your monitoring stack:
+- Mosquitto: `$SYS/#` topics
+- HiveMQ: Control Center dashboard or Prometheus metrics
+- EMQX: Built-in dashboard or Prometheus/Grafana integration
+- VerneMQ: Prometheus metrics endpoint
+
+**Persistence:** Enable message persistence to survive broker restarts without losing QoS 1/2 in-flight messages.
+
+**Firewall rules:** Restrict broker access to known IP ranges. Open only port 8883 (MQTT over TLS). Do not expose port 1883 (unencrypted MQTT) in production.
+
+> **Warning:** Never deploy an MQTT broker in production with `allow_anonymous true` or without TLS. Unauthenticated, unencrypted MQTT connections expose reader data and management commands to interception and unauthorized access.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Resolution |
+|---|---|---|
+| Connection refused | Broker not listening on configured port | Verify listener configuration and firewall rules |
+| Authentication failure | Wrong username/password | Verify credentials in broker's auth backend |
+| TLS handshake failure | Certificate mismatch or expired cert | Verify CA chain, check certificate expiration dates |
+| Reader connects but cannot publish | ACL denying the publish topic | Review ACL rules for the reader's username/client ID |
+| Intermittent disconnections | Keepalive timeout too aggressive | Increase `keepalive_seconds`; check network stability |

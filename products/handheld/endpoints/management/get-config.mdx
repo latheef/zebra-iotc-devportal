@@ -1,0 +1,202 @@
+---
+sidebar_position: 4
+title: Get Config
+description: Retrieve complete device configuration including version, status, region, ethernet, Wi-Fi, endpoints, certificates, and event config.
+---
+
+# Get Config
+
+Retrieve the complete device configuration from a Zebra handheld RFID reader. This is a superset command that returns all configuration domains in a single response; equivalent to combining the output of `get_version`, `get_status`, `get_current_region`, `get_wifi`, and `get_eth`.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `get_config` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "get_config",
+  "requestId": "req-001"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"get_config"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response with this request. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "get_config",
+  "requestId": "req-001",
+  "responseCode": 0,
+  "deviceConfig": {
+    "deviceVersion": {
+      "model": "RFD40",
+      "deviceSerialNo": "RFD40-212735201D0053",
+      "sku": "RFD40-STD-G510-WR",
+      "firmwareVersion": "2.1.0.45",
+      "bluetoothVersion": "5.1",
+      "radioVersion": "3.4.12",
+      "osVersion": "1.8.3",
+      "bootLoaderVersion": "1.2.0",
+      "cloudAgentVersion": "1.5.7"
+    },
+    "deviceStatus": {
+      "powerSource": "BATTERY",
+      "radioActivity": "ACTIVE",
+      "radioConnection": "CONNECTED",
+      "temperature": 32,
+      "systemTime": "2026-04-14T10:30:00Z"
+    },
+    "regionInfo": {
+      "country": "US",
+      "regulatoryStandard": "FCC",
+      "frequencyHopping": true,
+      "lbtEnabled": false,
+      "minTxPowerSupported": 50,
+      "maxTxPowerSupported": 300
+    },
+    "ethernetConfig": {
+      "linkStatus": "DOWN",
+      "dhcpEnabled": true,
+      "macAddress": "00:A0:50:12:34:56"
+    },
+    "wifiConfig": {
+      "profiles": []
+    },
+    "endpointConfig": {},
+    "certificates": [],
+    "eventConfig": {}
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echo of the command name. |
+| `requestId` | string | Echo of the request identifier. |
+| `responseCode` | integer | Result code indicating success or failure. |
+| `deviceConfig` | object | Container for the complete device configuration. |
+| `deviceConfig.deviceVersion` | object | Hardware and software version information. See [Get Version](get-version). |
+| `deviceConfig.deviceStatus` | object | Current operational status. See [Get Status](get-status). |
+| `deviceConfig.regionInfo` | object | Regulatory region configuration. See [Get Current Region](get-current-region). |
+| `deviceConfig.ethernetConfig` | object | Ethernet adapter configuration. See [Get Ethernet](get-eth). |
+| `deviceConfig.wifiConfig` | object | Wi-Fi profiles and connection state. See [Get Wi-Fi](get-wifi). |
+| `deviceConfig.endpointConfig` | object | Cloud endpoint connection configuration. |
+| `deviceConfig.certificates` | array | Installed certificate entries. |
+| `deviceConfig.eventConfig` | object | Event reporting and filtering configuration. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success. |
+| `1` | General failure. |
+| `3` | Device busy or unavailable. |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "get_config",
+  "requestId": "config-20260414-001"
+}
+```
+
+### Response
+
+```json
+{
+  "command": "get_config",
+  "requestId": "config-20260414-001",
+  "responseCode": 0,
+  "deviceConfig": {
+    "deviceVersion": {
+      "model": "RFD40",
+      "deviceSerialNo": "RFD40-212735201D0053",
+      "sku": "RFD40-STD-G510-WR",
+      "firmwareVersion": "2.1.0.45",
+      "bluetoothVersion": "5.1",
+      "radioVersion": "3.4.12",
+      "osVersion": "1.8.3",
+      "bootLoaderVersion": "1.2.0",
+      "cloudAgentVersion": "1.5.7"
+    },
+    "deviceStatus": {
+      "powerSource": "USB",
+      "radioActivity": "INACTIVE",
+      "radioConnection": "DISCONNECTED",
+      "temperature": 27,
+      "systemTime": "2026-04-14T14:05:30Z"
+    },
+    "regionInfo": {
+      "country": "US",
+      "regulatoryStandard": "FCC",
+      "frequencyHopping": true,
+      "lbtEnabled": false,
+      "minTxPowerSupported": 50,
+      "maxTxPowerSupported": 300,
+      "channelData": [902750, 903250, 903750]
+    },
+    "ethernetConfig": {
+      "linkStatus": "UP",
+      "dhcpEnabled": true,
+      "ipAddress": "192.168.1.100",
+      "subnetMask": "255.255.255.0",
+      "gateway": "192.168.1.1",
+      "dns1": "8.8.8.8",
+      "dns2": "8.8.4.4",
+      "macAddress": "00:A0:50:12:34:56"
+    },
+    "wifiConfig": {
+      "profiles": [
+        {
+          "ssid": "Warehouse-5G",
+          "securityType": "WPA3_PERSONAL",
+          "connected": true,
+          "signalStrength": -45,
+          "hidden": false
+        }
+      ]
+    },
+    "endpointConfig": {
+      "mqttBroker": "mqtt.example.com",
+      "mqttPort": 8883
+    },
+    "certificates": [
+      {
+        "name": "ca-root",
+        "type": "CA",
+        "expiry": "2028-12-31T23:59:59Z"
+      }
+    ],
+    "eventConfig": {
+      "tagReadReporting": true,
+      "batteryAlerts": true
+    }
+  }
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

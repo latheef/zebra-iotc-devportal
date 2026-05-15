@@ -1,0 +1,118 @@
+---
+sidebar_position: 11
+title: "get_endpoint_config"
+description: "Query MQTT endpoint configuration on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# get_endpoint_config
+
+Retrieves the MQTT endpoint configuration, including the active endpoint and all saved endpoints.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "get_endpoint_config",
+  "requestId": "13"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"get_endpoint_config"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+
+## Response Payload
+
+```json
+{
+  "command": "get_endpoint_config",
+  "requestId": "13",
+  "statusCode": 0,
+  "statusMessage": "Success",
+  "activeEndpoint": {
+    "name": "Production-Broker",
+    "protocol": "MQTT_TLS",
+    "url": "mqtt.warehouse.acme.com",
+    "port": 8883,
+    "tls": {
+      "enabled": true,
+      "caCertificate": "MQTTBrokerCA",
+      "clientCertificate": "DeviceClientCert"
+    },
+    "topics": {
+      "tenantId": "acme-tenant-001",
+      "mgmtCommand": "acme-tenant-001/MGMT/clients/cmnd/24042AR50033",
+      "mgmtResponse": "acme-tenant-001/MGMT/clients/resp/24042AR50033",
+      "mgmtEvent": "acme-tenant-001/MGMT/clients/event/24042AR50033",
+      "ctrlCommand": "acme-tenant-001/CTRL/clients/cmnd/24042AR50033",
+      "ctrlResponse": "acme-tenant-001/CTRL/clients/resp/24042AR50033",
+      "data1": "acme-tenant-001/DATA/clients/data1event/24042AR50033",
+      "data2": "acme-tenant-001/DATA/clients/data2event/24042AR50033"
+    },
+    "credentials": {
+      "username": "device-24042AR50033",
+      "passwordSet": true
+    }
+  },
+  "savedEndpoints": [
+    {
+      "name": "Staging-Broker",
+      "protocol": "MQTT",
+      "url": "mqtt-staging.warehouse.acme.com",
+      "port": 1883
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+| `activeEndpoint` | object | Currently active MQTT endpoint (null if none active) |
+| `activeEndpoint.name` | string | Endpoint display name |
+| `activeEndpoint.protocol` | string | `MQTT` or `MQTT_TLS` |
+| `activeEndpoint.url` | string | Broker hostname or IP address |
+| `activeEndpoint.port` | integer | Broker port number |
+| `activeEndpoint.tls` | object | TLS configuration (present when `protocol` is `MQTT_TLS`) |
+| `activeEndpoint.tls.enabled` | boolean | Whether TLS is active |
+| `activeEndpoint.tls.caCertificate` | string | Name of the CA certificate used for server validation |
+| `activeEndpoint.tls.clientCertificate` | string | Name of the client certificate for mutual TLS |
+| `activeEndpoint.topics` | object | Resolved MQTT topic paths |
+| `activeEndpoint.topics.tenantId` | string | Configured tenant identifier |
+| `activeEndpoint.credentials.username` | string | MQTT username |
+| `activeEndpoint.credentials.passwordSet` | boolean | Whether a password is configured (password value is never returned) |
+| `savedEndpoints` | array | List of saved but inactive endpoint configurations |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+
+## Notes
+
+- Passwords and private keys are never returned in the response. The `passwordSet` boolean indicates whether a password is configured.
+- The `topics` object shows the fully resolved topic paths including the tenant ID and device serial number.
+- The device can store multiple endpoint configurations but only one can be active at a time.
+
+## See Also
+
+- [config_endpoint](config-endpoint): Create or modify an MQTT endpoint
+- [get_installed_certificate](get-installed-certificate): List certificates for TLS
+- [API Overview](../api-overview): Complete endpoint inventory

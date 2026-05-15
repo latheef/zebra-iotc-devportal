@@ -1,0 +1,100 @@
+---
+sidebar_position: 3
+title: "Reader Bootstrap with 123RFID Desktop"
+description: "Tutorial for initial reader sled configuration using 123RFID Desktop, including region setting, Wi-Fi, and MDM endpoint configuration."
+---
+
+# Reader Bootstrap with 123RFID Desktop
+
+📗 **TUTORIAL**: This tutorial walks you through the one-time bootstrap process for your RFD40 or RFD90 reader sled using the 123RFID Desktop application. By the end, your reader will be configured to connect to the Zebra IoT Connector platform over Wi-Fi.
+
+## Prerequisites
+
+- RFD40 or RFD90 reader sled
+- Windows 10 or Windows 11 PC with 123RFID Desktop installed
+- USB cable (USB-A to USB-C or USB-C to USB-C)
+- Wi-Fi network SSID and password
+- IOTC tenant credentials (see [How to Obtain IOTC Credentials](./obtain-credentials.mdx))
+
+## Step 1: Connect the Reader via USB
+
+1. Power on the reader sled by pressing and holding the power button for 3 seconds.
+2. Connect the reader to your Windows PC using the USB cable.
+3. Wait for the reader to appear as a connected device (the LED indicator should turn solid blue).
+
+> **Note:** If Windows prompts you to install drivers, allow the installation to complete before proceeding.
+
+## Step 2: Launch 123RFID Desktop
+
+1. Open **123RFID Desktop** on your Windows PC.
+2. The application automatically scans for connected readers.
+3. Your reader should appear in the **Connected Readers** panel with its serial number and model (RFD40 or RFD90).
+4. Click on the reader entry to select it.
+
+## Step 3: Set the Regulatory Region
+
+1. Navigate to **Configuration** → **Region Settings**.
+2. Select the appropriate regulatory region for your operating location (e.g., `NA` for North America, `EU` for Europe, `JP` for Japan).
+3. Click **Apply**.
+
+> **Warning:** The regulatory region can **only** be configured through 123RFID Desktop via USB connection. This setting **cannot** be changed remotely via MQTT. Operating a reader in the wrong region may violate local radio frequency regulations.
+
+## Step 4: Configure Wi-Fi
+
+1. Navigate to **Configuration** → **Wi-Fi Settings**.
+2. Enter the following:
+   - **SSID**: Your Wi-Fi network name
+   - **Security Type**: WPA2-PSK (or as appropriate for your network)
+   - **Password**: Your Wi-Fi network password
+3. Click **Apply**.
+4. The reader will attempt to connect to the specified Wi-Fi network. A successful connection is indicated by the Wi-Fi LED turning solid green.
+
+## Step 5: Configure the MDM Endpoint
+
+1. Navigate to **Configuration** → **MDM / Cloud Settings**.
+2. Enter the following IOTC connection details:
+   - **Broker Host**: Your IOTC MQTT broker hostname (e.g., `mqtt.iotconnector.zebra.com`)
+   - **Broker Port**: `8883`
+   - **Tenant ID**: Your IOTC tenant identifier
+   - **Username**: Your MQTT username
+   - **Password**: Your MQTT password
+3. Click **Apply**.
+
+The reader will establish an MQTT connection to the IOTC broker. A successful connection is indicated in the status panel.
+
+## Step 6: Verify the Connection
+
+1. In 123RFID Desktop, navigate to **Status** → **Cloud Connection**.
+2. Confirm the status shows **Connected**.
+3. Note the **Device Serial Number** displayed; you will need this for MQTT topic construction.
+
+## Step 7: Disconnect USB
+
+1. Once the connection is verified, safely disconnect the USB cable.
+2. The reader will continue operating on battery power and maintain its Wi-Fi and MQTT connections.
+
+The bootstrap process is complete. Your reader is now registered with the IOTC platform and communicating via MQTT.
+
+## Configuration Summary
+
+After completing bootstrap, your reader has the following configuration:
+
+| Setting | Value |
+|---------|-------|
+| Region | Set to your regulatory region |
+| Wi-Fi | Connected to your specified network |
+| MQTT Broker | Connected to IOTC platform |
+| Protocol | MQTT 3.1.1 over TLS (port 8883) |
+
+## Troubleshooting
+
+| Issue | Resolution |
+|-------|------------|
+| Reader not detected via USB | Try a different USB cable or port. Ensure reader is powered on. |
+| Wi-Fi connection fails | Verify SSID and password. Ensure the network is within range. Check that the network supports 2.4 GHz. |
+| MDM connection fails | Verify broker hostname, port, username, and password. Check that port 8883 is not blocked by your network firewall. |
+
+## Next Steps
+
+- [How to Verify Reader Firmware Version](./verify-firmware.mdx)
+- [Quick Start Tutorial](../quick-start/overview.mdx)

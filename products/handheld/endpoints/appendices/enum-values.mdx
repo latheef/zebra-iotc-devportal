@@ -1,0 +1,199 @@
+---
+sidebar_position: 2
+title: Enum Values
+description: "Complete reference of all enumeration values used across the Zebra IoT Connector MQTT API"
+---
+
+# Appendix B: Enum Values
+
+**Zebra IoT Connector: MQTT API V1.1**
+
+All enumeration values used across the MQTT API are listed below, grouped by field name. Each entry includes the commands or events that use it.
+
+---
+
+## `controlType`: `control_operation`
+
+| Value | Description |
+|-------|-------------|
+| `RFID` | RFID radio operations |
+| `SCANNER` | Barcode scanner operations (if supported by hardware) |
+
+## `operation`: `control_operation`
+
+| Value | Description |
+|-------|-------------|
+| `START` | Start the operation |
+| `STOP` | Stop the operation |
+
+## `securityType`: `set_wifi`, `get_wifi`
+
+| Value | Description |
+|-------|-------------|
+| `WPA2_PERSONAL` | WPA2 with pre-shared key |
+| `WPA3_PERSONAL` | WPA3 with SAE authentication |
+| `WPA2_ENTERPRISE` | WPA2 with 802.1X / EAP |
+| `WPA3_ENTERPRISE` | WPA3 with 802.1X / EAP |
+| `OPEN` | No authentication |
+
+## `eapMethod`: `set_wifi`, `get_wifi`
+
+| Value | Description |
+|-------|-------------|
+| `PEAP` | Protected EAP |
+| `TLS` | EAP-TLS (certificate-based) |
+| `TTLS` | EAP-TTLS (tunneled) |
+
+## `phase2Method`: `set_wifi`
+
+| Value | Description |
+|-------|-------------|
+| `MSCHAPV2` | MS-CHAPv2 inner authentication |
+| `GTC` | Generic Token Card |
+| `PAP` | Password Authentication Protocol |
+
+## `wifiOperation`: `set_wifi`
+
+| Value | Description |
+|-------|-------------|
+| `ADD` | Create a new Wi-Fi profile |
+| `MODIFY` | Update an existing Wi-Fi profile |
+
+## `endpointOperation`: `config_endpoint`
+
+| Value | Description |
+|-------|-------------|
+| `ADD` | Create a new endpoint |
+| `MODIFY` | Update an existing endpoint |
+| `DELETE` | Remove an endpoint |
+
+## `endpointType`: `config_endpoint`, `get_endpoint_config`
+
+| Value | Description |
+|-------|-------------|
+| `MGMT` | Management interface |
+| `CTRL` | Control interface |
+| `DATA` | Tag data interface |
+| `MDM` | Mobile device management |
+
+## `connectionStatus`: `get_endpoint_config`, `mqttConnEVT`
+
+| Value | Description |
+|-------|-------------|
+| `CONNECTED` | Connected to the broker |
+| `DISCONNECTED` | Disconnected from the broker |
+| `CONNECTING` | Connection in progress |
+| `RECONNECTING` | Reconnection attempt in progress |
+| `CONNECTION_FAILED` | Connection attempt failed |
+
+## `certificateType`: `install_certificate`, `get_installed_certificate`
+
+| Value | Description |
+|-------|-------------|
+| `mqtt` | MQTT broker TLS certificate |
+| `wifi` | Wi-Fi EAP-TLS certificate |
+| `client` | Client certificate for mutual TLS |
+
+## `linkStatus`: `get_eth`
+
+| Value | Description |
+|-------|-------------|
+| `UP` | Cable connected and link established |
+| `DOWN` | No cable or no link |
+
+## `powerSource`: `get_status`
+
+| Value | Description |
+|-------|-------------|
+| `BATTERY` | Running on battery power |
+| `USB` | Connected to USB power |
+| `CRADLE` | Docked in a cradle |
+
+## `radioActivity`: `get_status`, `heartBeatEVT`
+
+| Value | Description |
+|-------|-------------|
+| `ACTIVE` | RFID radio is actively performing operations |
+| `INACTIVE` | RFID radio is idle |
+
+## `radioConnection`: `get_status`
+
+| Value | Description |
+|-------|-------------|
+| `CONNECTED` | RFID radio is connected and ready |
+| `DISCONNECTED` | RFID radio is not connected |
+
+## `stateOfHealth`: `get_status`, `heartBeatEVT`
+
+| Value | Description |
+|-------|-------------|
+| `GOOD` | Battery health is good |
+| `DEGRADED` | Battery health has degraded; consider replacement |
+| `REPLACE` | Battery should be replaced |
+
+## `filterType`: `set_post_filter`
+
+| Value | Description |
+|-------|-------------|
+| `PREFIX` | Match tags whose EPC starts with the pattern |
+| `SUFFIX` | Match tags whose EPC ends with the pattern |
+| `REGEX` | Match tags whose EPC matches the regular expression |
+| `RSSI` | Filter by received signal strength |
+| `WHITELIST` | Allow only tags in the list |
+| `BLACKLIST` | Exclude tags in the list |
+
+## `filterAction`: `set_post_filter`
+
+| Value | Description |
+|-------|-------------|
+| `INCLUDE` | Include matching tags in data events |
+| `EXCLUDE` | Exclude matching tags from data events |
+
+## `alertType`: `alerts`, `alert_short`
+
+| Value | Description |
+|-------|-------------|
+| `TEMPERATURE_HIGH` | Internal temperature exceeded threshold |
+| `BATTERY_LOW` | Battery below low threshold |
+| `BATTERY_CRITICAL` | Battery below critical threshold |
+| `BATTERY_HEALTH_DEGRADED` | Battery health is degraded |
+| `RADIO_ERROR` | RFID radio error detected |
+
+## `severity`: `alerts`, `alert_short`
+
+| Value | Description |
+|-------|-------------|
+| `INFO` | Informational |
+| `WARNING` | Warning condition |
+| `CRITICAL` | Critical condition requiring immediate action |
+
+## `exceptionType`: `exceptionEVT`
+
+| Value | Description |
+|-------|-------------|
+| `RADIO_COMMUNICATION_ERROR` | RFID radio communication failure |
+| `RADIO_INITIALIZATION_ERROR` | RFID radio failed to initialize |
+| `BLUETOOTH_DISCONNECTION` | Bluetooth connection lost |
+| `NETWORK_ERROR` | Wi-Fi or Ethernet connectivity failure |
+| `MQTT_PUBLISH_ERROR` | MQTT publish failure |
+| `FIRMWARE_ERROR` | Internal firmware error |
+| `MEMORY_ERROR` | Memory allocation failure |
+| `HARDWARE_ERROR` | Hardware fault detected |
+
+## `mqttConnStatus`: `mqttConnEVT`
+
+| Value | Description |
+|-------|-------------|
+| `CONNECTED` | Connected to the broker |
+| `DISCONNECTED` | Disconnected from the broker |
+| `RECONNECTING` | Reconnection in progress |
+| `CONNECTION_FAILED` | Connection attempt failed |
+
+## `connReason`: `mqttConnEVT`
+
+| Value | Description |
+|-------|-------------|
+| `CLEAN_CONNECT` | Initial clean connection |
+| `BROKER_UNAVAILABLE` | Broker became unreachable |
+| `KEEPALIVE_TIMEOUT` | MQTT keepalive timeout exceeded |
+| `NETWORK_CHANGE` | Network interface changed (e.g., Wi-Fi to Ethernet) |

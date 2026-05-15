@@ -1,0 +1,50 @@
+name: CI — Lint & Build
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      # 1. Spectral — lint API specs
+      - name: Lint API specifications
+        run: pnpm lint:specs
+
+      # 2. Prettier — check formatting
+      - name: Check formatting
+        run: pnpm lint:format
+
+      # 3. CSpell — spell check
+      - name: Spell check
+        run: pnpm lint:spell
+
+      # 4. Vale — prose lint
+      - name: Install Vale
+        uses: errata-ai/vale-action@v2
+        with:
+          files: products/ docs/
+          reporter: github-pr-check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # 5. Docusaurus build (includes broken-link check via onBrokenLinks: throw)
+      - name: Build site
+        run: pnpm build

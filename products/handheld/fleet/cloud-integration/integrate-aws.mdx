@@ -1,0 +1,165 @@
+---
+sidebar_position: 2
+title: "How to Integrate with AWS IoT Core"
+---
+
+# How to Integrate with AWS IoT Core
+
+This guide walks through connecting Zebra RFD40/RFD90 reader sleds to AWS IoT Core, enabling tag data ingestion and device management through AWS's IoT platform.
+
+## Prerequisites
+
+- AWS account with IoT Core enabled in the target region
+- AWS CLI configured with appropriate IAM permissions
+- Reader sleds with firmware version 2.0 or later
+- TLS certificates generated through AWS IoT Core
+
+## Architecture Overview
+
+In this integration, the reader sled connects directly to AWS IoT Core's MQTT endpoint using X.509 certificate-based authentication. AWS IoT Core acts as the MQTT broker.
+
+```
+┌──────────┐    MQTT/TLS    ┌──────────────┐    Rules    ┌─────────────┐
+│  Reader   │──────────────►│  AWS IoT     │────────────►│  DynamoDB   │
+│  Sled     │               │  Core        │             │  S3 / Lambda│
+└──────────┘                └──────────────┘             └─────────────┘
+```
+
+## Step 1: Create an IoT Thing
+
+Register each reader as an IoT Thing in AWS IoT Core:
+
+```bash
+aws iot create-thing --thing-name "rfd40-sn12345"
+```
+
+Create a Thing Group for fleet management:
+
+```bash
+aws iot create-thing-group --thing-group-name "zebra-rfid-readers"
+aws iot add-thing-to-thing-group \
+  --thing-group-name "zebra-rfid-readers" \
+  --thing-name "rfd40-sn12345"
+```
+
+## Step 2: Generate and Register Certificates
+
+Generate a device certificate and key pair:
+
+```bash
+aws iot create-keys-and-certificate \
+  --set-as-active \
+  --certificate-pem-outfile reader-cert.pem \
+  --public-key-outfile reader-public.key \
+  --private-key-outfile reader-private.key
+```
+
+Download the Amazon Root CA:
+
+```bash
+curl -o AmazonRootCA1.pem https://www.amazontrust.com/repository/AmazonRootCA1.pem
+```
+
+Attach the certificate to the Thing:
+
+```bash
+aws iot attach-thing-principal \
+  --thing-name "rfd40-sn12345" \
+  --principal "arn:aws:iot:us-east-1:123456789:cert/abc123..."
+```
+
+## Step 3: Create an IoT Policy
+
+Create a policy that allows the reader to connect, publish, and subscribe:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "iot:Connect",
+      "Resource": "arn:aws:iot:us-east-1:123456789:client/rfd40-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Publish",
+      "Resource": "arn:aws:iot:us-east-1:123456789:topic/zebra/rfid/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Subscribe",
+      "Resource": "arn:aws:iot:us-east-1:123456789:topicfilter/zebra/rfid/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Receive",
+      "Resource": "arn:aws:iot:us-east-1:123456789:topic/zebra/rfid/*"
+    }
+  ]
+}
+```
+
+Attach the policy to the certificate:
+
+```bash
+aws iot attach-policy \
+  --policy-name "ZebraRFIDReaderPolicy" \
+  --target "arn:aws:iot:us-east-1:123456789:cert/abc123..."
+```
+
+## Step 4: Configure the Reader's MQTT Endpoint
+
+Configure the reader to connect to the AWS IoT Core endpoint. The `config_endpoint` payload for the reader:
+
+```json
+{
+  "command_id": "aws-endpoint-001",
+  "config": {
+    "mqtt": {
+      "broker_host": "a1b2c3d4e5f6g7-ats.iot.us-east-1.amazonaws.com",
+      "broker_port": 8883,
+      "tls_enabled": true,
+      "tls_cert_path": "/certs/reader-cert.pem",
+      "tls_key_path": "/certs/reader-private.key",
+      "tls_ca_path": "/certs/AmazonRootCA1.pem",
+      "client_id": "rfd40-sn12345",
+      "clean_session": true,
+      "keepalive_seconds": 300
+    }
+  }
+}
+```
+
+> **Warning:** AWS IoT Core requires the MQTT client ID to match the IoT Thing name. Ensure the `client_id` matches the Thing name registered in Step 1.
+
+## Step 5: Map Topics
+
+Zebra readers publish to topics following the pattern `zebra/rfid/{device_id}/{event_type}`. AWS IoT Core receives these topics directly. Create IoT Rules to route data:
+
+| Zebra Topic | AWS IoT Rule | Destination |
+|---|---|---|
+| `zebra/rfid/+/tagEvents` | Tag data ingestion | DynamoDB / S3 |
+| `zebra/rfid/+/status` | Health monitoring | CloudWatch |
+| `zebra/rfid/+/mqttConnEVT` | Connection tracking | Lambda |
+
+Example IoT Rule SQL for tag events:
+
+```sql
+SELECT * FROM 'zebra/rfid/+/tagEvents'
+```
+
+## Step 6: Verify the Integration
+
+1. Power on the reader and confirm it connects to AWS IoT Core (check the **Monitor → Activity** dashboard)
+2. Verify tag events appear in the configured destination (DynamoDB table, S3 bucket, or CloudWatch logs)
+3. Issue a management command from your application through AWS IoT Core and confirm the reader responds
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Resolution |
+|---|---|---|
+| Connection refused | Certificate not activated or not attached to Thing | Verify certificate status and Thing association |
+| Connected but no data in rules | IoT policy missing `iot:Publish` permission | Update the policy to allow publishing on the reader's topics |
+| Intermittent disconnections | Keepalive too short for the network | Increase `keepalive_seconds` to 300 or higher |
+| TLS handshake failure | Incorrect CA certificate | Ensure AmazonRootCA1.pem is used, not an older root CA |

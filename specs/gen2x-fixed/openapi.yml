@@ -1,0 +1,313 @@
+openapi: 3.0.3
+info:
+  title: Zebra Gen2x Fixed RFID Reader IoT Connector REST API
+  version: 2.0.0
+  description: |
+    REST API for configuring and managing Zebra Gen2x fixed RFID readers.
+    Extends the standard fixed reader API with Gen2x (Gen2v2) features
+    including cryptographic authentication, untraceable, and extended memory.
+  contact:
+    name: Zebra Technologies Developer Support
+    url: https://developer.zebra.com
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://{readerIp}/api/v2
+    description: Gen2x fixed reader REST API (v2)
+    variables:
+      readerIp:
+        default: 192.168.1.100
+
+security:
+  - basicAuth: []
+
+paths:
+  /status:
+    get:
+      operationId: getStatus
+      summary: Get reader status
+      tags:
+        - System
+      responses:
+        "200":
+          description: Reader status with Gen2x support info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gen2xReaderStatus"
+
+  /config/gen2x:
+    get:
+      operationId: getGen2xConfig
+      summary: Get Gen2x feature configuration
+      tags:
+        - Gen2x
+      responses:
+        "200":
+          description: Gen2x configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gen2xConfig"
+    put:
+      operationId: updateGen2xConfig
+      summary: Update Gen2x feature configuration
+      tags:
+        - Gen2x
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Gen2xConfig"
+      responses:
+        "200":
+          description: Gen2x configuration updated
+        "400":
+          description: Invalid configuration
+
+  /config/gen2x/untraceable:
+    put:
+      operationId: updateUntraceableConfig
+      summary: Configure Gen2x Untraceable feature
+      tags:
+        - Gen2x
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UntraceableConfig"
+      responses:
+        "200":
+          description: Untraceable configuration updated
+
+  /config/rf:
+    put:
+      operationId: updateRfConfig
+      summary: Update RF configuration
+      tags:
+        - Configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transmitPower:
+                  type: number
+                session:
+                  type: string
+                  enum: [S0, S1, S2, S3]
+                antennas:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      port:
+                        type: integer
+                      enabled:
+                        type: boolean
+                      power:
+                        type: number
+      responses:
+        "200":
+          description: RF configuration updated
+
+  /mqtt/config:
+    get:
+      operationId: getMqttConfig
+      summary: Get MQTT configuration
+      tags:
+        - MQTT
+      responses:
+        "200":
+          description: MQTT configuration
+    put:
+      operationId: updateMqttConfig
+      summary: Update MQTT configuration
+      tags:
+        - MQTT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                brokerUri:
+                  type: string
+                clientId:
+                  type: string
+                caCertificate:
+                  type: string
+      responses:
+        "200":
+          description: MQTT configuration updated
+
+  /mqtt/telemetry:
+    put:
+      operationId: updateTelemetryConfig
+      summary: Update telemetry configuration
+      tags:
+        - MQTT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                mode:
+                  type: string
+                  enum: [individual, batch]
+                batchIntervalMs:
+                  type: integer
+                includeGen2xData:
+                  type: boolean
+      responses:
+        "200":
+          description: Telemetry configuration updated
+
+  /inventory/start:
+    post:
+      operationId: startInventory
+      summary: Start RFID inventory
+      tags:
+        - Inventory
+      responses:
+        "200":
+          description: Inventory started
+
+  /inventory/stop:
+    post:
+      operationId: stopInventory
+      summary: Stop RFID inventory
+      tags:
+        - Inventory
+      responses:
+        "200":
+          description: Inventory stopped
+
+  /inventory/status:
+    get:
+      operationId: getInventoryStatus
+      summary: Get inventory status
+      tags:
+        - Inventory
+      responses:
+        "200":
+          description: Inventory status
+
+  /firmware/upload:
+    post:
+      operationId: uploadFirmware
+      summary: Upload firmware file
+      tags:
+        - Firmware
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Firmware uploaded
+
+  /firmware/apply:
+    post:
+      operationId: applyFirmware
+      summary: Apply uploaded firmware
+      tags:
+        - Firmware
+      responses:
+        "200":
+          description: Firmware applied, reader rebooting
+
+  /system/reboot:
+    post:
+      operationId: rebootReader
+      summary: Reboot the reader
+      tags:
+        - System
+      responses:
+        "200":
+          description: Reboot initiated
+
+  /system/factory-reset:
+    post:
+      operationId: factoryReset
+      summary: Factory reset the reader
+      tags:
+        - System
+      responses:
+        "200":
+          description: Factory reset initiated
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+  schemas:
+    Gen2xReaderStatus:
+      type: object
+      properties:
+        model:
+          type: string
+          example: FX9700-GEN2X
+        serialNumber:
+          type: string
+          example: FX9700-654321
+        firmwareVersion:
+          type: string
+          example: "5.0.0"
+        gen2xSupport:
+          type: boolean
+          example: true
+        uptime:
+          type: integer
+          example: 172800
+        temperature:
+          type: integer
+          example: 42
+        antennaCount:
+          type: integer
+          example: 8
+
+    Gen2xConfig:
+      type: object
+      properties:
+        cryptoAuth:
+          type: boolean
+          description: Enable Gen2x cryptographic tag authentication
+        authKey:
+          type: string
+          description: Base64-encoded AES-128 key
+        untraceable:
+          type: boolean
+          description: Enable Untraceable feature
+        extendedMemory:
+          type: boolean
+          description: Enable extended memory access
+
+    UntraceableConfig:
+      type: object
+      properties:
+        hideEpc:
+          type: boolean
+        epcLength:
+          type: integer
+          description: Visible EPC length in words
+        hideTid:
+          type: boolean
+        hideUser:
+          type: boolean

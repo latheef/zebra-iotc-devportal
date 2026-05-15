@@ -1,0 +1,67 @@
+---
+sidebar_position: 3
+title: REST Configuration
+---
+
+# REST API: Gen2x Configuration
+
+Configure your Zebra Gen2x fixed reader with extended Gen2v2 features.
+
+## Base URL
+
+```
+https://<READER_IP>/api/v2
+```
+
+## Gen2x Feature Configuration
+
+### Enable Cryptographic Authentication
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v2/config/gen2x \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cryptoAuth": true,
+    "authKey": "<base64-encoded-aes-128-key>"
+  }'
+```
+
+### Configure Untraceable
+
+Hide portions of a tag's EPC memory to prevent unauthorized tracking:
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v2/config/gen2x/untraceable \
+  -H "Content-Type: application/json" \
+  -d '{
+    "hideEpc": true,
+    "epcLength": 6,
+    "hideTid": false,
+    "hideUser": false
+  }'
+```
+
+## Standard RF Configuration
+
+Standard RF configuration follows the same pattern as fixed readers:
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v2/config/rf \
+  -H "Content-Type: application/json" \
+  -d '{
+    "transmitPower": 30.0,
+    "session": "S2",
+    "antennas": [
+      {"port": 1, "enabled": true, "power": 30.0},
+      {"port": 2, "enabled": true, "power": 27.0}
+    ]
+  }'
+```
+
+## See Also
+
+- [REST API Reference](/gen2x-fixed/api-reference): Full interactive API documentation
+- [Management](./management): Firmware and system management

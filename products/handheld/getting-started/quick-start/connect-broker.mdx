@@ -1,0 +1,83 @@
+---
+sidebar_position: 2
+title: "Step 1: Connect to the MQTT Broker"
+description: "Establish an authenticated MQTT connection to the Zebra IoT Connector broker and subscribe to the management response topic."
+---
+
+# Step 1: Connect to the MQTT Broker
+
+📗 **TUTORIAL**: In this step, you establish a secure MQTT connection to the IOTC broker and subscribe to the management response topic to receive replies from your reader.
+
+## What You Will Do
+
+1. Open a terminal session for subscribing to responses
+2. Connect to the IOTC MQTT broker with TLS
+3. Subscribe to the MGMT response topic for your reader
+
+## Subscribe to the Response Topic
+
+Open a terminal and run the following command to connect to the broker and subscribe to the MGMT response topic:
+
+```bash
+mosquitto_sub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>" \
+  -v
+```
+
+Replace the placeholders with your actual values:
+
+| Placeholder | Replace With |
+|-------------|-------------|
+| `<BROKER_HOST>` | Your IOTC MQTT broker hostname |
+| `<MQTT_USERNAME>` | Your MQTT username |
+| `<MQTT_PASSWORD>` | Your MQTT password |
+| `<TENANT_ID>` | Your IOTC tenant ID |
+| `<DEVICE_SERIAL>` | Your reader's serial number (e.g., `RFD40-1234567890`) |
+
+### Example with Sample Values
+
+```bash
+mosquitto_sub -h mqtt.iotconnector.zebra.com -p 8883 \
+  -u "tenant-user@abc123def456" -P "mySecretPassword" \
+  --capath /etc/ssl/certs \
+  -t "abc123def456/MGMT/clients/resp/RFD40-1234567890" \
+  -v
+```
+
+> **Note:** The `-v` flag enables verbose mode, which prints the topic name alongside each message. This is helpful for debugging.
+
+### Windows Users
+
+On Windows, if you do not have a system CA path, use the `--cafile` option instead:
+
+```bash
+mosquitto_sub -h <BROKER_HOST> -p 8883 ^
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" ^
+  --cafile "C:\path\to\ca-certificates.crt" ^
+  -t "<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>" ^
+  -v
+```
+
+## What to Expect
+
+- If the connection succeeds, `mosquitto_sub` will appear to hang; this is normal. It is waiting for incoming messages on the subscribed topic.
+- If the connection fails, you will see an error message such as `Connection refused` or `Connection timed out`.
+
+## Troubleshooting Connection Issues
+
+| Error | Cause | Resolution |
+|-------|-------|------------|
+| `Connection refused` | Invalid credentials or broker hostname | Double-check username, password, and broker host |
+| `Connection timed out` | Network or firewall blocking port 8883 | Verify outbound access to port 8883 is permitted |
+| `TLS handshake failure` | Missing or invalid CA certificates | Ensure `--capath` or `--cafile` points to valid system CA certificates |
+| `Error: Protocol not supported` | MQTT version mismatch | Add `-V mqttv311` to force MQTT 3.1.1 protocol |
+
+## Keep This Terminal Open
+
+Leave this terminal running; it will display responses from the reader as you proceed through the next steps.
+
+## Next Step
+
+With your subscriber connected, proceed to [Step 2: Discover Your Reader](./discover-reader.mdx).

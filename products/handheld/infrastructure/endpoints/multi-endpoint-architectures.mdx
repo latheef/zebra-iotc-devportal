@@ -1,0 +1,174 @@
+---
+sidebar_position: 4
+title: About Multi-Endpoint Architectures
+description: "Design patterns for routing MQTT traffic to multiple brokers in enterprise RFID deployments"
+---
+
+# About Multi-Endpoint Architectures
+
+The three endpoint types (MDM, CTRL, DATA) exist so that different categories of traffic can be routed to different MQTT brokers. This chapter explains the architectural patterns, when each is appropriate, and the trade-offs involved.
+
+---
+
+## 9.1 Pattern 1: Single Broker (Default)
+
+All three endpoints point to the same MQTT broker. This is the default configuration and the simplest to operate.
+
+```
+┌────────────────────────────┐
+│      MQTT Broker           │
+│                            │
+│  MDM topics  ←── Reader    │
+│  CTRL topics ←── Reader    │
+│  DATA topics ←── Reader    │
+│                            │
+│  MDM topics  ──→ MDM App   │
+│  CTRL topics ──→ CTRL App  │
+│  DATA topics ──→ Data App  │
+└────────────────────────────┘
+```
+
+**When to use:**
+- Development and testing environments
+- Small deployments (< 50 readers)
+- When operational simplicity is more important than traffic isolation
+- When using the Zebra-hosted broker for all traffic
+
+**Advantages:**
+- Single broker to manage, monitor, and secure
+- Reader maintains one TCP/TLS connection (lower resource usage)
+- Simpler firewall rules (one destination)
+
+**Disadvantages:**
+- No traffic isolation; a surge of tag data can delay management commands
+- Single point of failure
+- All data passes through one security boundary
+
+---
+
+## 9.2 Pattern 2: Separate Data Broker
+
+The MDM and CTRL endpoints remain on the Zebra-hosted (or corporate) broker, while the DATA endpoint points to a customer-managed broker optimized for high-throughput data ingestion.
+
+```
+┌────────────────────────────┐     ┌────────────────────────────┐
+│   Management Broker        │     │   Data Broker              │
+│   (Zebra-hosted)           │     │   (Customer-managed)       │
+│                            │     │                            │
+│  MDM topics  ←── Reader ──────→  │  DATA topics ←── Reader    │
+│  CTRL topics ←── Reader    │     │  rfid topics ←── Reader    │
+│                            │     │                            │
+│  MDM  ──→ Fleet Mgmt App  │     │  DATA ──→ Warehouse App    │
+│  CTRL ──→ Control App     │     │  rfid ──→ Analytics        │
+└────────────────────────────┘     └────────────────────────────┘
+```
+
+**When to use:**
+- High-volume tag data environments (> 100 reads/second per reader)
+- When tag data must be processed on-premises or in a specific cloud region
+- When data sovereignty requirements mandate a specific broker location
+- When the data pipeline uses a broker with specialized features (AWS IoT Core, Azure IoT Hub, HiveMQ, EMQX)
+
+**Configuration:**
+
+```json
+{
+  "requestId": "req-arch-001",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "host": "data-ingest.yourcloud.com",
+    "port": 8883,
+    "tlsEnabled": true,
+    "caCertificateId": "cloud-broker-ca",
+    "clientCertificateId": "reader-cloud-cert"
+  }
+}
+```
+
+MDM and CTRL endpoints remain at their default (Zebra-hosted) configuration.
+
+**Advantages:**
+- Tag data flows directly to your data pipeline, no bridging or forwarding needed
+- Management traffic is isolated from data traffic
+- Data broker can be scaled independently for throughput
+- Different retention, QoS, and persistence policies per broker
+
+**Disadvantages:**
+- Reader maintains two TCP/TLS connections (higher resource usage, slightly higher battery drain)
+- Two brokers to secure, monitor, and maintain
+- Firewall must allow two outbound destinations
+
+---
+
+## 9.3 Pattern 3: MDM-Managed with Site-Local Brokers
+
+In enterprise deployments, the MDM endpoint is managed by the central device management platform (e.g., Zebra's SOTI or Ivanti integration). The CTRL and DATA endpoints are configured per-site to connect to local brokers for low-latency operational control and data processing.
+
+```
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│  Central MDM     │   │  Site A Broker   │   │  Site B Broker   │
+│  Broker          │   │  (local)         │   │  (local)         │
+│                  │   │                  │   │                  │
+│  MDM ←── All ──→ │   │  CTRL ←── Site A │   │  CTRL ←── Site B │
+│  readers         │   │  DATA ←── Site A │   │  DATA ←── Site B │
+│                  │   │                  │   │                  │
+│  Fleet Mgmt ←──  │   │  ──→ Site A App  │   │  ──→ Site B App  │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+```
+
+**When to use:**
+- Multi-site deployments with local processing requirements
+- Environments where network latency to a central broker is unacceptable for real-time operations
+- When each site runs its own application stack
+- When sites must continue operating during WAN outages
+
+**Advantages:**
+- Low-latency control and data at each site
+- Sites operate independently; WAN failure does not stop local operations
+- Central MDM retains fleet-wide management visibility
+- Site-specific broker configurations (retention, QoS) are independent
+
+**Disadvantages:**
+- Most complex to manage; N+1 brokers (1 central + N sites)
+- Reader configuration varies by site
+- Centralized data aggregation requires additional infrastructure (broker bridging, data replication)
+
+---
+
+## 9.4 Connection Behavior
+
+When endpoints point to different brokers, the reader maintains **separate TCP/TLS connections**; one per unique broker hostname. If two endpoint types share the same broker, they share a single connection.
+
+| Configuration | Connections |
+|--------------|-------------|
+| All 3 endpoints → same broker | 1 connection |
+| MDM + CTRL → Broker A, DATA → Broker B | 2 connections |
+| Each endpoint → different broker | 3 connections |
+
+**Resource impact:** Each additional connection consumes approximately 20 KB of RAM and marginally increases battery drain due to keep-alive traffic. For battery-powered readers (RFD40 in direct mode), minimize the number of distinct connections.
+
+---
+
+## 9.5 Choosing a Pattern
+
+| Factor | Single Broker | Separate Data | MDM + Site-Local |
+|--------|--------------|---------------|-----------------|
+| Operational simplicity | Best | Good | Complex |
+| Data throughput | Limited | Best | Good |
+| Latency sensitivity | Moderate | Moderate | Best |
+| WAN dependency | Full | Partial | Minimal |
+| Fleet management | Simple | Simple | Requires MDM |
+| Battery impact | Minimal | Moderate | Moderate |
+| Cost | Lowest | Moderate | Highest |
+
+> **Start simple.** Begin with Pattern 1 (single broker) during development. Move to Pattern 2 when you need to separate data from management. Only adopt Pattern 3 when multi-site requirements demand it.
+
+---
+
+## Next Steps
+
+- [Configure MQTT Endpoints](./configure-endpoints): implement endpoint changes
+- [View Endpoint Configuration](./view-endpoint-config): verify current settings
+- [About the Security Model](../security/about-security-model): security implications of multi-broker setups
+- [Troubleshoot Network Issues](../network/troubleshoot-network): diagnose connectivity across multiple endpoints

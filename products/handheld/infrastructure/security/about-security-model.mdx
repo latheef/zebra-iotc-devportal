@@ -1,0 +1,130 @@
+---
+sidebar_position: 1
+title: About the Security Model
+description: "Four-layer security architecture for Zebra IoT Connector handheld RFID readers"
+---
+
+# About the Security Model
+
+Security in the Zebra IoT Connector handheld RFID system is not a single feature; it is a stack of four independent layers, each protecting against a different class of threat. Understanding what each layer does (and what it does not do) is essential for security architects evaluating the platform, operations teams configuring deployments, and developers building integrations.
+
+---
+
+## 7.1 The Four Security Layers
+
+```
+┌─────────────────────────────────────────────┐
+│  Layer 4: Device Identity                   │
+│  Serial number binding, device attestation  │
+├─────────────────────────────────────────────┤
+│  Layer 3: Authorization                     │
+│  Tenant-scoped topics, interface isolation  │
+├─────────────────────────────────────────────┤
+│  Layer 2: Authentication                    │
+│  MQTT credentials or client certificates    │
+├─────────────────────────────────────────────┤
+│  Layer 1: Transport Encryption              │
+│  TLS 1.2+ for all data in transit           │
+└─────────────────────────────────────────────┘
+```
+
+### Layer 1: Transport Encryption (TLS 1.2+)
+
+All communication between the reader and the MQTT broker is encrypted using TLS 1.2 or TLS 1.3. This prevents eavesdropping on the network path, including Wi-Fi segments, corporate LANs, and the public internet.
+
+**What it protects against:**
+- Passive eavesdropping (sniffing MQTT traffic on the wire or over the air)
+- Man-in-the-middle attacks (when server certificates are properly validated)
+- Data tampering in transit
+
+**What it does not protect against:**
+- Compromised endpoints (if the reader or broker is compromised, TLS does not help)
+- Unauthorized access by authenticated clients (that is Layer 3)
+
+**Configuration:** The reader validates the broker's TLS certificate against installed CA certificates. See [Manage TLS/SSL Certificates](./manage-certificates) and [Secure the MQTT Connection with TLS](./secure-mqtt-connection).
+
+### Layer 2: Authentication
+
+Authentication verifies that the connecting entity is who it claims to be. The system supports two authentication mechanisms:
+
+**Username/password authentication:** The reader presents an MQTT username and password when connecting to the broker. Credentials are configured in the endpoint configuration and transmitted over the TLS-encrypted channel.
+
+**Client certificate authentication (mutual TLS / mTLS):** The reader presents a client certificate during the TLS handshake. The broker validates the certificate against its trust store. This eliminates password management and provides stronger authentication.
+
+> **Recommendation:** Use client certificate authentication for production deployments. It eliminates the risk of credential theft, does not require password rotation, and integrates with enterprise PKI infrastructure.
+
+**What it protects against:**
+- Unauthorized devices connecting to the broker
+- Impersonation of legitimate readers
+
+**What it does not protect against:**
+- A legitimate reader sending commands it should not (that is Layer 3)
+- Physical theft of a reader with valid credentials (mitigated by certificate revocation and Layer 4)
+
+### Layer 3: Authorization (Tenant-Scoped Topics)
+
+MQTT topic hierarchy enforces authorization boundaries. Every topic begins with a `tenantId` prefix:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+The broker's access control list (ACL) restricts each client to topics within its tenant scope. A reader belonging to tenant `ACME` cannot publish to or subscribe to topics under tenant `GLOBEX`.
+
+**Interface isolation:** Within a tenant, the four interfaces (MGMT, CTRL, DATA, and the `rfid` data channel) are separate topic branches. A data consumer subscribed to tag data cannot issue management commands unless explicitly granted access to the MGMT interface.
+
+**What it protects against:**
+- Cross-tenant data leakage
+- Unauthorized command execution (a data subscriber cannot issue `set_operating_mode`)
+- Lateral movement between functional domains
+
+**What it does not protect against:**
+- Compromise of the broker's ACL configuration itself
+- Insider threats with legitimate multi-interface access
+
+### Layer 4: Device Identity
+
+Each reader is identified by its hardware serial number, which is embedded in the MQTT topic path and included in every message payload. The serial number is factory-assigned and cannot be changed via software.
+
+**Device attestation:** The serial number in the MQTT client ID and topic path must match the serial number reported in the reader's status and event payloads. The broker can enforce this binding to prevent a compromised client from impersonating a different reader.
+
+**What it protects against:**
+- Device spoofing (claiming to be a different reader)
+- Phantom devices (non-existent serial numbers)
+
+**What it does not protect against:**
+- Physical cloning of hardware (mitigated by client certificates bound to hardware keys)
+
+---
+
+## 7.2 Threat Model Summary
+
+| Threat | Layer(s) That Mitigate | Residual Risk |
+|--------|----------------------|---------------|
+| Network eavesdropping | L1 (TLS) | Negligible if TLS 1.2+ enforced |
+| Rogue device connecting | L2 (Authentication) | Low with mTLS; moderate with passwords |
+| Cross-tenant data access | L3 (Authorization) | Depends on broker ACL configuration |
+| Device impersonation | L4 (Device Identity) + L2 | Low with certificate-bound identity |
+| Compromised reader firmware | None; out of scope | Mitigate via firmware signing and updates |
+| Broker compromise | None; out of scope | Mitigate via broker hardening and monitoring |
+| Physical device theft | L2 (certificate revocation) | Requires timely revocation |
+
+---
+
+## 7.3 Security Configuration Checklist
+
+- [ ] TLS 1.2+ enforced on all broker connections (port 8883, not 1883)
+- [ ] CA certificate installed on all readers
+- [ ] Client certificates deployed (mTLS), or strong, unique passwords per reader
+- [ ] Broker ACLs configured to enforce tenant isolation
+- [ ] Certificate expiration monitoring in place
+- [ ] Firmware update policy defined and enforced
+- [ ] Incident response plan for stolen/compromised readers (certificate revocation)
+
+---
+
+## Next Steps
+
+- [Manage TLS/SSL Certificates](./manage-certificates): install and manage certificates
+- [Rotate Certificates at Scale](./rotate-certificates): plan certificate lifecycle management
+- [Secure the MQTT Connection with TLS](./secure-mqtt-connection): end-to-end TLS setup guide

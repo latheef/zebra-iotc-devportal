@@ -1,0 +1,1184 @@
+asyncapi: 2.6.0
+info:
+  title: set_operating_mode — Zebra Handheld RFID Reader
+  version: 1.1.0
+  description: |
+    ## Overview
+
+    | Field | Value |
+    |-------|-------|
+    | **Command** | `set_operating_mode` |
+    | **Interface** | CTRL (Control) |
+    | **Communication** | Bidirectional — Cloud to Device (command), Device to Cloud (response) |
+    | **MQTT Version** | 3.1.1 |
+    | **API Version** | V1.1 |
+    | **Applies To** | RFD40 Series, RFD90 Series |
+    | **Last Updated** | 2026-04-16 |
+
+    Configures the operating mode of a Zebra handheld RFID reader, controlling how the radio operates
+    during inventory and access operations. This command sets the reader's operational profile, RF
+    parameters, tag access operations (read, write, lock, kill), radio start/stop trigger conditions,
+    EPC Gen2 query and select parameters, and which tag metadata fields are reported in data events.
+
+    This is the most complex command in the Control domain and **must be configured before starting an
+    inventory operation** via `control_operation`.
+
+    > ⚠️ **Warning — FAST_READ profile:** When the RFD40/90 sled is configured to the `FAST_READ`
+    > profile, data events (`dataEVT`) are **not currently supported**.
+
+    ---
+
+    ## Use Cases
+
+    ### Warehouse Inventory Scanning
+
+    A warehouse management system configures readers for high-throughput dock-door scanning. The
+    operator sets the `BALANCED_PERFORMANCE` profile, enables `RSSI` and `EPC` in tag metadata for
+    location-aware processing, and configures `radioStopConditions` with a `stopTimeout` of 30 seconds
+    to automatically end each scan cycle. Select pre-filters target only tags with a company-specific
+    EPC prefix, preventing the system from processing tags belonging to neighboring tenants.
+
+    ### Asset Tracking with Localization
+
+    A manufacturing floor uses multiple RFD90 readers mounted at zone boundaries to track
+    work-in-progress containers. The system sets the `ADVANCED` profile with a custom `linkProfile`
+    of `M4_256K` for dense tag environments, enables `RSSI`, `PHASE`, and `SEENCOUNT` metadata to
+    feed a real-time location engine, and configures `SESSION_1` with `STATE_AB` to ensure every tag
+    is seen on each inventory round regardless of prior state.
+
+    ### Selective Tag Writing
+
+    An encoding station writes serialized product data to tags as items move through a packaging line.
+    The operator configures `accessOperations` with a `WRITE` operation targeting the `USER` memory
+    bank and a `LOCK` operation to permanently protect the written data. A select pre-filter narrows
+    the operation to only the tag currently in the encoding zone by matching a staging EPC pattern,
+    preventing accidental writes to tags in neighboring areas.
+
+    ### Cycle Count Optimization
+
+    A retail store performs nightly cycle counts across thousands of items. The system sets the
+    `CYCLE_COUNT` profile optimized for maximum unique tag reads, configures `radioStartConditions`
+    with `trigger: "PRESSED"` and `repeat: true` so associates can start and stop scans with the
+    trigger button, and sets `tagPopulation` to `500` so the reader optimizes its anti-collision
+    algorithm for the expected tag density per aisle.
+
+    ### Battery-Conscious Field Operations
+
+    Mobile workers using RFD40 sleds in outdoor environments need to maximize battery life across
+    full shifts. The system sets the `OPTIMAL_BATTERY` profile, disables all non-essential tag
+    metadata (keeping only `EPC`), and configures `radioStopConditions` with `tagCount: 1` so the
+    radio powers down immediately after reading the target tag per scan, minimizing power consumption.
+
+    ---
+
+    ## Related Commands
+
+    | Command | Relationship |
+    |---------|-------------|
+    | `get_operating_mode` | Retrieves the current operating mode configuration set by this command |
+    | `control_operation` | Starts or stops inventory/scan operations using the operating mode set by this command |
+    | `set_post_filter` | Configures post-filters applied to tag data after the operating mode filters |
+    | `config_events` | Enables or disables the event types that report data collected under this mode |
+
+    ---
+
+    ## Command / Response Flow
+
+    ```
+    Client  ──publish──▶  {tenantId}/CTRL/clients/cmnd/{deviceSerial}
+                               command: "set_operating_mode"
+                               requestId: "<uuid>"
+                               operatingMode: { operatingModes: { ... } }
+
+    Reader  ──publish──▶  {tenantId}/CTRL/clients/resp/{deviceSerial}
+                               command: "set_operating_mode"
+                               requestId: "<uuid>"   ← echoed for correlation
+                               apiVersion: "V1.1"
+                               response: { code: 0, description: "Success" }
+    ```
+
+  contact:
+    name: Zebra Technologies Developer Support
+    url: https://developer.zebra.com
+  license:
+    name: Proprietary
+    url: https://www.zebra.com
+
+externalDocs:
+  description: Zebra Technologies Developer Portal
+  url: https://developer.zebra.com
+
+servers:
+  production:
+    url: "{brokerHost}:{brokerPort}"
+    protocol: mqtt
+    protocolVersion: "3.1.1"
+    description: Production MQTT broker with mutual TLS (port 8883)
+    variables:
+      brokerHost:
+        description: MQTT broker hostname or IP address
+        default: mqtt.example.com
+      brokerPort:
+        description: MQTT broker port (TLS)
+        default: "8883"
+    security:
+      - mtls: []
+  development:
+    url: localhost:1883
+    protocol: mqtt
+    protocolVersion: "3.1.1"
+    description: Local development broker (no TLS)
+
+defaultContentType: application/json
+
+channels:
+  "{tenantId}/CTRL/clients/cmnd/{deviceSerial}":
+    description: |
+      **CTRL Command Channel** — Publish `set_operating_mode` here to configure the RFID radio.
+
+      The reader applies the new operating mode immediately if no inventory operation is in progress.
+      If an operation is running, the command returns response code `22`.
+
+      **Concrete topic examples:**
+      ```
+      Command:   zebra/CTRL/clients/cmnd/RFD40-12345678
+      Response:  zebra/CTRL/clients/resp/RFD40-12345678
+      ```
+
+      **Topic level breakdown:**
+
+      | Level | Token | Description | Constraints |
+      |-------|-------|-------------|-------------|
+      | 1 | `{tenantId}` | Tenant or organisation identifier | String, configured via `config_endpoint` |
+      | 2 | `CTRL` | MQTT interface identifier | Fixed literal, UPPERCASE (case-sensitive) |
+      | 3 | `clients` | Client namespace segment | Fixed literal |
+      | 4 | `cmnd` | Direction — cloud to device | Fixed literal |
+      | 5 | `{deviceSerial}` | Unique reader serial number | Matches `deviceSerialNo` from `get_version` |
+
+      > **Note:** MQTT interface identifiers (MGMT, CTRL, MDM, IOT) are UPPERCASE by convention.
+      > MQTT topics are case-sensitive; subscribers must use exact case matching.
+
+      **Wildcard subscription examples:**
+
+      | Filter | Use Case |
+      |--------|----------|
+      | `zebra/CTRL/clients/resp/{deviceSerial}` | Receive responses from a specific reader |
+      | `zebra/CTRL/clients/resp/+` | Receive responses from all readers in the tenant |
+      | `zebra/CTRL/clients/cmnd/+` | Audit all commands sent to any reader |
+    parameters:
+      tenantId:
+        description: Tenant or organisation identifier assigned during provisioning
+        schema:
+          type: string
+          default: zebra
+          example: acme-corp
+      deviceSerial:
+        description: Unique device serial number (e.g. `RFD40-212735201D0053`)
+        schema:
+          type: string
+    publish:
+      operationId: setOperatingMode
+      summary: Configure the RFID operating mode
+      description: |
+        Send a `set_operating_mode` command to configure the reader's RFID radio behaviour.
+
+        **Modular payload design:** You can send only the sub-objects you wish to change — omitted
+        sub-objects retain their current values on the reader. This enables precise, targeted updates
+        without resending the full configuration.
+
+        **Required fields:** `command`, `requestId`
+
+        **Optional:** `operatingMode` — if omitted entirely, the current mode is cleared and the
+        reader reverts to factory defaults.
+
+        ### Profile Quick Reference
+
+        | Profile | Best For |
+        |---------|----------|
+        | `FAST_READ` | Maximum read speed — ⚠️ `dataEVT` not supported |
+        | `CYCLE_COUNT` | Maximum unique tags per inventory cycle |
+        | `DENSE_READERS` | Multi-reader environments with interference |
+        | `OPTIMAL_BATTERY` | Battery-constrained mobile field operations |
+        | `BALANCED_PERFORMANCE` | General-purpose inventory **(default)** |
+        | `ADVANCED` | Full manual control — requires `advancedConfigurations` |
+
+        ### Gen2 Operations
+
+        The `query`, `select` (up to 32 entries), and `accessOperations` fields map directly to
+        EPC Gen2 protocol fields. Refer to the EPC Class-1 Gen-2 UHF RFID Protocol specification.
+
+        ### Trigger-Controlled Inventory
+
+        Use `radioStartConditions` and `radioStopConditions` to bind inventory start and stop to
+        the physical trigger button on the handheld device.
+      message:
+        $ref: "#/components/messages/SetOperatingMode"
+
+  "{tenantId}/CTRL/clients/resp/{deviceSerial}":
+    description: |
+      **CTRL Response Channel** — Subscribe here to receive the reader's acknowledgement after
+      publishing `set_operating_mode`.
+
+      The `requestId` in the response **echoes** the `requestId` sent in the command, enabling
+      correlation of concurrent commands and responses.
+
+      **Response timing:** Most configurations apply synchronously (code `0`). Code `1` indicates
+      the command was accepted but processing is asynchronous — poll with `get_operating_mode` to
+      confirm the applied state.
+    parameters:
+      tenantId:
+        description: Tenant or organisation identifier
+        schema:
+          type: string
+          default: zebra
+      deviceSerial:
+        description: Unique device serial number
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveSetOperatingModeResponse
+      summary: Receive the result of set_operating_mode
+      message:
+        $ref: "#/components/messages/SetOperatingModeResponse"
+
+components:
+  securitySchemes:
+    mtls:
+      type: X509
+      description: Mutual TLS — client certificate required for production broker
+    userPassword:
+      type: userPassword
+      description: MQTT username/password credentials
+
+  messages:
+    SetOperatingMode:
+      name: set_operating_mode
+      title: Set Operating Mode
+      summary: >-
+        Configure RFID operating parameters — profiles, power, filters, access operations,
+        triggers, query/select, and tag metadata
+      contentType: application/json
+      examples:
+        - name: example-1-minimal-profile
+          summary: "Example 1 — Set a predefined profile (minimal)"
+          payload:
+            command: set_operating_mode
+            requestId: "1286"
+            operatingMode:
+              operatingModes:
+                profiles: BALANCED_PERFORMANCE
+
+        - name: example-2-advanced-profile
+          summary: "Example 2 — Advanced profile with custom RF parameters"
+          payload:
+            command: set_operating_mode
+            requestId: "1286"
+            operatingMode:
+              operatingModes:
+                profiles: ADVANCED
+                advancedConfigurations:
+                  transmitPower: 300
+                  linkProfile: M2_240K
+                  session: SESSION_1
+                  dynamicPower: true
+
+        - name: example-3-access-operations
+          summary: "Example 3 — Tag access operations (READ, WRITE, ACCESS, LOCK)"
+          payload:
+            command: set_operating_mode
+            requestId: "1286"
+            operatingMode:
+              operatingModes:
+                accessOperations:
+                  - operationType: READ
+                    config:
+                      memoryBank: EPC
+                      offset: 2
+                      length: 3
+                  - operationType: READ
+                    config:
+                      memoryBank: TID
+                      offset: 1
+                      length: 2
+                  - operationType: WRITE
+                    config:
+                      memoryBank: USER
+                      offset: 2
+                      length: 2
+                      data: FFFFEEEE
+                      password: "00000000"
+                  - operationType: ACCESS
+                    config:
+                      password: "00000000"
+                  - operationType: LOCK
+                    config:
+                      password: "00000000"
+                      lockMemBank: EPC
+                      lockAction: UNLOCK
+
+        - name: example-4-trigger-conditions
+          summary: "Example 4 — Radio start/stop conditions"
+          payload:
+            command: set_operating_mode
+            requestId: "1286"
+            operatingMode:
+              operatingModes:
+                radioStartConditions:
+                  trigger: IMMEDIATE
+                  startDelay: 5000
+                  repeat: false
+                radioStopConditions:
+                  trigger: IMMEDIATE
+                  tagCount: 10
+                  stopTimeout: 10000
+                  inventoryCount: 0
+
+        - name: example-5-query-only
+          summary: "Example 5 — Configure Gen2 query parameters only"
+          payload:
+            command: set_operating_mode
+            requestId: "1286"
+            operatingMode:
+              operatingModes:
+                query:
+                  session: SESSION_1
+                  inventoryState: STATE_B
+                  slFlag: ALL
+                  tagPopulation: 30
+
+        - name: example-6-select-only
+          summary: "Example 6 — Configure select pre-filters only"
+          payload:
+            command: set_operating_mode
+            requestId: "1286"
+            operatingMode:
+              operatingModes:
+                select:
+                  - enable: true
+                    tagPattern: 2222EEEEFFFF1111AAAABBBB
+                    memoryBank: EPC
+                    offset: 32
+                    action: INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL
+                    target: SESSION_SL
+                    length: 16
+
+        - name: example-7-query-and-select
+          summary: "Example 7 — Query and select parameters combined"
+          payload:
+            command: set_operating_mode
+            requestId: 8f07804c-4af1-41c8-9959-417b0aa8047d
+            operatingMode:
+              operatingModes:
+                profiles: BALANCED_PERFORMANCE
+                query:
+                  session: SESSION_1
+                  inventoryState: STATE_B
+                  slFlag: ALL
+                  tagPopulation: 40
+                select:
+                  - enable: true
+                    tagPattern: FFFFEEEE3435363742426666
+                    memoryBank: EPC
+                    offset: 32
+                    action: INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL
+                    target: SESSION_1
+                    length: 96
+
+        - name: example-8-tag-metadata
+          summary: "Example 8 — Configure tag metadata reporting"
+          payload:
+            command: set_operating_mode
+            requestId: "1286"
+            operatingMode:
+              operatingModes:
+                tagMetaDataToEnable:
+                  RSSI: true
+                  PHASE: true
+                  SEENCOUNT: true
+                  CHANNEL: true
+                  PC: false
+                  XPC: false
+                  CRC: true
+                  EPC: true
+                  TID: false
+                  USER: false
+                  MAC: false
+                  HOSTNAME: false
+      payload:
+        $ref: "#/components/schemas/SetOperatingModePayload"
+
+    SetOperatingModeResponse:
+      name: set_operating_mode_response
+      title: Set Operating Mode Response
+      summary: Acknowledgement from the reader — success or error code with description
+      contentType: application/json
+      examples:
+        - name: success
+          summary: Success (code 0)
+          payload:
+            command: set_operating_mode
+            requestId: abc123
+            apiVersion: V1.1
+            response:
+              code: 0
+              description: Success
+        - name: inventory-in-progress
+          summary: "Inventory in progress (code 11) — stop inventory first, then retry"
+          payload:
+            command: set_operating_mode
+            requestId: abc123
+            apiVersion: V1.1
+            response:
+              code: 11
+              description: Inventory in progress
+        - name: invalid-payload
+          summary: "Invalid payload (code 2) — check enum values and JSON structure"
+          payload:
+            command: set_operating_mode
+            requestId: abc123
+            apiVersion: V1.1
+            response:
+              code: 2
+              description: Invalid payload
+        - name: advanced-config-missing
+          summary: "Advanced config not set (code 22) — include advancedConfigurations when profiles is ADVANCED"
+          payload:
+            command: set_operating_mode
+            requestId: abc123
+            apiVersion: V1.1
+            response:
+              code: 22
+              description: Advanced configuration not set
+      payload:
+        $ref: "#/components/schemas/SetOperatingModeResponse"
+
+  schemas:
+
+    # --- Command envelope ------------------------------------------------------
+
+    SetOperatingModePayload:
+      title: set_operating_mode command payload
+      type: object
+      required:
+        - command
+        - requestId
+      properties:
+        command:
+          type: string
+          const: set_operating_mode
+          description: Must be the literal string `set_operating_mode`.
+        requestId:
+          type: string
+          description: |
+            Client-generated unique request identifier. Echoed back in the response to allow
+            correlation of concurrent commands. Use a UUID v4 or any unique string.
+          example: 8f07804c-4af1-41c8-9959-417b0aa8047d
+        operatingMode:
+          $ref: "#/components/schemas/OperatingModeEnvelope"
+
+    SetOperatingModeResponse:
+      title: set_operating_mode response payload
+      type: object
+      required:
+        - command
+        - requestId
+        - response
+      properties:
+        command:
+          type: string
+          const: set_operating_mode
+        requestId:
+          type: string
+          description: Echoed from the command — use this to match responses to requests.
+        apiVersion:
+          type: string
+          enum: ["V1.0", "V1.1"]
+          description: API version reported by the reader firmware.
+        response:
+          $ref: "#/components/schemas/ResponseObject"
+
+    ResponseObject:
+      title: Response
+      type: object
+      required:
+        - code
+        - description
+      properties:
+        code:
+          type: integer
+          description: |
+            Numeric response code indicating the result of the command.
+
+            | Code | Result | Cause | Recommended Action |
+            |------|--------|-------|--------------------|
+            | `0` | **Success** | Command accepted and applied | None required |
+            | `1` | **Accepted** | Command queued for async processing | Wait; poll with `get_operating_mode` to confirm |
+            | `2` | **Invalid payload** | Malformed JSON or invalid field values | Validate against schema; check enum values |
+            | `11` | **Inventory in progress** | Cannot change operating mode while inventory is active | Issue `control_operation` STOP before retrying |
+            | `22` | **Advanced config not set** | `profiles` is `ADVANCED` but `advancedConfigurations` was omitted | Include `advancedConfigurations` when using the ADVANCED profile |
+            | `23` | **Invalid enum value** | A field contains a value outside its allowed enum | Check `profiles`, `linkProfile`, `session`, `trigger`, `action`, `target`, `memoryBank` |
+            | `24` | **Max 32 pre-filters exceeded** | `select` array contains more than 32 elements | Reduce the number of select filters to 32 or fewer |
+            | `28` | **Pattern too long** | `tagPattern` hex string exceeds 64 characters | Ensure `tagPattern` has at most 64 hex characters |
+          enum: [0, 1, 2, 3, 6, 10, 11, 12, 15, 17, 18, 19, 20, 21, 22, 23, 24, 28]
+          example: 0
+        description:
+          type: string
+          description: Human-readable result description.
+          example: Success
+
+    # --- Operating mode envelope -----------------------------------------------
+
+    OperatingModeEnvelope:
+      title: operatingMode
+      type: object
+      description: |
+        Top-level wrapper for the RFID operating mode configuration.
+
+        If omitted from the command payload, the current mode is cleared and the reader
+        reverts to factory defaults.
+      properties:
+        operatingModes:
+          $ref: "#/components/schemas/OperatingModes"
+
+    # --- Core operating mode (mqtt-api.json operatingMode.v1) ------------------
+
+    OperatingModes:
+      title: operatingModes
+      type: object
+      description: |
+        Defines the complete RFID operating mode configuration for the handheld reader.
+
+        **Modular design:** Every sub-object is independently configurable. Send only the
+        sub-objects you want to change — omitted sub-objects retain their current values on
+        the reader. This enables precise, targeted updates without resending the full configuration.
+
+        | Sub-object | Purpose |
+        |-----------|---------|
+        | `profiles` | Select an RF performance preset |
+        | `advancedConfigurations` | Fine-grained RF control (required when `profiles` is `ADVANCED`) |
+        | `accessOperations` | Gen2 access commands (READ / WRITE / ACCESS / LOCK / KILL) |
+        | `radioStartConditions` | Bind inventory start to a trigger event |
+        | `radioStopConditions` | Define when inventory automatically stops |
+        | `query` | EPC Gen2 anti-collision session and target parameters |
+        | `select` | EPC Gen2 tag pre-filters (up to 32) |
+        | `tagMetaDataToEnable` | Control which fields appear in `dataEVT` |
+        | `reportFilter` | Control how often the same tag is re-reported |
+        | `rssiFilter` | Discard tags below an RSSI threshold |
+        | `tagIdFilter` | Include/exclude tags by EPC prefix, suffix, or regex |
+      properties:
+        profiles:
+          type: string
+          description: |
+            RF performance profile. Controls the trade-off between read rate, battery life,
+            and reader density support.
+
+            | Profile | Description |
+            |---------|-------------|
+            | `FAST_READ` | Maximum read speed, short range. ⚠️ **`dataEVT` not currently supported in this mode.** |
+            | `CYCLE_COUNT` | Optimized to read as many unique tags as possible per inventory cycle. |
+            | `DENSE_READERS` | Optimized for environments with multiple readers in close proximity. |
+            | `OPTIMAL_BATTERY` | Prioritizes battery life over read performance. |
+            | `BALANCED_PERFORMANCE` | Balances read performance and battery life. **This is the default.** |
+            | `ADVANCED` | Enables custom RF configuration via `advancedConfigurations`. When selected, `advancedConfigurations` must be provided. |
+          enum:
+            - FAST_READ
+            - CYCLE_COUNT
+            - DENSE_READERS
+            - OPTIMAL_BATTERY
+            - BALANCED_PERFORMANCE
+            - ADVANCED
+          default: BALANCED_PERFORMANCE
+        advancedConfigurations:
+          $ref: "#/components/schemas/AdvancedConfigurations"
+        accessOperations:
+          type: array
+          description: |
+            Gen2 access operations to perform on each inventoried tag. Multiple operations
+            execute in array order on every tag read. See EPC Gen2 spec for protocol details.
+          items:
+            $ref: "#/components/schemas/AccessOperation"
+        radioStartConditions:
+          $ref: "#/components/schemas/RadioStartConditions"
+        radioStopConditions:
+          $ref: "#/components/schemas/RadioStopConditions"
+        query:
+          $ref: "#/components/schemas/QueryConfig"
+        select:
+          type: array
+          maxItems: 32
+          description: |
+            Up to 32 EPC Gen2 Select operations applied before each inventory round.
+            Selects narrow the tag population that responds to the Query.
+
+            Cannot be combined with a `PREFIX`-type `tagIdFilter` when prefix selects are active.
+          items:
+            $ref: "#/components/schemas/SelectOperation"
+        tagMetaDataToEnable:
+          $ref: "#/components/schemas/TagMetaDataToEnable"
+        reportFilter:
+          $ref: "#/components/schemas/TagReportFilter"
+        rssiFilter:
+          $ref: "#/components/schemas/RssiFilter"
+        tagIdFilter:
+          $ref: "#/components/schemas/TagIdFilter"
+
+    # --- Advanced configurations -----------------------------------------------
+
+    AdvancedConfigurations:
+      title: advancedConfigurations
+      type: object
+      description: |
+        Fine-grained RF radio parameters. **Required when `profiles` is `ADVANCED`.**
+        Ignored for all other profiles — the firmware maps the link profile internally.
+      properties:
+        transmitPower:
+          type: integer
+          description: |
+            Transmit power in 1/10 dBm units.
+            - `270` = 27.0 dBm
+            - `300` = 30.0 dBm
+
+            Minimum is 0 dBm. Maximum is determined by the regulatory region configured on the reader.
+          minimum: 0
+          example: 300
+        linkProfile:
+          type: string
+          description: |
+            EPC Gen2 air interface link profile — controls the backscatter data rate (BLF),
+            Miller encoding factor, and Tari.
+
+            Higher BLF (e.g. `M2_320K`, `FM0_320K`) increases read rate but reduces range.
+            Lower BLF (e.g. `M8_240K`) increases range and noise immunity but reduces throughput.
+          enum:
+            - M4_256K
+            - M2_240K
+            - M2_256K
+            - M2_320K
+            - M4_240K
+            - M4_320K
+            - FM0_0K
+            - FM0_320K
+            - M8_240K
+            - M8_256K
+            - M8_320K
+          example: M2_240K
+        session:
+          type: string
+          description: |
+            EPC Gen2 inventory session (S0–S3). Different sessions allow multiple readers
+            to operate concurrently without collision.
+          enum:
+            - SESSION_0
+            - SESSION_1
+            - SESSION_2
+            - SESSION_3
+          default: SESSION_1
+        dynamicPower:
+          type: boolean
+          description: |
+            When `true`, the reader dynamically reduces transmit power for tags in very close
+            proximity to prevent saturation, then increases it for distant tags.
+          default: false
+
+    # --- Access operations -------------------------------------------------------
+
+    AccessOperation:
+      title: accessOperation
+      type: object
+      required:
+        - operationType
+        - config
+      description: |
+        A single EPC Gen2 access command performed on every inventoried tag.
+
+        `operationType` determines which `config` fields are required:
+
+        | `operationType` | Required config fields |
+        |-----------------|----------------------|
+        | `READ` | `memoryBank`, `offset`, `length` |
+        | `WRITE` | `memoryBank`, `offset`, `length`, `data`, `password` |
+        | `ACCESS` | `password` |
+        | `LOCK` | `password`, `lockMemBank`, `lockAction` |
+        | `KILL` | `password` |
+      properties:
+        operationType:
+          type: string
+          description: |
+            Gen2 access command type.
+
+            | Type | Description |
+            |------|-------------|
+            | `READ` | Read words from a memory bank |
+            | `WRITE` | Write data to a memory bank |
+            | `ACCESS` | Unlock the tag using the access password |
+            | `LOCK` | Lock or permalock memory banks and/or passwords |
+            | `KILL` | Permanently disable the tag |
+          enum:
+            - READ
+            - WRITE
+            - ACCESS
+            - LOCK
+            - KILL
+        config:
+          $ref: "#/components/schemas/AccessOperationConfig"
+
+    AccessOperationConfig:
+      title: accessOperationConfig
+      type: object
+      description: |
+        Operation-specific configuration. Required fields depend on `operationType`.
+
+        | Field | Used by | Type | Description |
+        |-------|---------|------|-------------|
+        | `memoryBank` | READ, WRITE | string | Target memory bank: `EPC`, `TID`, `USER`, `RESERVED` |
+        | `offset` | READ, WRITE | integer | Starting word position (16-bit words) |
+        | `length` | READ, WRITE | integer | Number of 16-bit words to read or write |
+        | `data` | WRITE | string | Hex words to write — even number of hex chars per 16-bit word |
+        | `password` | WRITE, ACCESS, LOCK, KILL | string | 8-character hex string (32-bit password) |
+        | `lockMemBank` | LOCK | string | Memory bank or password store to lock |
+        | `lockAction` | LOCK | string | The locking action to apply |
+      properties:
+        memoryBank:
+          type: string
+          description: Gen2 memory bank target (READ / WRITE)
+          enum: [EPC, TID, USER, RESERVED]
+        offset:
+          type: integer
+          description: Word offset within the memory bank (16-bit words) for READ / WRITE
+          minimum: 0
+        length:
+          type: integer
+          description: Number of 16-bit words to read (READ) or write (WRITE)
+          minimum: 1
+        data:
+          type: string
+          description: |
+            Hex-encoded data to write (WRITE operations). Must be a well-formed hex string
+            representing 16-bit words — even number of hex characters.
+          example: "FFFFEEEE"
+        password:
+          type: string
+          description: |
+            8-character hex string representing the 32-bit password.
+            Required for: WRITE (access password), ACCESS (access password),
+            LOCK (access password), KILL (kill password).
+          pattern: "^[0-9a-fA-F]{8}$"
+          example: "00000000"
+        lockMemBank:
+          type: string
+          description: Memory bank or password store to target with the lock action (LOCK)
+          enum: [EPC, TID, USER, ACCESS_PWD, KILL_PWD, ALL]
+        lockAction:
+          type: string
+          description: The locking action to apply (LOCK)
+          enum:
+            - READ_AND_WRITE
+            - PERMANENT_LOCK
+            - PERMANENT_UNLOCK
+            - UNLOCK
+
+    # --- Radio start conditions -------------------------------------------------
+
+    RadioStartConditions:
+      title: radioStartConditions
+      type: object
+      description: |
+        Controls when the radio begins inventorying after a `control_operation` START command
+        or a trigger event. If absent, the radio starts immediately.
+
+        On handheld readers, `trigger` maps to the physical scan trigger button.
+
+        | Field | Type | Required | Description |
+        |-------|------|----------|-------------|
+        | `trigger` | string | No | `PRESSED` — trigger pressed; `RELEASED` — trigger released; `IMMEDIATE` — no trigger required |
+        | `startDelay` | integer | No | Milliseconds to wait after trigger before starting inventory |
+        | `repeat` | boolean | No | `true` = trigger can be used repeatedly to restart inventory |
+      properties:
+        trigger:
+          type: string
+          description: |
+            The trigger event that initiates radio activity.
+
+            | Value | Description |
+            |-------|-------------|
+            | `PRESSED` | Radio starts when the trigger is pressed |
+            | `RELEASED` | Radio starts when the trigger is released |
+            | `IMMEDIATE` | Radio starts immediately without waiting for a trigger |
+          enum: [PRESSED, RELEASED, IMMEDIATE]
+        startDelay:
+          type: integer
+          description: |
+            Delay in **milliseconds** before starting inventory after the trigger event.
+            Example: `3000` = 3-second delay.
+          minimum: 0
+          example: 0
+        repeat:
+          type: boolean
+          description: |
+            When `true`, the trigger can be used repeatedly to start and stop inventory.
+            When `false`, pressing the trigger after stopping does not restart inventory.
+          default: false
+
+    # --- Radio stop conditions --------------------------------------------------
+
+    RadioStopConditions:
+      title: radioStopConditions
+      type: object
+      description: |
+        Controls when an active inventory operation ends. Multiple conditions can be specified;
+        the radio stops when **any one** condition is met.
+
+        If absent, the radio continues until an explicit `control_operation` STOP command is sent.
+
+        | Field | Type | Description |
+        |-------|------|-------------|
+        | `trigger` | string | Stop on trigger event: `PRESSED`, `RELEASED`, or `IMMEDIATE` |
+        | `tagCount` | integer | Stop after N unique tags read (cannot combine with `durationAfterNoMoreUniqueTags`) |
+        | `stopTimeout` | integer | Stop after N **milliseconds** elapsed |
+        | `inventoryCount` | integer | Stop after N inventory cycles (`0` = unlimited) |
+        | `durationAfterNoMoreUniqueTags` | integer | Stop N seconds after no new unique tags appear |
+      properties:
+        trigger:
+          type: string
+          description: Stop the radio when this trigger event occurs.
+          enum: [PRESSED, RELEASED, IMMEDIATE]
+        tagCount:
+          type: integer
+          description: |
+            Stop inventory after this many unique tags have been read.
+            Cannot be set at the same time as `durationAfterNoMoreUniqueTags`.
+          minimum: 1
+        stopTimeout:
+          type: integer
+          description: |
+            Stop after this many **milliseconds** have elapsed since inventory started.
+            Example: `10000` = 10 seconds.
+          minimum: 0
+          example: 10000
+        inventoryCount:
+          type: integer
+          description: |
+            Stop after this many complete inventory cycles. `0` = unlimited.
+          minimum: 0
+          default: 0
+        durationAfterNoMoreUniqueTags:
+          type: integer
+          description: |
+            Stop N seconds after the last new unique tag was seen.
+            Cannot be set at the same time as `tagCount`.
+          minimum: 0
+
+    # --- Query config (mqtt-api.json query.v1) ----------------------------------
+
+    QueryConfig:
+      title: query
+      type: object
+      description: |
+        EPC Gen2 Query command parameters controlling which tags respond to the inventory round.
+        See EPC Class-1 Generation-2 UHF RFID Protocol specification for full semantics.
+
+        If absent, the reader uses: session `1`, target `A`, sel `ALL`, tagPopulation `1`.
+
+        | Field | Default | Description |
+        |-------|---------|-------------|
+        | `session` | `SESSION_1` | Gen2 Session — determines inventory session persistence and multi-reader coexistence |
+        | `inventoryState` | `STATE_A` | Gen2 Target — which inventory flag state to query; `STATE_AB` flips across rounds |
+        | `slFlag` | `ALL` | Gen2 Sel — filter tags by SL flag: `ALL`, `ASSERTED`, `DEASSERTED` |
+        | `tagPopulation` | `1` | Expected number of tags — optimizes anti-collision Q parameter |
+      properties:
+        session:
+          type: string
+          description: |
+            EPC Gen2 Session field. Determines which session flag (S0–S3) is used.
+            Different sessions allow multiple readers to operate concurrently.
+          enum: [SESSION_0, SESSION_1, SESSION_2, SESSION_3]
+          default: SESSION_1
+        inventoryState:
+          type: string
+          description: |
+            EPC Gen2 Target field. Specifies which inventory flag state to query.
+            `STATE_AB` flips between A and B on successive rounds.
+          enum: [STATE_A, STATE_B, STATE_AB]
+          default: STATE_A
+        slFlag:
+          type: string
+          description: |
+            EPC Gen2 Sel field. Filters tags by their SL flag state before inventory.
+          enum: [ALL, ASSERTED, DEASSERTED]
+          default: ALL
+        tagPopulation:
+          type: integer
+          description: |
+            Estimated number of tags in the field. Sets the Gen2 Q parameter for anti-collision
+            slot optimization. Accurate values reduce read time and collisions.
+          minimum: 0
+          default: 1
+          example: 50
+
+    # --- Select operations (mqtt-api.json select.v1) ----------------------------
+
+    SelectOperation:
+      title: select
+      type: object
+      required:
+        - enable
+        - tagPattern
+        - memoryBank
+        - offset
+        - action
+        - target
+        - length
+      description: |
+        A single EPC Gen2 Select command applied before each inventory round.
+        Selects narrow the tag population by setting each tag's SL flag or session state.
+
+        Up to **32** select operations are supported, applied in array order.
+
+        > Cannot be used together with a `PREFIX`-type `tagIdFilter` when prefix selects are active.
+      properties:
+        enable:
+          type: boolean
+          description: Set to `true` to activate this select operation.
+        tagPattern:
+          type: string
+          description: |
+            Hex-encoded bit mask to match against the tag's memory bank content.
+            Maximum **64 hex characters** (256 bits). Must be an even number of characters.
+          maxLength: 64
+          example: "E28011"
+        memoryBank:
+          type: string
+          description: Memory bank to apply the select mask against.
+          enum: [EPC, TID, USER]
+        offset:
+          type: integer
+          description: Bit offset within the memory bank at which to begin matching.
+          minimum: 0
+          example: 32
+        length:
+          type: integer
+          description: Length in **bits** of the select mask.
+          minimum: 1
+          example: 24
+        action:
+          type: string
+          description: |
+            EPC Gen2 Action field — defines what happens to tags that match vs. do not match.
+            Refer to EPC Gen2 Table 6-16 for the full truth table.
+
+            | Action Value | Match Behavior | Non-Match Behavior |
+            |---|---|---|
+            | `INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL` | Set inventoried A (or assert SL) | Set inventoried B (or deassert SL) |
+            | `INV_A_OR_ASRT_SL` | Set inventoried A (or assert SL) | Do nothing |
+            | `NOT_INV_B_OR_NOT_DSRT_SL` | Do nothing | Set inventoried B (or deassert SL) |
+            | `INV_A2BB2A_NOT_INV_A_OR_NEG_SL_NOT_ASRT_SL` | Toggle A↔B (or negate SL) | Set inventoried A (or assert SL) |
+            | `INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL` | Set inventoried B (or deassert SL) | Set inventoried A (or assert SL) |
+            | `INV_B_OR_DSRT_SL` | Set inventoried B (or deassert SL) | Do nothing |
+            | `NOT_INV_A_OR_NOT_ASRT_SL` | Do nothing | Set inventoried A (or assert SL) |
+            | `NOT_INV_A2BB2A_OR_NOT_NEG_SL` | Do nothing | Toggle A↔B (or negate SL) |
+          enum:
+            - INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL
+            - INV_A_OR_ASRT_SL
+            - NOT_INV_B_OR_NOT_DSRT_SL
+            - INV_A2BB2A_NOT_INV_A_OR_NEG_SL_NOT_ASRT_SL
+            - INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL
+            - INV_B_OR_DSRT_SL
+            - NOT_INV_A_OR_NOT_ASRT_SL
+            - NOT_INV_A2BB2A_OR_NOT_NEG_SL
+        target:
+          type: string
+          description: Gen2 Target field — which inventory flag or session the action is applied to.
+          enum:
+            - SESSION_SL
+            - SESSION_0
+            - SESSION_1
+            - SESSION_2
+            - SESSION_3
+
+    # --- Tag metadata (mqtt-api.json tagMetaData.v1) ----------------------------
+
+    TagMetaDataToEnable:
+      title: tagMetaDataToEnable
+      type: object
+      description: |
+        Controls which additional metadata fields are included in each `dataEVT` tag record.
+
+        All fields default to `false` (disabled). Enabling only the fields your application needs
+        reduces `dataEVT` payload size and improves throughput.
+
+        > **Note:** `PHASE` and `CHANNEL` are only reported when `reportFilter.duration` is `0`
+        > (every individual tag read). `XPC` and `CRC` are **not supported on RFD4090** models.
+
+        | Field | Description |
+        |-------|-------------|
+        | `RSSI` | Received Signal Strength Indicator (dBm) — useful for proximity estimation |
+        | `PHASE` | Phase angle of the tag signal — used for localization and movement tracking |
+        | `SEENCOUNT` | Number of times the tag was detected during inventory |
+        | `ANTENNA` | Antenna port number on which the tag was read |
+        | `CHANNEL` | RF communication channel used to read the tag |
+        | `PC` | Protocol Control word — contains tag memory structure and encoding info |
+        | `XPC` | Extended Protocol Control. **Not supported on RFD4090.** |
+        | `CRC` | CRC-16 checksum of the tag response. **Not supported on RFD4090.** |
+        | `EPC` | Electronic Product Code — the primary tag identifier |
+        | `TID` | Tag Identifier memory bank contents |
+        | `USER` | User memory bank contents |
+        | `MAC` | MAC address of the reader that read the tag |
+        | `HOSTNAME` | Hostname of the reader that read the tag |
+      properties:
+        RSSI:
+          type: boolean
+          description: Include the RSSI value (dBm) in each tag read record.
+          default: false
+        PHASE:
+          type: boolean
+          description: "Include the RF phase angle. Only reported when reportFilter.duration = 0."
+          default: false
+        SEENCOUNT:
+          type: boolean
+          description: Include the number of times the tag was detected since last report.
+          default: false
+        ANTENNA:
+          type: boolean
+          description: Include the antenna port number on which the tag was read.
+          default: false
+        CHANNEL:
+          type: boolean
+          description: "Include the RF channel frequency (MHz). Only reported when reportFilter.duration = 0."
+          default: false
+        PC:
+          type: boolean
+          description: Include the EPC PC (Protocol Control) bits as a hex string.
+          default: false
+        XPC:
+          type: boolean
+          description: Include the XPC bits if present. NOT supported on RFD4090 models.
+          default: false
+        CRC:
+          type: boolean
+          description: Include the EPC CRC bits. NOT supported on RFD4090 models.
+          default: false
+        EPC:
+          type: boolean
+          description: Include the full EPC bank contents as a hex string.
+          default: false
+        TID:
+          type: boolean
+          description: Include the full TID bank contents as a hex string.
+          default: false
+        USER:
+          type: boolean
+          description: Include the full USER bank contents as a hex string.
+          default: false
+        MAC:
+          type: boolean
+          description: Include the MAC address of the reader.
+          default: false
+        HOSTNAME:
+          type: boolean
+          description: Include the hostname of the reader.
+          default: false
+
+    # --- Report filter (mqtt-api.json tagReportFilter.v1) -----------------------
+
+    TagReportFilter:
+      title: reportFilter
+      type: object
+      required:
+        - duration
+        - type
+      description: |
+        Controls when and how often a tag is reported in `dataEVT` output.
+
+        **Default behaviours by mode:**
+        - Handheld (SIMPLE): each tag reported once per radio cycle (`RADIO_WIDE`, max duration)
+        - Handheld (general): each tag reported first time seen per antenna (`PER_ANTENNA`, max duration)
+
+        Set `duration: 0` to report every individual tag read — this also enables `PHASE` and
+        `CHANNEL` metadata fields.
+      properties:
+        duration:
+          type: integer
+          format: int32
+          minimum: 0
+          description: |
+            Seconds to suppress re-reporting the same tag after it was last reported.
+
+            - `0` = report every individual read (also enables PHASE and CHANNEL metadata)
+            - `4294967295` (max uint32) = report each tag only once
+          example: 0
+        type:
+          type: string
+          description: |
+            Whether the suppression timer applies per-antenna or across the entire radio.
+
+            | Value | Description |
+            |-------|-------------|
+            | `RADIO_WIDE` | Tag is suppressed radio-wide for `duration` seconds |
+            | `PER_ANTENNA` | Tag is suppressed per antenna for `duration` seconds |
+          enum: [RADIO_WIDE, PER_ANTENNA]
+
+    # --- RSSI filter (mqtt-api.json rssiFilter.v1) ------------------------------
+
+    RssiFilter:
+      title: rssiFilter
+      type: object
+      description: |
+        Tags with RSSI below the threshold are silently discarded — they do not appear
+        in `dataEVT` output and do not count towards tag counts.
+
+        If absent, no RSSI filtering is applied.
+
+        > **Note:** Currently supported on **FX9600** only. Verify support for your specific
+        > handheld reader model before using this field.
+      properties:
+        threshold:
+          type: integer
+          format: int32
+          minimum: -88
+          maximum: -26
+          description: |
+            RSSI threshold in dBm. Tags with RSSI below this value are ignored.
+            Valid range: `-88` (most sensitive) to `-26` (nearest range only).
+          example: -70
+
+    # --- Tag ID filter (mqtt-api.json tagidfilter.v1) ---------------------------
+
+    TagIdFilter:
+      title: tagIdFilter
+      type: object
+      required:
+        - value
+        - match
+        - operation
+      description: |
+        Filters tag read results based on the EPC identifier using prefix, suffix, or regex matching.
+
+        If absent, all tags are reported.
+
+        > **Note:** Cannot be used together with `select` operations when `match` is `prefix`.
+
+        | Field | Description |
+        |-------|-------------|
+        | `value` | The pattern to match — hex string for prefix/suffix; C++ STL regex for regex |
+        | `match` | Matching strategy: `prefix`, `suffix`, or `regex` |
+        | `operation` | Whether matching tags are `include`d or `exclude`d from output |
+      properties:
+        value:
+          type: string
+          description: |
+            The value to match against the tag EPC.
+
+            - **prefix / suffix**: hex string with an even number of characters (e.g. `E280`).
+            - **regex**: C++ STL regex syntax (e.g. `[0-9A-Fa-f]{24}`).
+          example: "E280"
+        match:
+          type: string
+          description: The matching strategy to apply to the EPC value.
+          enum: [prefix, suffix, regex]
+          example: prefix
+        operation:
+          type: string
+          description: Whether tags matching the pattern are included in or excluded from `dataEVT` output.
+          enum: [include, exclude]
+          default: include
+          example: include

@@ -1,0 +1,211 @@
+---
+sidebar_position: 3
+title: "How to Configure Event Reporting"
+description: "Step-by-step guide to configuring event reporting on the RFD40/RFD90 via the config_events MQTT command."
+---
+
+# How to Configure Event Reporting
+
+This guide covers configuring which events the RFD40/RFD90 publishes, their intervals, thresholds, and data channel assignments using the `config_events` MQTT command.
+
+## Prerequisites
+
+- Device connected and online
+- MQTT client subscribed to the control response topic
+
+## Reading the Current Event Configuration
+
+**Publish to:**
+```
+{tenantId}/CTRL/clients/cmnd/{deviceSerial}
+```
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-050",
+  "payload": {
+    "action": "GET"
+  }
+}
+```
+
+**Response on:**
+```
+{tenantId}/CTRL/clients/resp/{deviceSerial}
+```
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-050",
+  "status": "OK",
+  "payload": {
+    "heartbeat_enabled": true,
+    "heartbeat_interval_sec": 60,
+    "alerts_enabled": true,
+    "alert_short_enabled": false,
+    "exception_enabled": true,
+    "mqtt_conn_enabled": true,
+    "data_channel_mode": "SINGLE",
+    "battery_warn_threshold": 20,
+    "battery_critical_threshold": 10,
+    "temperature_threshold_c": 45
+  }
+}
+```
+
+## Enable or Disable Specific Events
+
+### Disable Alert Short Events
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-051",
+  "payload": {
+    "action": "SET",
+    "alert_short_enabled": false
+  }
+}
+```
+
+### Enable All Events
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-052",
+  "payload": {
+    "action": "SET",
+    "heartbeat_enabled": true,
+    "alerts_enabled": true,
+    "alert_short_enabled": true,
+    "exception_enabled": true,
+    "mqtt_conn_enabled": true
+  }
+}
+```
+
+## Configure Heartbeat Interval
+
+The heartbeat interval controls how frequently `heartBeatEVT` events are published. Shorter intervals give faster health visibility but increase battery and bandwidth consumption.
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-053",
+  "payload": {
+    "action": "SET",
+    "heartbeat_interval_sec": 30
+  }
+}
+```
+
+| Interval | Use Case | Battery Impact |
+|---|---|---|
+| 15 seconds | Real-time fleet dashboards | High |
+| 30 seconds | Active monitoring | Moderate |
+| 60 seconds | Standard monitoring (default) | Low |
+| 300 seconds | Battery-conservative environments | Minimal |
+
+## Configure Alert Thresholds
+
+Set the metric thresholds that trigger alert events:
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-054",
+  "payload": {
+    "action": "SET",
+    "battery_warn_threshold": 25,
+    "battery_critical_threshold": 10,
+    "temperature_threshold_c": 40
+  }
+}
+```
+
+### Threshold Fields
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `battery_warn_threshold` | integer | 20 | Battery % that triggers a WARNING alert |
+| `battery_critical_threshold` | integer | 10 | Battery % that triggers a CRITICAL alert |
+| `temperature_threshold_c` | number | 45 | Temperature (°C) that triggers a temperature alert |
+
+## Configure Data Channel Assignment
+
+Control how `dataEVT` messages are distributed across the two data channels:
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-055",
+  "payload": {
+    "action": "SET",
+    "data_channel_mode": "SPLIT"
+  }
+}
+```
+
+| Mode | Behavior |
+|---|---|
+| `SINGLE` | All data to `data1event` (default) |
+| `SPLIT` | Data distributed across both channels |
+| `DUPLICATE` | Data sent to both channels (testing) |
+
+## Complete Configuration Example
+
+Apply a full event configuration in a single command:
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-056",
+  "payload": {
+    "action": "SET",
+    "heartbeat_enabled": true,
+    "heartbeat_interval_sec": 30,
+    "alerts_enabled": true,
+    "alert_short_enabled": true,
+    "exception_enabled": true,
+    "mqtt_conn_enabled": true,
+    "data_channel_mode": "SINGLE",
+    "battery_warn_threshold": 25,
+    "battery_critical_threshold": 10,
+    "temperature_threshold_c": 42
+  }
+}
+```
+
+## Verify the Configuration
+
+Read back the configuration to confirm changes:
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-057",
+  "payload": {
+    "action": "GET"
+  }
+}
+```
+
+## Error Handling
+
+| Error Code | Cause | Resolution |
+|---|---|---|
+| `INVALID_INTERVAL` | Heartbeat interval outside valid range | Use 15–600 seconds |
+| `INVALID_THRESHOLD` | Threshold value out of range | Check valid ranges for each metric |
+| `INVALID_MODE` | Unrecognized data channel mode | Use `SINGLE`, `SPLIT`, or `DUPLICATE` |
+
+> **Note**: Event configuration changes take effect immediately. There is no need to restart the device or stop active operations. However, changing the data channel mode while an RFID operation is running may cause a brief gap in data delivery during the transition.
+
+## Related Topics
+
+- [About the Event Model](./about-event-model.mdx): event type overview
+- [Event Types Reference](./event-types-reference.mdx): payload schemas
+- [About Heartbeat Events](./about-heartbeat-events.mdx): heartbeat deep dive
+- [About Alert Events](./about-alert-events.mdx): alert types and behavior

@@ -1,0 +1,34 @@
+---
+slug: /
+sidebar_position: 1
+title: Gen2x Fixed Readers
+---
+
+# IOTC for Gen2x Fixed RFID Readers
+
+The Gen2x IoT Connector for Zebra next-generation fixed RFID readers extends the standard fixed reader capabilities with Gen2x (EPC Gen2v2) features including enhanced security, cryptographic authentication, and extended tag memory operations.
+
+## Protocols
+
+| Protocol | Purpose |
+|----------|---------|
+| **REST API** | Reader configuration, status queries, firmware management, Gen2x feature configuration |
+| **MQTT** | Real-time tag data streaming (including Gen2x metadata), system events |
+
+## Gen2x Enhancements
+
+- **Cryptographic Tag Authentication**: Verify tag identity using AES-128 challenge-response
+- **Extended Memory**: Access larger user memory banks on Gen2x-compliant tags
+- **Untraceable**: Command tags to hide portions of their EPC or TID
+- **Enhanced Security**: Encrypted tag-reader communication
+
+## Quick Navigation
+
+- [Quick Start](./quick-start): Get started with your Gen2x fixed reader
+- [REST: Configuration](./rest/configuration): Configure Gen2x features via REST API
+- [REST: Management](./rest/management): Manage firmware and system settings
+- [REST API Reference](/gen2x-fixed/api-reference): Interactive OpenAPI specification (Scalar)
+- [MQTT: Telemetry](./mqtt/telemetry): Real-time tag data over MQTT
+- [MQTT: Events](./mqtt/events): System events and monitoring
+- [MQTT API Reference](/gen2x-fixed/mqtt-reference): Interactive AsyncAPI specification
+- [Troubleshooting](./troubleshooting): Common issues and solutions

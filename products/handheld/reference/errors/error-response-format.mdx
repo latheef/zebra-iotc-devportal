@@ -1,0 +1,101 @@
+---
+sidebar_position: 1
+title: "Error Response Format"
+---
+
+# Error Response Format
+
+📕 **REFERENCE**: Standard error envelope structure for all IoT Connector command responses.
+
+## Overview
+
+Every command sent to the Zebra IoT Connector via MQTT receives a response on the corresponding response topic. When a command fails, the response contains a structured error envelope that provides diagnostic information for identifying and resolving the issue.
+
+All error responses follow a consistent JSON structure regardless of the command that triggered them.
+
+## Error Envelope Structure
+
+Every response from the IoT Connector includes the following fields:
+
+| Field | Type | Description |
+|---|---|---|
+| `responseCode` | Integer | Numeric error code. `0` indicates success; any non-zero value indicates an error. |
+| `responseMessage` | String | Human-readable description of the result or error condition. |
+| `command` | String | The command name that was executed (echoed back from the request). |
+| `requestId` | String | The unique request identifier provided in the original command (echoed back for correlation). |
+| `timestamp` | String | ISO 8601 timestamp indicating when the response was generated on the device. |
+
+## Success Response Example
+
+```json
+{
+  "responseCode": 0,
+  "responseMessage": "Success",
+  "command": "start_inventory",
+  "requestId": "req-20260514-001",
+  "timestamp": "2026-05-14T10:30:00.000Z"
+}
+```
+
+## Error Response Example
+
+```json
+{
+  "responseCode": 5,
+  "responseMessage": "Invalid parameter: transmitPowerIndex must be between 1 and 300",
+  "command": "set_config",
+  "requestId": "req-20260514-002",
+  "timestamp": "2026-05-14T10:30:01.500Z"
+}
+```
+
+## Response Topic Pattern
+
+Responses are published by the device to:
+
+```
+zebra/iotc/response/{deviceId}
+```
+
+Your MQTT client must subscribe to this topic to receive command results. Use the `requestId` field to correlate responses with the commands you sent.
+
+## Key Behaviors
+
+- **Every command gets a response.** If you do not receive a response within your timeout window, the command may not have reached the device or the device may be offline.
+- **responseCode 0 always means success.** Any other value indicates an error condition described in the [Error Code Reference](./error-code-reference).
+- **requestId is echoed verbatim.** Use unique request IDs per command to avoid correlation ambiguity when sending commands in rapid succession.
+- **Timestamps are device-local.** The `timestamp` reflects the device clock at the time the response was generated. If the device clock is not synchronized, timestamps may drift from your server clock.
+
+## Handling Responses in Code
+
+A minimal response handler should:
+
+1. Parse the JSON payload from the response topic.
+2. Match the `requestId` to an outstanding command in your pending-commands map.
+3. Check `responseCode`, if `0`, process the success path; otherwise, handle the error.
+4. Remove the command from the pending map and cancel any associated timeout timer.
+
+```python
+import json
+
+def on_message(client, userdata, msg):
+    payload = json.loads(msg.payload.decode())
+    request_id = payload.get("requestId")
+    code = payload.get("responseCode", -1)
+
+    if code == 0:
+        handle_success(request_id, payload)
+    else:
+        handle_error(
+            request_id,
+            code,
+            payload.get("responseMessage", "Unknown error"),
+            payload.get("command")
+        )
+```
+
+> **Note:** Always validate that the response payload is well-formed JSON before accessing fields. Network issues or partial message delivery can result in malformed payloads.
+
+## Additional Fields
+
+Some commands return additional fields alongside the standard envelope. For example, `get_config` includes a `config` object, and `get_version` includes firmware version details. These additional fields are documented in the reference for each individual command.

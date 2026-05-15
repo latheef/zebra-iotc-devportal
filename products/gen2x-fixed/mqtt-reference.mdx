@@ -1,0 +1,21 @@
+---
+sidebar_position: 7
+title: MQTT API Reference
+---
+
+# Gen2x Fixed Reader MQTT API Reference
+
+This page renders the interactive AsyncAPI specification for the Zebra Gen2x fixed RFID reader IoT Connector MQTT interface.
+
+:::info
+The interactive AsyncAPI reference is generated from the specification file at `specs/gen2x-fixed/asyncapi.yml`.
+:::
+
+## Overview
+
+| Channel | Direction | Description |
+|---------|-----------|-------------|
+| `{tenantId}/{deviceSerial}/command` | Publish | Send commands |
+| `{tenantId}/{deviceSerial}/response` | Subscribe | Command responses |
+| `{tenantId}/{deviceSerial}/data/tagReads` | Subscribe | Tag telemetry (with Gen2x metadata) |
+| `{tenantId}/{deviceSerial}/event/{eventType}` | Subscribe | System events (including `authFailure`) |

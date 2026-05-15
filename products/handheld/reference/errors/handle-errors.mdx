@@ -1,0 +1,215 @@
+---
+sidebar_position: 4
+title: "How to Handle Errors in Application Code"
+---
+
+# How to Handle Errors in Application Code
+
+📙 **HOW-TO GUIDE**: Retry strategies, timeout handling, and resilience patterns for IoT Connector integrations.
+
+## Overview
+
+Robust error handling is essential when integrating with RFID reader sleds over MQTT. Network conditions, device state, and concurrent operations can all produce errors that your application must handle gracefully. This guide covers practical patterns for building resilient client applications.
+
+## Classify Errors Before Handling
+
+Not all errors deserve the same response. Classify each error code into one of three categories:
+
+| Category | Error Codes | Strategy |
+|---|---|---|
+| **Transient** | 3 (Timeout), 4 (Busy), 13 (TLS Handshake) | Retry with backoff |
+| **Permanent** | 1 (Invalid Command), 2 (Invalid Request ID), 5 (Invalid Parameter), 6 (Region Not Configured) | Fix the request; do not retry as-is |
+| **Idempotent / Already Done** | 7 (Already Running), 8 (Not Running), 10 (Cert Installed), 12 (Endpoint Exists), 18 (SSID Exists) | Treat as success if the desired state is achieved |
+
+```python
+TRANSIENT_CODES = {3, 4, 13}
+IDEMPOTENT_CODES = {7, 8, 10, 12, 18}
+
+def classify_error(code):
+    if code == 0:
+        return "success"
+    if code in TRANSIENT_CODES:
+        return "transient"
+    if code in IDEMPOTENT_CODES:
+        return "idempotent"
+    return "permanent"
+```
+
+## Retry Strategy with Exponential Backoff
+
+For transient errors, use exponential backoff with jitter to avoid thundering-herd problems when multiple clients retry simultaneously.
+
+```python
+import time
+import random
+
+def send_with_retry(client, topic, payload, max_retries=3, base_delay=2.0):
+    for attempt in range(max_retries + 1):
+        request_id = f"req-{int(time.time())}-{attempt}"
+        payload["requestId"] = request_id
+        client.publish(topic, json.dumps(payload))
+
+        response = wait_for_response(request_id, timeout=10)
+
+        if response is None:
+            # No response received; treat as transient
+            pass
+        elif response["responseCode"] == 0:
+            return response
+        elif response["responseCode"] not in TRANSIENT_CODES:
+            raise CommandError(response["responseCode"], response["responseMessage"])
+
+        if attempt < max_retries:
+            delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
+            time.sleep(delay)
+
+    raise TimeoutError(f"Command failed after {max_retries + 1} attempts")
+```
+
+**Recommended backoff parameters:**
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| Max retries | 3 | Enough to ride out brief contention periods |
+| Base delay | 2 seconds | Gives device time to complete in-flight operations |
+| Max delay cap | 30 seconds | Prevents excessively long waits |
+| Jitter | 0–1 second (random) | Prevents synchronized retries from multiple clients |
+
+## Timeout Handling
+
+Every command should have an associated timeout. If no response arrives within the timeout window, treat it as a transient failure.
+
+**Recommended timeouts by command type:**
+
+| Command Category | Timeout | Rationale |
+|---|---|---|
+| Configuration queries (`get_config`) | 10 seconds | Fast, low-overhead operations |
+| Configuration changes (`set_config`) | 15 seconds | May require internal validation |
+| RFID operations (`start_inventory`, `stop_inventory`) | 10 seconds | Should respond quickly |
+| Network operations (endpoint create, Wi-Fi) | 20 seconds | Network stack changes take longer |
+| Certificate operations | 30 seconds | Cryptographic processing overhead |
+| Firmware operations | 120 seconds | Large payload processing |
+
+```python
+TIMEOUTS = {
+    "get_config": 10,
+    "set_config": 15,
+    "start_inventory": 10,
+    "stop_inventory": 10,
+    "create_endpoint": 20,
+    "install_certificate": 30,
+    "update_firmware": 120,
+}
+
+def get_timeout(command):
+    return TIMEOUTS.get(command, 15)  # Default 15 seconds
+```
+
+## Correlating Requests and Responses
+
+Use a pending-commands map to track in-flight commands and match them to responses:
+
+```python
+import threading
+
+class CommandTracker:
+    def __init__(self):
+        self._pending = {}
+        self._lock = threading.Lock()
+
+    def register(self, request_id, timeout):
+        event = threading.Event()
+        with self._lock:
+            self._pending[request_id] = {"event": event, "response": None}
+        return event
+
+    def resolve(self, request_id, response):
+        with self._lock:
+            if request_id in self._pending:
+                self._pending[request_id]["response"] = response
+                self._pending[request_id]["event"].set()
+
+    def wait_for(self, request_id, timeout):
+        entry = self._pending.get(request_id)
+        if entry and entry["event"].wait(timeout):
+            with self._lock:
+                return self._pending.pop(request_id)["response"]
+        with self._lock:
+            self._pending.pop(request_id, None)
+        return None
+```
+
+## Circuit Breaker Pattern
+
+If a device consistently returns errors, stop sending commands temporarily to avoid wasting resources and flooding the device.
+
+```python
+class CircuitBreaker:
+    def __init__(self, failure_threshold=5, recovery_timeout=60):
+        self.failure_count = 0
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.state = "closed"  # closed = normal, open = blocking
+        self.last_failure_time = 0
+
+    def record_failure(self):
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        if self.failure_count >= self.failure_threshold:
+            self.state = "open"
+
+    def record_success(self):
+        self.failure_count = 0
+        self.state = "closed"
+
+    def allow_request(self):
+        if self.state == "closed":
+            return True
+        if time.time() - self.last_failure_time > self.recovery_timeout:
+            self.state = "half-open"
+            return True  # Allow one test request
+        return False
+```
+
+**Use one circuit breaker per device** to isolate failures. When the breaker is open, queue commands or notify the operator rather than silently dropping them.
+
+## Handling Idempotent Errors
+
+Some errors indicate the system is already in the desired state. Treat these as successful outcomes:
+
+```python
+def handle_response(response, desired_state):
+    code = response["responseCode"]
+
+    if code == 0:
+        return True
+
+    # "Operation already running" when we wanted it running
+    if code == 7 and desired_state == "running":
+        return True
+
+    # "Endpoint already exists" when we wanted to create it
+    if code == 12 and desired_state == "exists":
+        return True
+
+    return False
+```
+
+## Logging Best Practices
+
+Log every error response with enough context to diagnose issues without reproducing them:
+
+- **Always log:** `responseCode`, `responseMessage`, `command`, `requestId`, `timestamp`, and the device ID.
+- **Log the original request payload** for permanent errors so you can inspect what was sent.
+- **Do not log credentials** such as Wi-Fi passwords or certificate private keys.
+- **Use structured logging** (JSON) so error logs are machine-parseable for alerting and dashboards.
+
+## Summary Checklist
+
+- [ ] Classify every error code as transient, permanent, or idempotent
+- [ ] Implement exponential backoff with jitter for transient errors
+- [ ] Set appropriate timeouts per command category
+- [ ] Correlate requests and responses using unique `requestId` values
+- [ ] Use circuit breakers to protect against cascading failures
+- [ ] Treat idempotent errors as success when the desired state is met
+- [ ] Log errors with full context for post-incident diagnosis

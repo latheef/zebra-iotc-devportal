@@ -1,0 +1,130 @@
+---
+sidebar_position: 2
+title: "How to Monitor Battery Lifecycle"
+description: "Guide to monitoring battery health, drain patterns, and managing battery lifecycle on the RFD40/RFD90."
+---
+
+# How to Monitor Battery Lifecycle
+
+Battery management is critical for handheld RFID operations. The RFD40/RFD90 provides battery data through heartbeat events, alerts, and on-demand status checks. This guide covers monitoring strategies, drain pattern analysis, and operational recommendations.
+
+## Battery Data Sources
+
+| Source | Field | Update Frequency |
+|---|---|---|
+| `heartBeatEVT` | `battery_level`, `battery_charging` | Every heartbeat interval |
+| `alerts` | `BATTERY_LOW`, `BATTERY_CRITICAL` | On threshold breach |
+| `get_status` | `battery_level`, `battery_charging`, `battery_health` | On demand |
+
+## Understanding Battery Levels
+
+The `battery_level` field reports percentage remaining (0–100). This is an estimate based on voltage readings and discharge curves; it may fluctuate slightly under varying load conditions.
+
+| Level | Status | Action |
+|---|---|---|
+| 80–100% | Full / near-full | Normal operation |
+| 50–80% | Adequate | Monitor for shift coverage |
+| 20–50% | Low | Plan to dock or swap within 1–2 hours |
+| 10–20% | Warning | `BATTERY_LOW` alert fires. Swap soon. |
+| 0–10% | Critical | `BATTERY_CRITICAL` alert fires. Swap immediately. |
+
+## Drain Patterns by Operating Mode
+
+Battery consumption varies significantly by operating mode and configuration:
+
+| Mode | Approximate Drain Rate | Notes |
+|---|---|---|
+| Idle (standby) | ~1% per hour | Heartbeats and MQTT keepalive only |
+| Simple Inventory | ~5–8% per hour | Depends on scan frequency and duration |
+| Inventory with RSSI | ~7–10% per hour | Additional signal processing per tag |
+| Inventory with TID | ~10–15% per hour | Multiple RF exchanges per tag |
+| Tag Locationing | ~15–25% per hour | Continuous RF transmission |
+
+These rates assume default antenna power (27.0 dBm) and moderate tag populations. Higher power, more tags, or continuous scanning increases drain.
+
+## Tracking Drain Rates
+
+Monitor the rate of battery decline from heartbeat events to predict when a device will need charging:
+
+```javascript
+const batteryHistory = new Map(); // deviceSerial -> [{timestamp, level}]
+
+function trackBattery(heartbeat) {
+  const serial = heartbeat.device_serial;
+  if (!batteryHistory.has(serial)) {
+    batteryHistory.set(serial, []);
+  }
+
+  const history = batteryHistory.get(serial);
+  history.push({
+    timestamp: new Date(heartbeat.timestamp),
+    level: heartbeat.battery_level
+  });
+
+  // Keep last 60 data points
+  if (history.length > 60) history.shift();
+
+  // Calculate drain rate (%/hour) from last 10 minutes of data
+  if (history.length >= 2) {
+    const oldest = history[0];
+    const newest = history[history.length - 1];
+    const hours = (newest.timestamp - oldest.timestamp) / 3600000;
+    const drainPerHour = (oldest.level - newest.level) / hours;
+    const hoursRemaining = newest.level / drainPerHour;
+
+    return { drainPerHour, hoursRemaining, currentLevel: newest.level };
+  }
+}
+```
+
+## Configuring Battery Alert Thresholds
+
+Set thresholds appropriate for your operational needs:
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-070",
+  "payload": {
+    "action": "SET",
+    "battery_warn_threshold": 25,
+    "battery_critical_threshold": 10
+  }
+}
+```
+
+For operations requiring guaranteed battery life (e.g., a 4-hour inventory count), set the warning threshold high enough to provide time for a swap:
+
+| Shift Length | Recommended Warning | Recommended Critical |
+|---|---|---|
+| 2 hours | 15% | 5% |
+| 4 hours | 25% | 10% |
+| 8 hours | 30% | 15% |
+
+## Battery Health Monitoring
+
+The `battery_health` field in `get_status` indicates long-term battery condition:
+
+- **`GOOD`**: Battery holds charge within spec. Normal operation.
+- **`DEGRADED`**: Reduced capacity compared to new. Battery may not last a full shift. Plan replacement.
+- **`REPLACE`**: Battery is significantly degraded. Replace before it fails unexpectedly.
+
+Track `battery_health` across the fleet to schedule preventive battery replacements before they impact operations.
+
+## Operational Recommendations
+
+1. **Start shifts fully charged**: dock all devices at shift end
+2. **Monitor drain rates**: devices draining faster than expected may have degraded batteries or inefficient configurations
+3. **Reduce power when possible**: lower `antenna_power` in small-area scanning reduces battery consumption
+4. **Use S1 session**: avoids re-reading the same tags repeatedly, reducing RF time
+5. **Increase heartbeat interval**: in battery-sensitive deployments, use 300-second heartbeats instead of 30-second
+6. **Rotate batteries**: in multi-shift operations, keep a rotation of charged batteries available
+
+> **Warning**: Avoid letting batteries discharge to 0% regularly. Deep discharge cycles reduce long-term battery capacity. Configure `BATTERY_CRITICAL` thresholds to catch devices before full depletion.
+
+## Related Topics
+
+- [How to Check Device Status & Health](./check-device-health.mdx): on-demand health checks
+- [About Alert Events](../events/about-alert-events.mdx): battery alerts
+- [About Heartbeat Events](../events/about-heartbeat-events.mdx): periodic battery reporting
+- [About RFID Operating Modes](../../rfid-operations/operating-modes/about-operating-modes.mdx): mode impact on battery

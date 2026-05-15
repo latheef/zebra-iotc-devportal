@@ -1,0 +1,217 @@
+---
+sidebar_position: 3
+title: "How to Apply Bulk Configuration"
+---
+
+# How to Apply Bulk Configuration
+
+This guide explains how to apply a complete or partial configuration document to an RFD40 or RFD90 reader sled using the `set_config` MQTT command.
+
+## Prerequisites
+
+- Reader sled connected to the MQTT broker and online
+- MQTT client with publish and subscribe permissions on the reader's command topics
+- A prepared configuration document (complete or partial)
+- Understanding of which parameters require a reboot; see the reboot requirements table below
+
+> **Warning:** `set_config` modifies reader behavior. Always follow the get-modify-set pattern described in [About Bulk Configuration](./about-bulk-configuration.mdx) unless you are applying a known-good golden configuration to a newly provisioned reader.
+
+## Step 1: Prepare the Configuration Document
+
+Decide whether to send a **full** or **partial** configuration document.
+
+**Full document:** Includes every configurable parameter. Use when provisioning a new reader or restoring a reader to a baseline.
+
+**Partial document:** Includes only the parameters you want to change. Use when making targeted changes across a fleet.
+
+Example partial document, updating RF parameters only:
+
+```json
+{
+  "command_id": "cfg-set-001",
+  "config": {
+    "rf_config": {
+      "power_level_dbm": 25.0,
+      "session": "S2",
+      "dynamic_power": false
+    }
+  }
+}
+```
+
+Example full document:
+
+```json
+{
+  "command_id": "cfg-set-002",
+  "config": {
+    "mqtt": {
+      "broker_host": "broker.example.com",
+      "broker_port": 8883,
+      "tls_enabled": true,
+      "client_id": "rfd40-sn12345",
+      "keepalive_seconds": 60,
+      "clean_session": true,
+      "qos": 1
+    },
+    "rf_config": {
+      "power_level_dbm": 27.0,
+      "session": "S1",
+      "link_profile": "AUTO",
+      "tag_population": 100,
+      "dynamic_power": true,
+      "frequency_hop_table": "FCC"
+    },
+    "operating_mode": "INVENTORY",
+    "reporting": {
+      "interval_ms": 500,
+      "rssi_threshold_dbm": -72,
+      "duplicate_elimination_ms": 3000,
+      "include_antenna_id": true,
+      "include_timestamp": true,
+      "include_phase": false
+    },
+    "antenna": {
+      "antenna_1_enabled": true,
+      "antenna_2_enabled": false
+    },
+    "filters": {
+      "epc_prefix_filter": "",
+      "rssi_min_dbm": -80,
+      "rssi_max_dbm": 0
+    },
+    "device": {
+      "name": "warehouse-dock-3",
+      "location": "Building A, Dock 3",
+      "timezone": "America/New_York"
+    }
+  }
+}
+```
+
+## Step 2: Subscribe to the Response Topic
+
+```
+zebra/rfid/{device_id}/set_config/response
+```
+
+## Step 3: Publish the set_config Command
+
+**Topic:**
+```
+zebra/rfid/{device_id}/set_config
+```
+
+Publish the prepared configuration document as the MQTT message payload.
+
+## Step 4: Process the Response
+
+The reader responds with an acknowledgment:
+
+```json
+{
+  "command_id": "cfg-set-001",
+  "status": "SUCCESS",
+  "applied_parameters": 3,
+  "reboot_required": false,
+  "warnings": [],
+  "timestamp": "2026-05-14T09:15:00Z"
+}
+```
+
+**Response fields:**
+
+| Field | Description |
+|---|---|
+| `status` | `SUCCESS`, `PARTIAL_SUCCESS`, or `ERROR` |
+| `applied_parameters` | Count of parameters successfully applied |
+| `reboot_required` | Whether a reboot is needed for changes to take effect |
+| `warnings` | Array of non-fatal issues encountered during application |
+
+A `PARTIAL_SUCCESS` response means some parameters were applied but others failed validation:
+
+```json
+{
+  "command_id": "cfg-set-001",
+  "status": "PARTIAL_SUCCESS",
+  "applied_parameters": 2,
+  "reboot_required": false,
+  "warnings": [
+    "rf_config.power_level_dbm: value 35.0 exceeds maximum 30.0; clamped to 30.0"
+  ],
+  "rejected_parameters": [
+    {
+      "path": "rf_config.frequency_hop_table",
+      "value": "INVALID_TABLE",
+      "reason": "Unsupported frequency hop table"
+    }
+  ],
+  "timestamp": "2026-05-14T09:15:00Z"
+}
+```
+
+## Reboot Requirements
+
+The following parameter changes require a reader reboot:
+
+| Parameter | Reboot Required |
+|---|---|
+| `mqtt.broker_host` | Yes |
+| `mqtt.broker_port` | Yes |
+| `mqtt.tls_enabled` | Yes |
+| `mqtt.client_id` | Yes |
+| `rf_config.power_level_dbm` | No |
+| `rf_config.session` | No |
+| `rf_config.link_profile` | No |
+| `operating_mode` | No |
+| `reporting.*` | No |
+| `device.timezone` | Yes |
+
+If the response indicates `reboot_required: true`, issue a reboot command:
+
+```
+zebra/rfid/{device_id}/reboot
+```
+
+```json
+{
+  "command_id": "reboot-001"
+}
+```
+
+> **Warning:** Rebooting a reader disconnects it from the broker for 15–30 seconds. Coordinate reboots to avoid disrupting active operations.
+
+## Rollback Strategy
+
+If a `set_config` command produces unexpected behavior, roll back to the previous configuration:
+
+1. Before applying any `set_config`, capture the current configuration via `get_config` and store it locally
+2. If the new configuration causes issues, re-apply the stored previous configuration via `set_config`
+
+```python
+# Save current config before making changes
+current_config = get_config(device_id)
+save_to_file(f"rollback-{device_id}.json", current_config)
+
+# Apply new config
+apply_config(device_id, new_config)
+
+# If issues detected, rollback
+if detect_issues(device_id):
+    rollback_config = load_from_file(f"rollback-{device_id}.json")
+    apply_config(device_id, rollback_config)
+```
+
+## Applying Configuration Across a Fleet
+
+To apply the same configuration to multiple readers, iterate through your fleet registry and issue `set_config` to each reader. Stagger commands to avoid broker congestion:
+
+```python
+import time
+
+for device_id in fleet_registry:
+    publish_set_config(device_id, golden_config)
+    time.sleep(0.5)  # 500ms delay between commands
+```
+
+> **Note:** For fleets larger than 100 readers, consider batching updates in groups of 20–50 with health checks between batches to catch issues early.

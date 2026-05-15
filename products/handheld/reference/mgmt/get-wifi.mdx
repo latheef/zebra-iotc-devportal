@@ -1,0 +1,117 @@
+---
+sidebar_position: 5
+title: "get_wifi"
+description: "Query Wi-Fi profiles and connection status on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# get_wifi
+
+Queries the Wi-Fi profiles configured on the device, including connection status, security type, and IP configuration for each profile.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "get_wifi",
+  "requestId": "5"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"get_wifi"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+
+## Response Payload
+
+```json
+{
+  "command": "get_wifi",
+  "requestId": "5",
+  "statusCode": 0,
+  "statusMessage": "Success",
+  "wifiProfiles": {
+    "wifiConfig": [
+      {
+        "accessPoint": {
+          "essid": "Warehouse-IoT",
+          "status": "CONNECTED",
+          "isPreferred": true,
+          "securityType": "WPA2Personal",
+          "signalStrength": -45
+        },
+        "ipv4Configuration": {
+          "ipAddress": "10.0.5.22",
+          "subnetMask": "255.255.255.0",
+          "enableDhcp": true,
+          "gateway": "10.0.5.1"
+        }
+      },
+      {
+        "accessPoint": {
+          "essid": "Corp-Secure",
+          "status": "SAVED",
+          "isPreferred": false,
+          "securityType": "WPA2Enterprise",
+          "signalStrength": 0
+        },
+        "ipv4Configuration": {
+          "ipAddress": "",
+          "subnetMask": "",
+          "enableDhcp": true,
+          "gateway": ""
+        }
+      }
+    ]
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+| `wifiProfiles.wifiConfig` | array | List of configured Wi-Fi profiles |
+| `wifiProfiles.wifiConfig[].accessPoint.essid` | string | Network SSID |
+| `wifiProfiles.wifiConfig[].accessPoint.status` | string | `CONNECTED`, `SAVED`, `CONNECTING`, `DISCONNECTED` |
+| `wifiProfiles.wifiConfig[].accessPoint.isPreferred` | boolean | Whether this is the preferred network |
+| `wifiProfiles.wifiConfig[].accessPoint.securityType` | string | `WPA2Personal`, `WPA3Personal`, `WPA2Enterprise`, `WPA3Enterprise`, `OPEN` |
+| `wifiProfiles.wifiConfig[].accessPoint.signalStrength` | integer | RSSI in dBm. `0` when not connected |
+| `wifiProfiles.wifiConfig[].ipv4Configuration.ipAddress` | string | Assigned IPv4 address (empty if not connected) |
+| `wifiProfiles.wifiConfig[].ipv4Configuration.subnetMask` | string | Subnet mask |
+| `wifiProfiles.wifiConfig[].ipv4Configuration.enableDhcp` | boolean | `true` if address is obtained via DHCP |
+| `wifiProfiles.wifiConfig[].ipv4Configuration.gateway` | string | Default gateway address |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+
+## Notes
+
+- The device supports a maximum of 10 Wi-Fi profiles.
+- Only one profile can have `status: "CONNECTED"` at a time.
+- `signalStrength` is reported only for the currently connected network. Saved profiles return `0`.
+- Enterprise profiles do not expose credential details in the response for security reasons.
+
+## See Also
+
+- [set_wifi](set-wifi): Create or modify a Wi-Fi profile
+- [delete_wifi_profile](delete-wifi-profile): Remove a saved Wi-Fi profile
+- [get_eth](get-eth): Query Ethernet interface status
+- [API Overview](../api-overview): Complete endpoint inventory

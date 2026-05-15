@@ -1,0 +1,133 @@
+---
+sidebar_position: 10
+title: Config Endpoint
+description: Add, modify, or delete MQTT broker endpoint configurations on the reader.
+---
+
+# Config Endpoint
+
+Add, modify, or delete MQTT broker endpoint configurations on the reader. Each endpoint defines a connection to an MQTT broker with its own topic subscriptions, publish targets, and authentication settings. Endpoints are categorized by interface type (MGMT, CTRL, DATA, or MDM) to separate management, control, data, and MDM traffic.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `config_endpoint` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "req-ep-001",
+  "endpointConfig": {
+    "operation": "ADD",
+    "name": "data-broker-east",
+    "type": "DATA",
+    "host": "mqtt-east.example.com",
+    "port": 8883,
+    "tls": true,
+    "clientId": "RFD40-212735201D0053",
+    "tenantId": "tenant-acme-corp",
+    "username": "device-user",
+    "password": "secure-password",
+    "keepAlive": 60,
+    "cleanSession": true,
+    "publishTopics": [
+      "tenant-acme-corp/DATA/clients/data/RFD40-212735201D0053"
+    ],
+    "subscribeTopics": [
+      "tenant-acme-corp/DATA/clients/cmnd/RFD40-212735201D0053"
+    ]
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"config_endpoint"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+| `endpointConfig.operation` | enum | Yes | `ADD`, `MODIFY`, or `DELETE`. |
+| `endpointConfig.name` | string | Yes | User-defined label for the endpoint. |
+| `endpointConfig.type` | enum | Yes | Interface type: `MGMT`, `CTRL`, `DATA`, or `MDM`. |
+| `endpointConfig.host` | string | Yes (ADD/MODIFY) | MQTT broker hostname or IP address. |
+| `endpointConfig.port` | integer | Yes (ADD/MODIFY) | MQTT broker port (e.g., 1883 or 8883 for TLS). |
+| `endpointConfig.tls` | boolean | No | Enable TLS for the connection. Default: `false`. |
+| `endpointConfig.clientId` | string | No | MQTT client ID. Defaults to the device serial number. |
+| `endpointConfig.tenantId` | string | No | Tenant identifier used in topic paths. |
+| `endpointConfig.username` | string | No | Username for MQTT broker authentication. |
+| `endpointConfig.password` | string | No | Password for MQTT broker authentication. |
+| `endpointConfig.keepAlive` | integer | No | Keep-alive interval in seconds. Default: `60`. |
+| `endpointConfig.cleanSession` | boolean | No | Start a clean MQTT session. Default: `true`. |
+| `endpointConfig.publishTopics` | array | No | List of topics the device publishes to. |
+| `endpointConfig.subscribeTopics` | array | No | List of topics the device subscribes to. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "req-ep-001",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"config_endpoint"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `2` | Invalid parameter |
+| `10` | Configuration already exists |
+| `18` | Invalid endpoint configuration |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "req-ep-002",
+  "endpointConfig": {
+    "operation": "DELETE",
+    "name": "data-broker-east",
+    "type": "DATA"
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "req-ep-002",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

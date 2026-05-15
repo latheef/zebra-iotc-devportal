@@ -1,0 +1,398 @@
+import type { SidebarsConfig } from '@docusaurus/plugin-content-docs';
+
+/**
+ * Handheld RFID IoT Connector — Sidebar Navigation
+ *
+ * Structure follows the 7-Part Information Architecture (Diátaxis framework):
+ *   Part I:   Foundations
+ *   Part II:  Getting Started
+ *   Part III: Infrastructure
+ *   Part IV:  RFID Operations
+ *   Part V:   Observability & Events
+ *   Part VI:  Fleet Operations
+ *   Part VII: Reference & Troubleshooting
+ */
+const sidebars: SidebarsConfig = {
+  handheldSidebar: [
+    // ── Part I: Foundations ──────────────────────────────
+    {
+      type: 'category',
+      label: 'Part I: Foundations',
+      collapsible: true,
+      collapsed: false,
+      className: 'sidebar-section-header',
+      items: [
+        {
+          type: 'category',
+          label: '1. Introduction',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'foundations/introduction/about-iotc', label: '1.1 About Zebra IoT Connector' },
+            { type: 'doc', id: 'foundations/introduction/supported-hardware', label: '1.2 Supported Hardware' },
+            { type: 'doc', id: 'foundations/introduction/v1-1-features', label: '1.3 IOTC V1.1 Features' },
+            { type: 'doc', id: 'foundations/introduction/documentation-guide', label: '1.4 How This Documentation Is Organized' },
+            { type: 'doc', id: 'foundations/introduction/glossary', label: '1.5 Key Terminology & Glossary' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '2. System Architecture',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'foundations/architecture/end-to-end-system', label: '2.1 About the End-to-End System' },
+            { type: 'doc', id: 'foundations/architecture/component-architecture', label: '2.2 About Component Architecture' },
+            { type: 'doc', id: 'foundations/architecture/communication-flow', label: '2.3 About Communication Flow' },
+            { type: 'doc', id: 'foundations/architecture/interface-model', label: '2.4 About the Interface Model' },
+            { type: 'doc', id: 'foundations/architecture/handheld-considerations', label: '2.5 Handheld-Specific Considerations' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '3. MQTT Core Concepts',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'foundations/mqtt/mqtt-primer', label: '3.1 About MQTT 3.1.1' },
+            { type: 'doc', id: 'foundations/mqtt/topic-hierarchy', label: '3.2 About Topic Hierarchy' },
+            { type: 'doc', id: 'foundations/mqtt/qos-levels', label: '3.3 About QoS Levels' },
+            { type: 'doc', id: 'foundations/mqtt/connection-lifecycle', label: '3.4 About Connection Lifecycle' },
+            { type: 'doc', id: 'foundations/mqtt/auth-model', label: '3.5 About Authentication & Authorization' },
+          ],
+        },
+      ],
+    },
+
+    // ── Part II: Getting Started ─────────────────────────
+    {
+      type: 'category',
+      label: 'Part II: Getting Started',
+      collapsible: true,
+      collapsed: false,
+      className: 'sidebar-section-header',
+      items: [
+        {
+          type: 'category',
+          label: '4. Prerequisites & Bootstrap',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'getting-started/prerequisites/requirements', label: '4.1 Hardware & Software Requirements' },
+            { type: 'doc', id: 'getting-started/prerequisites/obtain-credentials', label: '4.2 How to Obtain Credentials' },
+            { type: 'doc', id: 'getting-started/prerequisites/bootstrap-123rfid', label: '4.3 Reader Bootstrap with 123RFID Desktop' },
+            { type: 'doc', id: 'getting-started/prerequisites/verify-firmware', label: '4.4 How to Verify Firmware Version' },
+            { type: 'doc', id: 'getting-started/prerequisites/pair-bluetooth', label: '4.5 How to Pair via Bluetooth' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '5. Quick Start Tutorial',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'getting-started/quick-start/overview', label: '5.1 Quick Start Overview' },
+            { type: 'doc', id: 'getting-started/quick-start/connect-broker', label: '5.2 Connect to the MQTT Broker' },
+            { type: 'doc', id: 'getting-started/quick-start/discover-reader', label: '5.3 Discover Your Reader' },
+            { type: 'doc', id: 'getting-started/quick-start/subscribe-data', label: '5.4 Subscribe to Tag Data Events' },
+            { type: 'doc', id: 'getting-started/quick-start/start-operation', label: '5.5 Start an RFID Read Operation' },
+            { type: 'doc', id: 'getting-started/quick-start/read-tags', label: '5.6 Read Your First Tags' },
+            { type: 'doc', id: 'getting-started/quick-start/stop-operation', label: '5.7 Stop the Operation' },
+            { type: 'doc', id: 'getting-started/quick-start/example-python', label: '5.8 Python Example' },
+            { type: 'doc', id: 'getting-started/quick-start/example-nodejs', label: '5.9 Node.js Example' },
+            { type: 'doc', id: 'getting-started/quick-start/example-csharp', label: '5.10 C# (.NET) Example' },
+          ],
+        },
+      ],
+    },
+
+    // ── Part III: Infrastructure ─────────────────────────
+    {
+      type: 'category',
+      label: 'Part III: Infrastructure',
+      collapsible: true,
+      collapsed: true,
+      className: 'sidebar-section-header',
+      items: [
+        {
+          type: 'category',
+          label: '6. Network Configuration',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'infrastructure/network/about-network-architecture', label: '6.1 About Network Architecture' },
+            { type: 'doc', id: 'infrastructure/network/configure-wifi', label: '6.2 How to Configure Wi-Fi Profiles' },
+            { type: 'doc', id: 'infrastructure/network/check-ethernet', label: '6.3 How to Check Ethernet Status' },
+            { type: 'doc', id: 'infrastructure/network/troubleshoot-network', label: '6.4 How to Troubleshoot Network Issues' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '7. Security & Certificates',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'infrastructure/security/about-security-model', label: '7.1 About the Security Model' },
+            { type: 'doc', id: 'infrastructure/security/manage-certificates', label: '7.2 How to Manage TLS/SSL Certificates' },
+            { type: 'doc', id: 'infrastructure/security/rotate-certificates', label: '7.3 How to Rotate Certificates at Scale' },
+            { type: 'doc', id: 'infrastructure/security/secure-mqtt-connection', label: '7.4 How to Secure the MQTT Connection' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '8. MQTT Endpoint Routing',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'infrastructure/endpoints/about-endpoint-config', label: '8.1 About MQTT Endpoint Configuration' },
+            { type: 'doc', id: 'infrastructure/endpoints/view-endpoint-config', label: '8.2 How to View Endpoint Configuration' },
+            { type: 'doc', id: 'infrastructure/endpoints/configure-endpoints', label: '8.3 How to Configure MQTT Endpoints' },
+            { type: 'doc', id: 'infrastructure/endpoints/multi-endpoint-architectures', label: '8.4 About Multi-Endpoint Architectures' },
+          ],
+        },
+      ],
+    },
+
+    // ── Part IV: RFID Operations ─────────────────────────
+    {
+      type: 'category',
+      label: 'Part IV: RFID Operations',
+      collapsible: true,
+      collapsed: true,
+      className: 'sidebar-section-header',
+      items: [
+        {
+          type: 'category',
+          label: '9. Operating Modes & RF Configuration',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'rfid-operations/operating-modes/about-operating-modes', label: '9.1 About RFID Operating Modes' },
+            { type: 'doc', id: 'rfid-operations/operating-modes/configure-operating-mode', label: '9.2 How to Configure the Operating Mode' },
+            { type: 'doc', id: 'rfid-operations/operating-modes/about-post-filters', label: '9.3a About Post-Filters' },
+            { type: 'doc', id: 'rfid-operations/operating-modes/configure-post-filters', label: '9.3b How to Configure Post-Filters' },
+            { type: 'doc', id: 'rfid-operations/operating-modes/start-stop-operations', label: '9.4 How to Start and Stop RFID Operations' },
+            { type: 'doc', id: 'rfid-operations/operating-modes/about-trigger-operations', label: '9.5 About Trigger-Based Operations' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '10. Working with Tag Data',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'rfid-operations/tag-data/about-tag-data-architecture', label: '10.1 About Tag Data Event Architecture' },
+            { type: 'doc', id: 'rfid-operations/tag-data/dataevt-payload', label: '10.2 dataEVT Payload Schema' },
+            { type: 'doc', id: 'rfid-operations/tag-data/interpret-tag-data', label: '10.3 How to Interpret Tag Data Fields' },
+            { type: 'doc', id: 'rfid-operations/tag-data/dual-data-channels', label: '10.4 About Dual Data Channels' },
+            { type: 'doc', id: 'rfid-operations/tag-data/process-tag-data', label: '10.5 How to Process Tag Data' },
+          ],
+        },
+      ],
+    },
+
+    // ── Part V: Observability & Events ───────────────────
+    {
+      type: 'category',
+      label: 'Part V: Observability & Events',
+      collapsible: true,
+      collapsed: true,
+      className: 'sidebar-section-header',
+      items: [
+        {
+          type: 'category',
+          label: '11. Event Architecture & Configuration',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'observability/events/about-event-model', label: '11.1 About the Event Model' },
+            { type: 'doc', id: 'observability/events/event-types-reference', label: '11.2 Event Types Reference' },
+            { type: 'doc', id: 'observability/events/configure-event-reporting', label: '11.3 How to Configure Event Reporting' },
+            { type: 'doc', id: 'observability/events/about-heartbeat-events', label: '11.4 About Heartbeat Events' },
+            { type: 'doc', id: 'observability/events/about-alert-events', label: '11.5 About Alert Events' },
+            { type: 'doc', id: 'observability/events/about-exception-events', label: '11.6 About Exception Events' },
+            { type: 'doc', id: 'observability/events/about-mqtt-connection-events', label: '11.7 About MQTT Connection Events' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '12. Monitoring & Diagnostics',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'observability/monitoring/check-device-health', label: '12.1 How to Check Device Health' },
+            { type: 'doc', id: 'observability/monitoring/monitor-battery', label: '12.2 How to Monitor Battery Lifecycle' },
+            { type: 'doc', id: 'observability/monitoring/monitor-connection', label: '12.3 How to Monitor Connection Quality' },
+            { type: 'doc', id: 'observability/monitoring/fleet-health-dashboard', label: '12.4 How to Build a Fleet Health Dashboard' },
+          ],
+        },
+      ],
+    },
+
+    // ── Part VI: Fleet Operations ────────────────────────
+    {
+      type: 'category',
+      label: 'Part VI: Fleet Operations',
+      collapsible: true,
+      collapsed: true,
+      className: 'sidebar-section-header',
+      items: [
+        {
+          type: 'category',
+          label: '13. Fleet Provisioning',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'fleet/provisioning/about-provisioning-models', label: '13.1 About Provisioning Models' },
+            { type: 'doc', id: 'fleet/provisioning/zero-touch-soti', label: '13.2 How to Set Up Zero-Touch Provisioning' },
+            { type: 'doc', id: 'fleet/provisioning/bulk-123rfid', label: '13.3 How to Provision in Bulk' },
+            { type: 'doc', id: 'fleet/provisioning/automate-provisioning', label: '13.4 How to Automate Provisioning' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '14. Fleet Management & Bulk Configuration',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'fleet/management/about-bulk-configuration', label: '14.1 About Bulk Configuration' },
+            { type: 'doc', id: 'fleet/management/read-full-config', label: '14.2 How to Read Full Configuration' },
+            { type: 'doc', id: 'fleet/management/apply-bulk-config', label: '14.3 How to Apply Bulk Configuration' },
+            { type: 'doc', id: 'fleet/management/detect-config-drift', label: '14.4 How to Detect Configuration Drift' },
+          ],
+        },
+        {
+          type: 'category',
+          label: '15. Cloud Integration',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'fleet/cloud-integration/about-integration-patterns', label: '15.1 About Integration Patterns' },
+            { type: 'doc', id: 'fleet/cloud-integration/integrate-aws', label: '15.2 How to Integrate with AWS IoT Core' },
+            { type: 'doc', id: 'fleet/cloud-integration/integrate-azure', label: '15.3 How to Integrate with Azure IoT Hub' },
+            { type: 'doc', id: 'fleet/cloud-integration/integrate-gcp', label: '15.4 How to Integrate with Google Cloud IoT' },
+            { type: 'doc', id: 'fleet/cloud-integration/integrate-custom-broker', label: '15.5 How to Integrate with a Custom Broker' },
+          ],
+        },
+      ],
+    },
+
+    // ── Part VII: Reference & Troubleshooting ────────────
+    {
+      type: 'category',
+      label: 'Part VII: Reference & Troubleshooting',
+      collapsible: true,
+      collapsed: false,
+      className: 'sidebar-section-header',
+      items: [
+        {
+          type: 'category',
+          label: '16. MQTT API Reference',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'reference/api-overview', label: '16.1 API Reference Overview' },
+            {
+              type: 'category',
+              label: 'Management Interface (MGMT)',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                { type: 'doc', id: 'reference/mgmt/get-version', label: 'get_version' },
+                { type: 'doc', id: 'reference/mgmt/get-status', label: 'get_status' },
+                { type: 'doc', id: 'reference/mgmt/get-current-region', label: 'get_current_region' },
+                { type: 'doc', id: 'reference/mgmt/get-eth', label: 'get_eth' },
+                { type: 'doc', id: 'reference/mgmt/get-wifi', label: 'get_wifi' },
+                { type: 'doc', id: 'reference/mgmt/delete-wifi-profile', label: 'delete_wifi_profile' },
+                { type: 'doc', id: 'reference/mgmt/set-wifi', label: 'set_wifi' },
+                { type: 'doc', id: 'reference/mgmt/get-installed-certificate', label: 'get_installed_certificate' },
+                { type: 'doc', id: 'reference/mgmt/delete-certificate', label: 'delete_certificate' },
+                { type: 'doc', id: 'reference/mgmt/install-certificate', label: 'install_certificate' },
+                { type: 'doc', id: 'reference/mgmt/get-endpoint-config', label: 'get_endpoint_config' },
+                { type: 'doc', id: 'reference/mgmt/config-endpoint', label: 'config_endpoint' },
+                { type: 'doc', id: 'reference/mgmt/config-events', label: 'config_events' },
+                { type: 'doc', id: 'reference/mgmt/get-config', label: 'get_config' },
+                { type: 'doc', id: 'reference/mgmt/set-config', label: 'set_config' },
+                { type: 'doc', id: 'reference/mgmt/reboot', label: 'reboot' },
+                { type: 'doc', id: 'reference/mgmt/set-os', label: 'set_os' },
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Control Interface (CTRL)',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                { type: 'doc', id: 'reference/ctrl/get-operating-mode', label: 'get_operating_mode' },
+                { type: 'doc', id: 'reference/ctrl/get-post-filter', label: 'get_post_filter' },
+                { type: 'doc', id: 'reference/ctrl/control-operation', label: 'control_operation' },
+                { type: 'doc', id: 'reference/ctrl/set-post-filter', label: 'set_post_filter' },
+                { type: 'doc', id: 'reference/ctrl/set-operating-mode', label: 'set_operating_mode' },
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Data Interface (DATA)',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                { type: 'doc', id: 'reference/data/dataevt', label: 'dataEVT' },
+              ],
+            },
+            {
+              type: 'category',
+              label: 'Events Reference',
+              collapsible: true,
+              collapsed: true,
+              items: [
+                { type: 'doc', id: 'reference/events/heartbeatevt', label: 'heartBeatEVT' },
+                { type: 'doc', id: 'reference/events/alerts', label: 'alerts' },
+                { type: 'doc', id: 'reference/events/alert-short', label: 'alert_short' },
+                { type: 'doc', id: 'reference/events/mqttconnevt', label: 'mqttConnEVT' },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'category',
+          label: '17. Error Codes & Exceptions',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'reference/errors/error-response-format', label: '17.1 Error Response Format' },
+            { type: 'doc', id: 'reference/errors/error-code-reference', label: '17.2 Error Code Reference' },
+            { type: 'doc', id: 'reference/errors/exception-event-codes', label: '17.3 Exception Event Codes' },
+            { type: 'doc', id: 'reference/errors/handle-errors', label: '17.4 How to Handle Errors' },
+          ],
+        },
+        {
+          type: 'doc',
+          id: 'reference/troubleshooting',
+          label: '18. Troubleshooting Guide',
+        },
+        {
+          type: 'doc',
+          id: 'reference/faq',
+          label: '19. FAQ',
+        },
+        {
+          type: 'category',
+          label: '20. Appendices',
+          collapsible: true,
+          collapsed: true,
+          items: [
+            { type: 'doc', id: 'reference/appendices/config-schema', label: '20.1 Configuration Document Schema' },
+            { type: 'doc', id: 'reference/appendices/topic-quick-reference', label: '20.2 MQTT Topic Quick Reference' },
+            { type: 'doc', id: 'reference/appendices/firmware-changelog', label: '20.3 Firmware Version History' },
+            { type: 'doc', id: 'reference/appendices/rfid-tag-standards', label: '20.4 Supported RFID Tag Standards' },
+            { type: 'doc', id: 'reference/appendices/regulatory-info', label: '20.5 Regulatory & Regional Information' },
+            { type: 'doc', id: 'reference/appendices/mqtt-client-libraries', label: '20.6 Third-Party MQTT Client Libraries' },
+          ],
+        },
+      ],
+    },
+  ],
+};
+
+export default sidebars;
+

@@ -1,0 +1,61 @@
+---
+sidebar_position: 4
+title: REST Management
+---
+
+# REST API: Management
+
+Manage firmware, system settings, and lifecycle operations on your Zebra Gen2x fixed reader.
+
+## System Status
+
+```bash
+curl -k -u admin:password https://<READER_IP>/api/v2/status
+```
+
+Response:
+
+```json
+{
+  "model": "FX9700-GEN2X",
+  "serialNumber": "FX9700-654321",
+  "firmwareVersion": "5.0.0",
+  "gen2xSupport": true,
+  "uptime": 172800,
+  "temperature": 42,
+  "antennaCount": 8
+}
+```
+
+## Firmware Management
+
+### Upload and Apply Firmware
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v2/firmware/upload \
+  -F "file=@firmware-v5.1.0.bin"
+
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v2/firmware/apply
+```
+
+## System Operations
+
+### Reboot
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v2/system/reboot
+```
+
+### Factory Reset
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v2/system/factory-reset
+```
+
+:::danger
+Factory reset erases all configuration. The reader reverts to default network settings.
+:::

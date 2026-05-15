@@ -1,0 +1,146 @@
+---
+sidebar_position: 16
+title: MQTT API Reference
+description: Complete MQTT API reference for Zebra handheld RFID readers (RFD40/RFD90): 28 endpoints across control, management, and event channels.
+---
+
+# Handheld Reader MQTT API Reference
+
+Complete MQTT API reference for the Zebra IoT Connector on **RFD40 / RFD90 Series** handheld RFID readers. The API covers **device management**, **RFID operation control**, **tag data collection**, and **fleet monitoring** via MQTT 3.1.1.
+
+:::tip Interactive Reference
+**[Open the Interactive AsyncAPI Reference →](/zebra-iotc-devportal/handheld/mqtt-api-reference)** for the full schema explorer with request/response payloads, enums, and field-level documentation.
+:::
+
+---
+
+## Topic Pattern
+
+All topics follow this structure:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+| Segment | Description |
+|---------|-------------|
+| `tenantId` | Unique organization ID assigned during provisioning |
+| `interface` | `MGMT`, `CTRL`, `DATA`, or `MDM` |
+| `channel` | `cmnd`, `resp`, `event`, `data1event`, or `data2event` |
+| `deviceSerial` | Device serial number (e.g., `RFD9030-12345`) |
+
+---
+
+## Channels & Interfaces
+
+### MGMT: Device Management (17 endpoints)
+
+| Channel | Direction | Description |
+|---------|-----------|-------------|
+| `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` | **Publish** | Send management commands |
+| `{tenantId}/MGMT/clients/resp/{deviceSerial}` | **Subscribe** | Receive management responses |
+| `{tenantId}/MGMT/clients/event/{deviceSerial}` | **Subscribe** | Receive device events |
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `GET_STATUS` | Get device status including battery, memory, RFID state |
+| `GET_VERSION` | Get firmware and hardware version information |
+| `GET_CURRENT_REGION` | Get the current regulatory region |
+| `GET_CONFIG` | Get full device configuration |
+| `SET_CONFIG` | Apply device configuration changes |
+| `SET_WIFI` | Configure Wi-Fi network (WPA2/WPA3, Enterprise) |
+| `GET_WIFI` | Get current Wi-Fi configuration |
+| `DELETE_WIFI_PROFILE` | Remove a saved Wi-Fi profile |
+| `GET_ETH` | Get Ethernet/cradle network configuration |
+| `CONFIG_ENDPOINT` | Add, modify, or delete MQTT endpoints |
+| `GET_ENDPOINT_CONFIG` | Get current MQTT endpoint configuration |
+| `INSTALL_CERTIFICATE` | Install TLS/mTLS certificates (Base64) |
+| `DELETE_CERTIFICATE` | Remove an installed certificate |
+| `GET_INSTALLED_CERTIFICATE` | List installed certificates |
+| `CONFIG_EVENTS` | Configure event thresholds (heartbeat, temperature, battery) |
+| `SET_OS` | Initiate firmware update from URL |
+| `REBOOT` | Reboot the device |
+
+**Events:**
+
+| Event | Description |
+|-------|-------------|
+| `heartBeatEVT` | Periodic device health (battery %, temperature, network) |
+| `alerts` | Critical alerts (low battery, high temp, storage) |
+| `alert_short` | Lightweight alert notifications |
+| `exceptionEVT` | Error reports (RFID, network, config, certificate) |
+| `mqttConnEVT` | MQTT connection status changes |
+
+---
+
+### CTRL: RFID Operation Control (5 endpoints)
+
+| Channel | Direction | Description |
+|---------|-----------|-------------|
+| `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` | **Publish** | Send RFID control commands |
+| `{tenantId}/CTRL/clients/resp/{deviceSerial}` | **Subscribe** | Receive control responses |
+
+**Commands:**
+
+| Command | Description |
+|---------|-------------|
+| `SET_OPERATING_MODE` | Configure RFID profiles, antennas, tag filters, read/write operations |
+| `GET_OPERATING_MODE` | Get current RFID operating configuration |
+| `CONTROL_OPERATION` | Start or stop RFID/Scanner operations |
+| `SET_POST_FILTER` | Set tag data post-filters (prefix, suffix, regex, RSSI, whitelist/blacklist) |
+| `GET_POST_FILTER` | Get current post-filter configuration |
+
+---
+
+### DATA: Tag Data Streaming (2 endpoints)
+
+| Channel | Direction | Description |
+|---------|-----------|-------------|
+| `{tenantId}/DATA/clients/data1event/{deviceSerial}` | **Subscribe** | Primary tag data stream |
+| `{tenantId}/DATA/clients/data2event/{deviceSerial}` | **Subscribe** | Secondary tag data stream |
+
+**Tag data fields include:** EPC, TID, antenna ID, RSSI, phase, channel index, timestamp, read count, memory bank data, PC bits, CRC, XPC, and GPS coordinates.
+
+---
+
+## Connection & Security
+
+| Setting | Production | Development |
+|---------|-----------|-------------|
+| **Protocol** | MQTT 3.1.1 over TLS | MQTT 3.1.1 |
+| **Port** | 8883 | 1883 |
+| **Authentication** | X.509 mTLS or Username/Password | Username/Password |
+| **Payload Format** | JSON | JSON |
+
+---
+
+## Response Codes
+
+| Code | Meaning |
+|------|---------|
+| `0` | SUCCESS |
+| `1` | FAILURE |
+| `2` | INVALID_COMMAND |
+| `3` | RFID_RADIO_ERROR |
+| `5` | RFID_API_UNKNOWN_ERROR |
+| `6` | RFID_ALREADY_CONNECTED |
+| `7` | RFID_BATTERY_LOW |
+| `8` | RFID_BATTERY_CRITICAL |
+| `9` | RFID_SPM_NOT_SUPPORTED |
+| `10` | RFID_ALREADY_DISCONNECTED |
+| `12` | INVALID_CERTIFICATE |
+| `14` | CERTIFICATE_INSTALLED |
+| `15` | INVALID_CERTIFICATE_TYPE |
+| `16` | DELETE_CERTIFICATE_ERROR |
+| `18` | INVALID_ENDPOINT_CONFIG |
+| `20` | RFID_STOP_SCAN_TIMEOUT |
+| `26` | CERTIFICATE_ALREADY_INSTALLED |
+| `28` | PROFILE_NOT_EXIST |
+
+---
+
+:::info
+This reference is generated from the [AsyncAPI 2.6.0 specification](https://github.com/al1913-zebra/zebra-iotc-devportal/blob/main/specs/handheld/asyncapi.yml). For the full interactive schema explorer, visit the **[Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference)**.
+:::

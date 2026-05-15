@@ -1,0 +1,115 @@
+---
+sidebar_position: 1
+title: About MQTT Endpoint Configuration
+description: "What MQTT endpoints are, why they exist, and how the three endpoint types route data to different brokers"
+---
+
+# About MQTT Endpoint Configuration
+
+An **endpoint** in the Zebra IoT Connector context is an MQTT broker connection target; a combination of hostname, port, TLS settings, and credentials that tells the reader where to send a specific category of traffic. Understanding endpoint types is essential for designing deployments that separate management traffic from operational data, or that route data to multiple brokers.
+
+---
+
+## 8.1 What Is an Endpoint?
+
+Every MQTT message the reader sends or receives flows through an endpoint. The endpoint defines:
+
+- **Where:** The broker hostname (or IP) and port
+- **How:** TLS settings, CA certificate, client certificate
+- **Who:** Authentication credentials (username/password or client cert identity)
+
+When the reader boots, it establishes MQTT connections to its configured endpoints and begins publishing and subscribing on the appropriate topics.
+
+---
+
+## 8.2 The Three Endpoint Types
+
+The reader supports three independent endpoint configurations, each serving a different purpose:
+
+| Endpoint Type | Interface | Purpose | Example Traffic |
+|--------------|-----------|---------|-----------------|
+| **MDM** | MGMT | Device management | Firmware updates, certificate management, Wi-Fi configuration, status queries |
+| **CTRL** | CTRL | Operational control | `set_operating_mode`, `control_operation` (start/stop), RFID configuration |
+| **DATA** | DATA, `rfid` | Tag data delivery | `dataEVT` (tag reads), `tagAccessEVT` (memory operations) |
+
+Each endpoint type maps to a specific set of MQTT topic interfaces. When a command is published on `{tenantId}/MGMT/clients/cmnd/{deviceSerial}`, the reader processes it through the **MDM** endpoint connection. When tag data is published on the `rfid` channel, it flows through the **DATA** endpoint connection.
+
+---
+
+## 8.3 Why Separate Endpoints?
+
+In the simplest deployment, all three endpoint types point to the same broker. This is the default and works well for development, testing, and small deployments. But production environments often benefit from separation:
+
+### Data Isolation
+
+Tag data can be high-volume; hundreds of reads per second during a fast inventory. Sending this through the same broker and connection as management commands creates contention. A separate DATA endpoint directs tag data to a broker (or broker cluster) optimized for high-throughput ingestion, while management traffic flows through a lower-volume, higher-priority connection.
+
+### Security Boundaries
+
+Management commands (`set_wifi`, `install_certificate`, `factory_reset`) are sensitive. Routing them through a separate broker with stricter access controls, different authentication, or a different network path reduces the blast radius of a compromised data pipeline.
+
+### Multi-Broker Architectures
+
+Some organizations operate multiple MQTT brokers for different purposes:
+
+- A **corporate broker** for device management (MDM endpoint)
+- A **cloud broker** (AWS IoT Core, Azure IoT Hub, HiveMQ Cloud) for tag data (DATA endpoint)
+- A **local broker** at each facility for real-time operational control (CTRL endpoint)
+
+Separate endpoints make this possible without proxying or bridging.
+
+### MDM-Managed Endpoints
+
+In enterprise deployments using a Mobile Device Management platform, the MDM endpoint is configured by the MDM system and should not be changed by field operations. The CTRL and DATA endpoints can be configured independently for site-specific or application-specific needs.
+
+---
+
+## 8.4 Default Configuration
+
+Out of the box, all three endpoints point to the Zebra-hosted broker:
+
+| Setting | Default Value |
+|---------|--------------|
+| Host | Zebra-hosted broker hostname (provisioned during device registration) |
+| Port | `8883` |
+| TLS | Enabled |
+| Authentication | Device credentials provisioned during registration |
+
+When all endpoints share the same broker, the reader maintains a single MQTT connection and multiplexes traffic across topic interfaces. When endpoints point to different brokers, the reader maintains separate TCP/TLS connections.
+
+---
+
+## 8.5 Topic-to-Endpoint Mapping
+
+Understanding which topics flow through which endpoint:
+
+```
+MDM Endpoint:
+  Publish:   {tenantId}/MGMT/clients/resp/{deviceSerial}   (command responses)
+  Subscribe: {tenantId}/MGMT/clients/cmnd/{deviceSerial}   (incoming commands)
+
+CTRL Endpoint:
+  Publish:   {tenantId}/CTRL/clients/resp/{deviceSerial}   (command responses)
+  Subscribe: {tenantId}/CTRL/clients/cmnd/{deviceSerial}   (incoming commands)
+
+DATA Endpoint:
+  Publish:   {tenantId}/DATA/clients/resp/{deviceSerial}   (events, tag data)
+  Subscribe: {tenantId}/DATA/clients/cmnd/{deviceSerial}   (data commands)
+  Publish:   {tenantId}/rfid/clients/resp/{deviceSerial}   (RFID tag events)
+```
+
+---
+
+## 8.6 Configuration Scope
+
+Endpoint configuration is **per-reader**. Each reader maintains its own endpoint settings. In fleet deployments, you configure endpoints by sending `config_endpoint` commands to each reader individually, or in bulk through your management platform.
+
+Endpoint settings persist across reboots. A factory reset restores the default Zebra-hosted broker configuration.
+
+---
+
+## Next Steps
+
+- [View Endpoint Configuration](./view-endpoint-config): query current endpoint settings
+- [Configure MQTT Endpoints](./configure-endpoints): set endpoint parameters
+- [Multi-Endpoint Architectures](./multi-endpoint-architectures): deployment patterns for multiple brokers

@@ -1,0 +1,211 @@
+---
+sidebar_position: 2
+title: Get Operating Mode
+description: Retrieve the current operating mode configuration from the reader.
+---
+
+# Get Operating Mode
+
+Retrieve the current RFID operating mode configuration from the reader. The response includes the full operating mode settings such as RF profile, transmit power, access operations, triggers, query/select parameters, and tag metadata reporting options. If the reader cannot retrieve the configuration, the `operatingMode` object is omitted and a non-zero response code is returned.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `get_operating_mode` |
+| **Interface** | CTRL |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/CTRL/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+Send a simple command payload with no additional configuration fields.
+
+```json
+{
+  "command": "get_operating_mode",
+  "requestId": "unique-id"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"get_operating_mode"`. |
+| `requestId` | string | Yes | Unique identifier to correlate request and response. |
+
+## Response Payload (SUB)
+
+On success, the response includes the full `operatingMode` object reflecting the reader's current configuration. On error code `3`, the `operatingMode` field is omitted.
+
+```json
+{
+  "command": "get_operating_mode",
+  "requestId": "unique-id",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "SUCCESS"
+  },
+  "operatingMode": {
+    "operatingModes": {
+      "profiles": "ADVANCED",
+      "advancedConfigurations": {
+        "transmitPower": 270,
+        "linkProfile": "M4_256K",
+        "session": "SESSION_1",
+        "dynamicPower": false
+      },
+      "accessOperations": [],
+      "radioStartConditions": {
+        "trigger": "PRESSED",
+        "startDelay": 0,
+        "repeat": false
+      },
+      "radioStopConditions": {
+        "trigger": "RELEASED",
+        "tagCount": 0,
+        "stopTimeout": 0,
+        "inventoryCount": 0
+      },
+      "query": {
+        "session": "SESSION_1",
+        "inventoryState": "STATE_A",
+        "slFlag": "ALL",
+        "tagPopulation": 30
+      },
+      "select": [],
+      "tagMetaDataToEnable": {
+        "RSSI": true,
+        "PHASE": false,
+        "SEENCOUNT": true,
+        "CHANNEL": false,
+        "PC": true,
+        "XPC": false,
+        "CRC": false,
+        "EPC": true,
+        "TID": false,
+        "USER": false,
+        "MAC": true,
+        "HOSTNAME": true
+      }
+    }
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echo of the command name. |
+| `requestId` | string | Echo of the request identifier. |
+| `apiVersion` | string | API version (e.g., `"V1.1"`). |
+| `response.code` | integer | Numeric response code. |
+| `response.description` | string | Human-readable description of the result. |
+| `operatingMode` | object | Current operating mode configuration. Omitted when `response.code` is `3`. See [Set Operating Mode](set-operating-mode) for the full structure. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | SUCCESS |
+| `1` | FAILURE |
+| `3` | Unable to retrieve operating mode configuration |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "get_operating_mode",
+  "requestId": "req-002"
+}
+```
+
+### Response
+
+```json
+{
+  "command": "get_operating_mode",
+  "requestId": "req-002",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "SUCCESS"
+  },
+  "operatingMode": {
+    "operatingModes": {
+      "profiles": "BALANCED_PERFORMANCE",
+      "advancedConfigurations": {
+        "transmitPower": 270,
+        "linkProfile": "M4_256K",
+        "session": "SESSION_1",
+        "dynamicPower": false
+      },
+      "accessOperations": [
+        {
+          "operationType": "READ",
+          "config": {
+            "memoryBank": "TID",
+            "offset": 0,
+            "length": 6
+          }
+        }
+      ],
+      "radioStartConditions": {
+        "trigger": "PRESSED",
+        "startDelay": 0,
+        "repeat": false
+      },
+      "radioStopConditions": {
+        "trigger": "RELEASED",
+        "tagCount": 100,
+        "stopTimeout": 5000,
+        "inventoryCount": 0
+      },
+      "query": {
+        "session": "SESSION_1",
+        "inventoryState": "STATE_A",
+        "slFlag": "ALL",
+        "tagPopulation": 30
+      },
+      "select": [
+        {
+          "enable": true,
+          "tagPattern": "E200",
+          "memoryBank": "EPC",
+          "offset": 32,
+          "action": "INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL",
+          "target": "SESSION_SL",
+          "length": 16
+        }
+      ],
+      "tagMetaDataToEnable": {
+        "RSSI": true,
+        "PHASE": false,
+        "SEENCOUNT": true,
+        "CHANNEL": false,
+        "PC": true,
+        "XPC": false,
+        "CRC": false,
+        "EPC": true,
+        "TID": true,
+        "USER": false,
+        "MAC": true,
+        "HOSTNAME": true
+      }
+    }
+  }
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

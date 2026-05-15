@@ -1,0 +1,111 @@
+---
+sidebar_position: 16
+title: Set OS
+description: Initiate a firmware update on the reader from a remote URL.
+---
+
+# Set OS
+
+Initiate a firmware (OS) update on the reader. The reader downloads the firmware image from the specified URL, validates its integrity, and reboots to apply the update. Use HTTPS URLs for secure firmware delivery.
+
+:::warning
+**Do not interrupt the firmware update process.** Do not power off, reboot, or remove the battery while a firmware update is in progress. Interrupting the update may leave the device in an unrecoverable state.
+:::
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `set_os` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "set_os",
+  "requestId": "req-fw-001",
+  "firmwareUpdate": {
+    "url": "https://firmware.example.com/zebra/rfd40/v2.1.0/firmware.zip",
+    "version": "2.1.0",
+    "force": false
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"set_os"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+| `firmwareUpdate.url` | string | Yes | URL to download the firmware image. HTTPS is recommended. |
+| `firmwareUpdate.version` | string | No | Firmware version string for logging and tracking. |
+| `firmwareUpdate.force` | boolean | No | Force the update even if the same version is already installed. Default: `false`. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "set_os",
+  "requestId": "req-fw-001",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"set_os"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `19` | Download failed |
+| `20` | Firmware validation failed |
+| `21` | Insufficient battery |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "set_os",
+  "requestId": "req-fw-002",
+  "firmwareUpdate": {
+    "url": "https://firmware.example.com/zebra/rfd40/v2.2.0/firmware.zip",
+    "version": "2.2.0",
+    "force": true
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "command": "set_os",
+  "requestId": "req-fw-002",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

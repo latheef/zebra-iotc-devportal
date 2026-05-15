@@ -1,0 +1,26 @@
+---
+title: set_operating_mode
+description: Interactive AsyncAPI reference for set_operating_mode: configure RFID operating parameters on Zebra handheld readers.
+hide_table_of_contents: true
+custom_edit_url: null
+---
+
+import BrowserOnly from '@docusaurus/BrowserOnly';
+import { usePluginData } from '@docusaurus/useGlobalData';
+
+export function AsyncApiPage() {
+  const pluginData = usePluginData('docusaurus-plugin-asyncapi', 'plugin-asyncapi-3');
+  const schema = pluginData?.asyncapiSpec;
+  if (!schema) return <p>Loading...</p>;
+  const AsyncApiComponent = require('@asyncapi/react-component/browser');
+  return (
+    <AsyncApiComponent
+      schema={schema}
+      config={{ show: { sidebar: true } }}
+    />
+  );
+}
+
+<BrowserOnly fallback={<p>Loading...</p>}>
+  {() => <AsyncApiPage />}
+</BrowserOnly>

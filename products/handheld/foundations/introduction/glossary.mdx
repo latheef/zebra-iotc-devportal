@@ -1,0 +1,56 @@
+---
+sidebar_position: 5
+title: "Key Terminology & Glossary"
+---
+
+# Key Terminology & Glossary
+
+<span className="badge badge--info">📕 REFERENCE</span>
+
+## Overview
+
+This glossary defines key terms used throughout the Zebra IoT Connector for Handheld RFID documentation. Terms are listed alphabetically.
+
+## Glossary
+
+| Term | Definition |
+|------|-----------|
+| **Antenna Port** | The physical RF connector on a reader through which RFID signals are transmitted and received. Handheld readers have a single integrated antenna, so this value is always `0`. |
+| **Application Client** | Any software system that connects to the MQTT broker to send commands to readers and receive tag data. The client implements the IOTC MQTT protocol. |
+| **AsyncAPI** | An open specification for describing event-driven APIs, including MQTT-based interfaces. IOTC provides AsyncAPI specifications for its MQTT topics. |
+| **BLE (Bluetooth Low Energy)** | A low-power wireless protocol used for communication between the reader sled and the host mobile device. Part of the Bluetooth 5.x specification. |
+| **Broker** | See MQTT Broker. |
+| **Channel** | A logical grouping identifier in the MQTT topic hierarchy that allows multiple application clients to communicate with the same reader independently. Each channel receives its own copy of responses and data streams. |
+| **Clean Session** | An MQTT connection flag. When set to `true`, the broker discards any previous session state (subscriptions, queued messages) for the client. When `false`, the broker resumes the prior session. |
+| **CTRL (Control Interface)** | The IOTC interface used for real-time operational commands such as starting/stopping inventory, setting RF power, and triggering tag reads. Topic segment: `ctrl`. |
+| **DATA (Data Interface)** | The IOTC interface used for streaming tag observations from the reader to the application. This interface is unidirectional (reader → application). Topic segment: `data`. |
+| **Device Serial** | The unique serial number printed on the reader sled and embedded in firmware. Used as the final segment in IOTC MQTT topics to address a specific reader. Example: `23044501500123`. |
+| **Dynamic Q** | A singulation algorithm that automatically adjusts the Q value (number of time slots) based on the estimated tag population. Optimizes read rate for varying tag densities. |
+| **Endpoint** | In IOTC context, a logical destination within the MQTT topic hierarchy. Each combination of interface, channel, and device serial forms a unique endpoint. |
+| **EPC (Electronic Product Code)** | A unique identifier stored in an RFID tag's EPC memory bank. Typically 96 bits, encoded as a 24-character hexadecimal string. The primary identifier for tagged items. |
+| **GEN2 (Gen2, EPC Gen2)** | The EPCglobal UHF Generation 2 air interface standard (ISO 18000-63) governing communication between UHF RFID readers and tags. |
+| **Host Device** | The Zebra Android mobile computer (e.g., TC52, TC72, MC3300x) to which the reader sled is paired via Bluetooth. The host provides network connectivity (Wi-Fi/cellular) for the MQTT connection. |
+| **Inventory** | The process of a reader querying RFID tags within its read field. An inventory round consists of the reader cycling through tag singulation and reading EPCs. |
+| **IOTC (IoT Connector)** | Zebra's firmware-embedded MQTT agent that enables cloud-based remote management, configuration, and data streaming for RFID readers. |
+| **IOTC Agent** | The software component running within the reader firmware that implements the MQTT protocol, manages connections, and exposes the MGMT/CTRL/DATA interfaces. |
+| **Keep-Alive** | An MQTT mechanism where the client sends periodic PINGREQ packets to the broker to maintain the connection. If no packet is received within 1.5× the keep-alive interval, the broker considers the client disconnected. |
+| **Last Will and Testament (LWT)** | An MQTT feature where the client registers a message with the broker at connection time. If the client disconnects unexpectedly, the broker publishes this message to a designated topic, notifying subscribers of the disconnection. |
+| **MDM (Mobile Device Management)** | Enterprise software platforms (e.g., SOTI Connect, VMware Workspace ONE) used to enroll, configure, and manage mobile devices and peripherals including RFID reader sleds. |
+| **MGMT (Management Interface)** | The IOTC interface used for device configuration, health queries, firmware version checks, and operating mode changes. Topic segment: `mgmt`. |
+| **MQTT (Message Queuing Telemetry Transport)** | A lightweight publish/subscribe messaging protocol designed for constrained devices and low-bandwidth networks. IOTC uses MQTT version 3.1.1. |
+| **MQTT Broker** | A server that receives published messages from clients and routes them to subscribing clients based on topic matching. Examples: HiveMQ, Mosquitto, AWS IoT Core, Azure IoT Hub. |
+| **Operating Mode** | The operational state of the reader as managed by IOTC. Modes include `INVENTORY` (active tag reading), `IDLE` (connected but not reading), and `STANDBY` (low-power sleep). |
+| **Phase Angle** | The phase difference between the transmitted and received RF signal, measured in degrees. Used in tag location estimation algorithms. |
+| **Post-Filter** | A tag data filter applied on the reader after tag reads occur but before data is published to MQTT. Post-filters reduce bandwidth by suppressing unwanted reads (e.g., low-RSSI tags, duplicates). |
+| **QoS (Quality of Service)** | An MQTT delivery guarantee level. QoS 0 = at most once (fire and forget). QoS 1 = at least once (acknowledged delivery). QoS 2 = exactly once (not used by IOTC). |
+| **Retained Message** | An MQTT message flagged for retention by the broker. The broker stores the last retained message on a topic and delivers it immediately to any new subscriber. Used by IOTC for device status. |
+| **RSSI (Received Signal Strength Indicator)** | A measurement of the RF signal power received from an RFID tag, expressed in dBm. Higher (less negative) values indicate closer or better-positioned tags. |
+| **Session (RFID)** | An EPC Gen2 concept that controls how tags respond to repeated inventory rounds. Sessions S0–S3 determine tag persistence behavior; how long a tag remains "inventoried" before responding again. |
+| **Singulation** | The process by which a reader identifies and communicates with individual RFID tags in a multi-tag environment. Prevents signal collisions when multiple tags respond simultaneously. |
+| **Sled** | A handheld RFID reader accessory that attaches to a mobile computer, adding RFID read/write capability. The RFD40 and RFD90 are sled-style readers. |
+| **Tag Population** | The estimated number of RFID tags within the reader's interrogation zone. Used to optimize singulation parameters (Q value) for efficient inventory. |
+| **Tenant ID** | A unique identifier assigned to an organization or deployment. Forms the first segment of all IOTC MQTT topics, providing multi-tenant isolation. |
+| **TID (Tag Identifier)** | A read-only memory bank on an RFID tag containing the tag's manufacturer ID and model number. Unlike EPC, TID is factory-programmed and cannot be changed. |
+| **TLS (Transport Layer Security)** | A cryptographic protocol used to encrypt MQTT connections between the IOTC agent and the broker. Supports server-side and mutual (client certificate) authentication. |
+| **Topic** | An MQTT addressing string used to route messages between publishers and subscribers. IOTC topics follow the pattern: `{tenantId}/{interface}/clients/{channel}/{deviceSerial}`. |
+| **UHF (Ultra-High Frequency)** | The 860–960 MHz radio frequency band used by EPC Gen2 RFID systems. Provides read ranges from centimeters to over 10 meters depending on reader and tag configuration. |

@@ -1,0 +1,143 @@
+---
+sidebar_position: 6
+title: Set Wi-Fi
+description: Add or modify a Wi-Fi profile supporting WPA2/WPA3 Personal and Enterprise (PEAP, TLS, TTLS).
+---
+
+# Set Wi-Fi
+
+Add or modify a Wi-Fi network profile on a Zebra handheld RFID reader. Supports WPA2/WPA3 Personal (pre-shared key) and Enterprise authentication methods including PEAP, TLS, and TTLS with configurable Phase 2 inner methods.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `set_wifi` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "req-001",
+  "wifiConfig": {
+    "operation": "ADD",
+    "ssid": "Warehouse-5G",
+    "securityType": "WPA2_PERSONAL",
+    "password": "securePass123",
+    "hidden": false
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"set_wifi"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response with this request. |
+| `wifiConfig` | object | Yes | Wi-Fi profile configuration. |
+| `wifiConfig.operation` | string | Yes | Operation to perform. Enum: `ADD`, `MODIFY`. |
+| `wifiConfig.ssid` | string | Yes | Network SSID. Maximum 32 characters. |
+| `wifiConfig.securityType` | string | Yes | Security protocol. Enum: `WPA2_PERSONAL`, `WPA3_PERSONAL`, `WPA2_ENTERPRISE`, `WPA3_ENTERPRISE`, `OPEN`. |
+| `wifiConfig.password` | string | Conditional | Pre-shared key. Required for `WPA2_PERSONAL` and `WPA3_PERSONAL` security types. |
+| `wifiConfig.identity` | string | Conditional | User identity for Enterprise authentication. Required for Enterprise security types. |
+| `wifiConfig.anonymousIdentity` | string | No | Anonymous outer identity for Enterprise authentication. |
+| `wifiConfig.eapMethod` | string | Conditional | EAP method. Enum: `PEAP`, `TLS`, `TTLS`. Required for Enterprise security types. |
+| `wifiConfig.phase2Method` | string | No | Phase 2 inner authentication method. Enum: `MSCHAPV2`, `GTC`, `PAP`. |
+| `wifiConfig.hidden` | boolean | No | Whether the network is hidden (not broadcasting SSID). Default: `false`. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "req-001",
+  "responseCode": 0
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echo of the command name. |
+| `requestId` | string | Echo of the request identifier. |
+| `responseCode` | integer | Result code indicating success or failure. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success. |
+| `1` | General failure. |
+| `2` | Invalid payload; the request body is malformed or contains invalid values. |
+| `17` | SSID missing; the required `ssid` field was not provided. |
+
+## Example
+
+### Request: WPA2 Personal
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-20260414-001",
+  "wifiConfig": {
+    "operation": "ADD",
+    "ssid": "Factory-Floor-AP",
+    "securityType": "WPA2_PERSONAL",
+    "password": "Pr0duction!WiFi",
+    "hidden": false
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-20260414-001",
+  "responseCode": 0
+}
+```
+
+### Request: WPA3 Enterprise (PEAP)
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-20260414-002",
+  "wifiConfig": {
+    "operation": "ADD",
+    "ssid": "Corporate-Secure",
+    "securityType": "WPA3_ENTERPRISE",
+    "identity": "rfid-device@corp.example.com",
+    "anonymousIdentity": "anonymous@corp.example.com",
+    "eapMethod": "PEAP",
+    "phase2Method": "MSCHAPV2",
+    "hidden": false
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-20260414-002",
+  "responseCode": 0
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

@@ -1,0 +1,359 @@
+openapi: 3.0.3
+info:
+  title: Zebra Fixed RFID Reader IoT Connector REST API
+  version: 1.0.0
+  description: |
+    REST API for configuring and managing Zebra fixed RFID readers.
+    Use this API to configure RF settings, network parameters,
+    MQTT broker connections, and perform firmware management.
+  contact:
+    name: Zebra Technologies Developer Support
+    url: https://developer.zebra.com
+  license:
+    name: Proprietary
+    url: https://www.zebra.com
+
+servers:
+  - url: https://{readerIp}/api/v1
+    description: Fixed reader REST API
+    variables:
+      readerIp:
+        default: 192.168.1.100
+        description: Reader IP address
+
+security:
+  - basicAuth: []
+
+paths:
+  /status:
+    get:
+      operationId: getStatus
+      summary: Get reader status
+      description: Returns current reader status including model, firmware version, uptime, and temperature.
+      tags:
+        - System
+      responses:
+        "200":
+          description: Reader status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReaderStatus"
+        "401":
+          description: Unauthorized
+
+  /config:
+    get:
+      operationId: getConfig
+      summary: Get current configuration
+      tags:
+        - Configuration
+      responses:
+        "200":
+          description: Current reader configuration
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /config/rf:
+    put:
+      operationId: updateRfConfig
+      summary: Update RF configuration
+      description: Configure transmit power, session, and antenna settings.
+      tags:
+        - Configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RfConfig"
+      responses:
+        "200":
+          description: Configuration updated
+        "400":
+          description: Invalid configuration
+        "401":
+          description: Unauthorized
+
+  /mqtt/config:
+    get:
+      operationId: getMqttConfig
+      summary: Get MQTT broker configuration
+      tags:
+        - MQTT
+      responses:
+        "200":
+          description: MQTT configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MqttConfig"
+    put:
+      operationId: updateMqttConfig
+      summary: Update MQTT broker configuration
+      tags:
+        - MQTT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MqttConfig"
+      responses:
+        "200":
+          description: MQTT configuration updated
+        "400":
+          description: Invalid configuration
+
+  /inventory/start:
+    post:
+      operationId: startInventory
+      summary: Start RFID inventory
+      tags:
+        - Inventory
+      responses:
+        "200":
+          description: Inventory started
+        "409":
+          description: Inventory already running
+
+  /inventory/stop:
+    post:
+      operationId: stopInventory
+      summary: Stop RFID inventory
+      tags:
+        - Inventory
+      responses:
+        "200":
+          description: Inventory stopped
+        "409":
+          description: No inventory running
+
+  /inventory/status:
+    get:
+      operationId: getInventoryStatus
+      summary: Get inventory status
+      tags:
+        - Inventory
+      responses:
+        "200":
+          description: Inventory status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  running:
+                    type: boolean
+                  startTime:
+                    type: string
+                    format: date-time
+                  tagsRead:
+                    type: integer
+
+  /firmware:
+    get:
+      operationId: getFirmwareInfo
+      summary: Get firmware information
+      tags:
+        - Firmware
+      responses:
+        "200":
+          description: Firmware information
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  currentVersion:
+                    type: string
+                  lastUpdated:
+                    type: string
+                    format: date-time
+
+  /firmware/upload:
+    post:
+      operationId: uploadFirmware
+      summary: Upload firmware file
+      tags:
+        - Firmware
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: Firmware uploaded
+        "400":
+          description: Invalid firmware file
+
+  /firmware/apply:
+    post:
+      operationId: applyFirmware
+      summary: Apply uploaded firmware
+      description: Applies the previously uploaded firmware. The reader reboots automatically.
+      tags:
+        - Firmware
+      responses:
+        "200":
+          description: Firmware update initiated
+        "400":
+          description: No firmware uploaded
+
+  /network:
+    get:
+      operationId: getNetworkStatus
+      summary: Get network status
+      tags:
+        - Network
+      responses:
+        "200":
+          description: Network status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ipAddress:
+                    type: string
+                  macAddress:
+                    type: string
+                  interface:
+                    type: string
+                    enum: [ethernet, wifi]
+
+  /system/reboot:
+    post:
+      operationId: rebootReader
+      summary: Reboot the reader
+      tags:
+        - System
+      responses:
+        "200":
+          description: Reboot initiated
+
+  /system/factory-reset:
+    post:
+      operationId: factoryReset
+      summary: Factory reset the reader
+      description: Erases all configuration. The reader reverts to factory defaults.
+      tags:
+        - System
+      responses:
+        "200":
+          description: Factory reset initiated
+
+  /mqtt/telemetry:
+    get:
+      operationId: getTelemetryConfig
+      summary: Get MQTT telemetry configuration
+      tags:
+        - MQTT
+      responses:
+        "200":
+          description: Telemetry configuration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TelemetryConfig"
+    put:
+      operationId: updateTelemetryConfig
+      summary: Update MQTT telemetry configuration
+      tags:
+        - MQTT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TelemetryConfig"
+      responses:
+        "200":
+          description: Telemetry configuration updated
+
+components:
+  securitySchemes:
+    basicAuth:
+      type: http
+      scheme: basic
+
+  schemas:
+    ReaderStatus:
+      type: object
+      properties:
+        model:
+          type: string
+          example: FX9600
+        serialNumber:
+          type: string
+          example: FX9600-123456
+        firmwareVersion:
+          type: string
+          example: "4.1.0"
+        uptime:
+          type: integer
+          description: Uptime in seconds
+          example: 86400
+        temperature:
+          type: integer
+          description: Temperature in Celsius
+          example: 45
+        antennaCount:
+          type: integer
+          example: 4
+
+    RfConfig:
+      type: object
+      properties:
+        transmitPower:
+          type: number
+          description: Transmit power in dBm
+          example: 30.0
+        session:
+          type: string
+          enum: [S0, S1, S2, S3]
+          example: S2
+        antennas:
+          type: array
+          items:
+            type: object
+            properties:
+              port:
+                type: integer
+              enabled:
+                type: boolean
+              power:
+                type: number
+
+    MqttConfig:
+      type: object
+      properties:
+        brokerUri:
+          type: string
+          example: ssl://mqtt.example.com:8883
+        clientId:
+          type: string
+          example: fixed-reader-001
+        caCertificate:
+          type: string
+          description: PEM-encoded CA certificate
+
+    TelemetryConfig:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [individual, batch]
+          example: batch
+        batchIntervalMs:
+          type: integer
+          description: Batch interval in milliseconds
+          example: 1000

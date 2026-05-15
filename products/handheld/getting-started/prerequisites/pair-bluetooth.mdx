@@ -1,0 +1,84 @@
+---
+sidebar_position: 5
+title: "How to Pair the Reader Sled via Bluetooth"
+description: "Guide to pairing the RFD40 or RFD90 reader sled with an Android host device via Bluetooth, including reconnection and troubleshooting."
+---
+
+# How to Pair the Reader Sled via Bluetooth
+
+📙 **HOW-TO GUIDE**: Pair your RFD40 or RFD90 reader sled with an Android host mobile device over Bluetooth. This connection enables the reader to use the host device's network connectivity and run companion applications.
+
+## Prerequisites
+
+- RFD40 or RFD90 reader sled (powered on)
+- Android host device with Bluetooth enabled
+- Reader sled charged (at least 20% battery recommended)
+
+## Initial Pairing
+
+### Step 1: Enable Pairing Mode on the Reader
+
+1. Power on the reader sled by pressing and holding the power button for 3 seconds.
+2. The reader automatically enters **discoverable mode** for 2 minutes after power-on.
+3. The Bluetooth LED blinks blue to indicate the reader is discoverable.
+
+> **Note:** If the reader has been powered on for more than 2 minutes and is no longer discoverable, press and hold the **Bluetooth button** (side button) for 5 seconds to re-enter pairing mode.
+
+### Step 2: Pair from the Android Host Device
+
+1. On your Android device, open **Settings** → **Bluetooth** (or **Connected devices**).
+2. Tap **Pair new device** or **Scan for devices**.
+3. Locate your reader in the available devices list; it appears as `RFD40-XXXXXXXXXX` or `RFD90-XXXXXXXXXX` (where `X` characters represent the serial number).
+4. Tap the reader name to initiate pairing.
+5. If prompted, confirm the pairing code on both devices.
+6. Once paired, the Bluetooth LED on the reader turns solid blue.
+
+### Step 3: Verify the Connection
+
+1. On the Android device, the reader should appear under **Paired devices** as connected.
+2. On the reader, the Bluetooth LED shows solid blue (connected) rather than blinking (discoverable).
+
+## Reconnection Behavior
+
+After the initial pairing, the reader sled automatically reconnects to its last paired host device:
+
+- **Power cycle**: When the reader is turned off and back on, it automatically attempts to reconnect to the last paired Android device (if the device is within range and Bluetooth is enabled).
+- **Range**: The reader reconnects when it returns within Bluetooth range (~10 meters / 30 feet line-of-sight).
+- **Timeout**: The reader attempts reconnection for up to 5 minutes after power-on. If the host device is not found, the reader continues operating independently over Wi-Fi.
+
+## Multiple Host Scenarios
+
+The reader sled can store pairing information for multiple host devices, but it connects to only **one host at a time**.
+
+| Scenario | Behavior |
+|----------|----------|
+| Pair with a new device | Reader pairs with the new device. Previous pairings are retained. |
+| Power on near multiple paired devices | Reader connects to the **last used** host device. |
+| Switch between hosts | Disconnect from the current host, then connect from the desired host's Bluetooth settings. |
+
+> **Note:** The IOTC MQTT connection operates over Wi-Fi independently of the Bluetooth host connection. The reader maintains its MQTT broker connection regardless of Bluetooth pairing status.
+
+## Unpairing a Reader
+
+To remove a pairing:
+
+1. On the Android device, go to **Settings** → **Bluetooth** → **Paired devices**.
+2. Tap the gear icon next to the reader name.
+3. Tap **Forget** or **Unpair**.
+
+To clear all pairings from the reader, perform a factory reset via 123RFID Desktop.
+
+## Troubleshooting Pairing Failures
+
+| Issue | Cause | Resolution |
+|-------|-------|------------|
+| Reader not appearing in scan | Reader not in discoverable mode | Press and hold the Bluetooth button for 5 seconds to re-enter pairing mode |
+| Pairing request times out | Reader exited discoverable mode | Restart pairing mode and retry within 2 minutes |
+| Pairing fails with error | Bluetooth cache corruption on Android | Clear Bluetooth cache: **Settings** → **Apps** → **Bluetooth** → **Clear cache**, then retry |
+| Reader connects then immediately disconnects | Firmware incompatibility | Verify firmware is ≥ 3.10.27 (see [Verify Firmware](./verify-firmware.mdx)) |
+| Cannot connect to previously paired reader | Reader paired with a different host | Disconnect from the other host device first, or unpair and re-pair |
+| Intermittent disconnections | Reader at edge of Bluetooth range | Move the host device closer to the reader (within 10 meters) |
+
+## Next Steps
+
+With Bluetooth pairing complete, proceed to the [Quick Start Tutorial](../quick-start/overview.mdx) to perform your first RFID read operation via MQTT.

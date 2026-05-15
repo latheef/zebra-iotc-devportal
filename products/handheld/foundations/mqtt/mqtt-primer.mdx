@@ -1,0 +1,122 @@
+---
+sidebar_position: 1
+title: "About MQTT 3.1.1"
+---
+
+# About MQTT 3.1.1
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+MQTT (Message Queuing Telemetry Transport) is a lightweight, publish/subscribe messaging protocol designed for constrained devices and unreliable networks. It is the sole communication protocol used by Zebra IoT Connector for Handheld RFID. All reader configuration, control, and tag data streaming flows over MQTT 3.1.1.
+
+This page provides a concise primer on MQTT concepts for developers who may be new to the protocol. If you are already familiar with MQTT, you can skip to the IOTC-specific topics in the subsequent pages.
+
+## The Publish/Subscribe Model
+
+MQTT uses a publish/subscribe (pub/sub) messaging pattern, which differs fundamentally from the request/response pattern used by HTTP APIs.
+
+In pub/sub:
+- **Publishers** send messages to a **topic**; they do not know or care who is listening
+- **Subscribers** register interest in topics; they receive messages from any publisher on those topics
+- A **broker** sits in the middle, routing messages from publishers to subscribers based on topic matching
+
+This decoupling is powerful for IoT: the reader (publisher) does not need to know the address of the application (subscriber), and the application does not need to know when or how many readers are publishing.
+
+## Core Concepts
+
+### Topics
+
+A topic is a UTF-8 string that the broker uses to route messages. Topics are hierarchical, using `/` as a level separator:
+
+```
+acme-corp/data/clients/warehouse-app/23044501500123
+```
+
+Topics are case-sensitive. `MGMT/command` and `mgmt/command` are different topics.
+
+### Clients
+
+An MQTT client is any device or application that connects to the broker. In the IOTC ecosystem:
+- The **reader sled** (via its host device) is an MQTT client that publishes tag data and subscribes to commands
+- The **application backend** is an MQTT client that subscribes to tag data and publishes commands
+- **123RFID Desktop** can be an additional MQTT client for monitoring
+
+Each client is identified by a unique **Client ID** string. If two clients connect with the same Client ID, the broker disconnects the first one.
+
+### Broker
+
+The broker is a server that accepts connections from clients, receives published messages, and forwards them to interested subscribers. The broker does not store messages long-term (except retained messages) and does not process message content; it is purely a routing component.
+
+### Messages
+
+An MQTT message consists of:
+- **Topic**: Where the message is published
+- **Payload**: The message content (IOTC uses JSON-encoded payloads)
+- **QoS level**: Delivery guarantee (0, 1, or 2)
+- **Retain flag**: Whether the broker should store this message for future subscribers
+
+## Quality of Service (QoS) Levels
+
+MQTT defines three QoS levels that trade off reliability against performance:
+
+| Level | Name | Guarantee | IOTC Usage |
+|-------|------|-----------|------------|
+| **QoS 0** | At most once | Message is delivered once or not at all. No acknowledgment. | Tag data streaming (DATA interface) |
+| **QoS 1** | At least once | Message is delivered at least once. The broker sends an acknowledgment (PUBACK). May result in duplicates. | Commands, responses, events (MGMT/CTRL interfaces) |
+| **QoS 2** | Exactly once | Message is delivered exactly once via a four-step handshake. | Not used by IOTC |
+
+## Retained Messages
+
+When a message is published with the **retain flag** set, the broker stores the most recent message on that topic. Any client that subsequently subscribes to the topic immediately receives the retained message, even if it was published hours ago.
+
+IOTC uses retained messages for:
+- **Device status**: The reader publishes its connection status as a retained message so that new subscribers immediately know if the reader is online or offline
+- **Last known configuration**: The most recent configuration state is retained for administrative tools
+
+## Last Will and Testament (LWT)
+
+When a client connects to the broker, it can register a **Last Will and Testament**; a message that the broker will publish on the client's behalf if the client disconnects unexpectedly (without sending a proper DISCONNECT packet).
+
+IOTC uses LWT to notify subscribers when a reader goes offline unexpectedly:
+
+```json
+{
+  "status": "offline",
+  "reason": "unexpected_disconnect",
+  "deviceSerial": "23044501500123",
+  "timestamp": "2026-05-14T10:45:00Z"
+}
+```
+
+This enables applications to distinguish between a graceful shutdown (where the reader publishes its own offline status) and a crash or network failure (where the broker publishes the LWT).
+
+## Connection Lifecycle
+
+An MQTT connection follows this lifecycle:
+
+1. **CONNECT**: The client sends a CONNECT packet with Client ID, credentials, keep-alive interval, clean session flag, and optional LWT
+2. **CONNACK**: The broker responds with a connection acknowledgment indicating success or failure
+3. **SUBSCRIBE**: The client subscribes to one or more topics
+4. **PUBLISH / receive**: The client publishes and receives messages
+5. **PINGREQ / PINGRESP**: Periodic heartbeats maintain the connection during idle periods
+6. **DISCONNECT**: The client gracefully terminates the connection
+
+## MQTT 3.1.1 vs 5.0
+
+IOTC for handheld RFID uses **MQTT 3.1.1** exclusively. While MQTT 5.0 offers features like shared subscriptions, message properties, and enhanced error reporting, these are not supported by the IOTC Agent firmware on handheld readers.
+
+| Feature | MQTT 3.1.1 | MQTT 5.0 |
+|---------|-----------|----------|
+| IOTC Handheld support | Yes | No |
+| IOTC Fixed Reader support | Yes | Yes |
+| Publish/subscribe | Yes | Yes |
+| QoS 0, 1, 2 | Yes | Yes |
+| Retained messages | Yes | Yes |
+| LWT | Yes | Yes |
+| Shared subscriptions | No | Yes |
+| Message expiry | No | Yes |
+| Topic aliases | No | Yes |
+
+Your MQTT broker must support MQTT 3.1.1 protocol. Most modern brokers support both 3.1.1 and 5.0 simultaneously.

@@ -1,0 +1,114 @@
+---
+sidebar_position: 10
+title: "install_certificate"
+description: "Install a certificate on a Zebra RFD40/RFD90 handheld RFID reader for TLS or authentication."
+---
+
+# install_certificate
+
+Installs a certificate on the device for use with MQTT TLS, enterprise Wi-Fi authentication, or mutual TLS.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "11",
+  "certificate": {
+    "name": "MQTTBrokerCA",
+    "type": "CA",
+    "format": "PEM",
+    "data": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURr..."
+  }
+}
+```
+
+### PKCS12 Client Certificate Example
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "12",
+  "certificate": {
+    "name": "DeviceClientCert",
+    "type": "CLIENT",
+    "format": "PKCS12",
+    "data": "MIIJqQIBAzCCCW8GCSqGSIb3DQEHAaCCCW...",
+    "passphrase": "certP@ss789"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"install_certificate"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `certificate` | object | Yes | Certificate data |
+| `certificate.name` | string | Yes | Alias name for the certificate (must be unique on the device) |
+| `certificate.type` | string | Yes | Purpose of the certificate (see table below) |
+| `certificate.format` | string | Yes | Encoding format: `PEM` or `PKCS12` |
+| `certificate.data` | string | Yes | Base64-encoded certificate data |
+| `certificate.passphrase` | string | Conditional | Required for `PKCS12` format to decrypt the private key |
+
+### Certificate Types
+
+| Type | Description |
+|---|---|
+| `CA` | Certificate Authority certificate for trust chain validation |
+| `CLIENT` | Client certificate for mutual TLS authentication |
+| `MQTT` | Certificate for MQTT broker TLS connections |
+| `WIFI` | Certificate for 802.1X enterprise Wi-Fi authentication |
+
+## Response Payload
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "11",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | A required field is missing, the certificate data is malformed, or the passphrase is incorrect |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `10` | OperationFailed | Certificate installation failed (e.g., storage full, invalid format) |
+
+## Notes
+
+- If a certificate with the same `name` already exists, it is overwritten.
+- For `PEM` format, the `data` field must contain the Base64-encoded content of the PEM file (without the `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` headers).
+- For `PKCS12` format containing both a certificate and private key, the `passphrase` is required to decrypt the bundle.
+- Install CA certificates before configuring MQTT endpoints or Wi-Fi profiles that reference them.
+- Maximum certificate size is 16 KB after Base64 decoding.
+
+## See Also
+
+- [get_installed_certificate](get-installed-certificate): List installed certificates
+- [delete_certificate](delete-certificate): Remove an installed certificate
+- [config_endpoint](config-endpoint): Configure MQTT endpoints with TLS
+- [set_wifi](set-wifi): Configure enterprise Wi-Fi with certificate authentication
+- [API Overview](../api-overview): Complete endpoint inventory

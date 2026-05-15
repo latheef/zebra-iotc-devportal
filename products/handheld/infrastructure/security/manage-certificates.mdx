@@ -1,0 +1,198 @@
+---
+sidebar_position: 2
+title: How to Manage TLS/SSL Certificates
+description: "View, install, and delete TLS/SSL certificates on handheld RFID readers via MQTT commands"
+---
+
+# How to Manage TLS/SSL Certificates
+
+Certificates are the foundation of secure communication between the reader and the MQTT broker. This guide covers viewing installed certificates, installing new ones (CA and client), and removing expired or revoked certificates, all via MQTT commands.
+
+**Publish commands to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+---
+
+## View Installed Certificates
+
+Use `get_installed_certificate` to list all certificates currently stored on the reader.
+
+**Request:**
+
+```json
+{
+  "requestId": "req-cert-001",
+  "command": "get_installed_certificate"
+}
+```
+
+**Response:**
+
+```json
+{
+  "requestId": "req-cert-001",
+  "command": "get_installed_certificate",
+  "responseCode": 0,
+  "responseMessage": "Success",
+  "payload": {
+    "certificates": [
+      {
+        "certificateId": "broker-ca-root",
+        "type": "CA",
+        "subject": "CN=IoTC Broker CA, O=Zebra Technologies",
+        "issuer": "CN=IoTC Root CA, O=Zebra Technologies",
+        "validFrom": "2025-01-01T00:00:00Z",
+        "validTo": "2027-01-01T00:00:00Z",
+        "serialNumber": "A1B2C3D4E5F6",
+        "fingerprint": "SHA256:ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90"
+      },
+      {
+        "certificateId": "reader-client-cert",
+        "type": "CLIENT",
+        "subject": "CN=RFD40-12345678, O=ACME Corp",
+        "issuer": "CN=ACME Intermediate CA, O=ACME Corp",
+        "validFrom": "2025-06-01T00:00:00Z",
+        "validTo": "2026-06-01T00:00:00Z",
+        "serialNumber": "F6E5D4C3B2A1",
+        "fingerprint": "SHA256:12:34:56:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef:12:34:56:78:90:ab:cd:ef"
+      }
+    ]
+  }
+}
+```
+
+**Certificate types:**
+
+| Type | Purpose |
+|------|---------|
+| `CA` | Validates the MQTT broker's server certificate. Required for TLS. |
+| `CLIENT` | Identifies the reader to the broker during mutual TLS (mTLS) authentication. |
+
+---
+
+## Install a Certificate
+
+Use `install_certificate` to add a CA or client certificate to the reader's certificate store. Certificates must be base64-encoded in the payload.
+
+### Install a CA Certificate (PEM Format)
+
+```json
+{
+  "requestId": "req-cert-002",
+  "command": "install_certificate",
+  "payload": {
+    "certificateId": "broker-ca-root",
+    "type": "CA",
+    "format": "PEM",
+    "certificateData": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURxVENDQ..."
+  }
+}
+```
+
+> **Encoding:** The `certificateData` field must contain the certificate file content encoded as a base64 string. For PEM files, base64-encode the entire file including the `-----BEGIN CERTIFICATE-----` and `-----END CERTIFICATE-----` markers.
+
+### Install a Client Certificate (PKCS#12 Format)
+
+PKCS#12 (.p12 / .pfx) bundles contain both the client certificate and its private key.
+
+```json
+{
+  "requestId": "req-cert-003",
+  "command": "install_certificate",
+  "payload": {
+    "certificateId": "reader-client-cert",
+    "type": "CLIENT",
+    "format": "PKCS12",
+    "certificateData": "MIIKYAIBAzCCCiYGCSqGSIb3DQEHAaCCChcEggoTMIIKDz...",
+    "passphrase": "p12-bundle-password"
+  }
+}
+```
+
+**Successful response:**
+
+```json
+{
+  "requestId": "req-cert-003",
+  "command": "install_certificate",
+  "responseCode": 0,
+  "responseMessage": "Success"
+}
+```
+
+**Error codes:**
+
+| Code | Meaning | Resolution |
+|------|---------|------------|
+| `1` | Invalid parameter | Check field names; `certificateId`, `type`, `format` are required |
+| `6` | Invalid certificate data | Verify base64 encoding is correct and certificate is not corrupted |
+| `7` | Passphrase incorrect | For PKCS12; check the passphrase |
+| `8` | Certificate store full | Delete unused certificates first |
+| `9` | Duplicate certificate ID | Use a different `certificateId` or delete the existing one first |
+
+### Field Reference
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `certificateId` | Yes | Unique identifier for this certificate on the reader. Used for reference in Wi-Fi profiles and endpoint configs. |
+| `type` | Yes | `CA` or `CLIENT`. |
+| `format` | Yes | `PEM` for PEM-encoded certificates. `PKCS12` for .p12/.pfx bundles. |
+| `certificateData` | Yes | Base64-encoded certificate file content. |
+| `passphrase` | PKCS12 only | Passphrase to decrypt the PKCS12 bundle. |
+
+---
+
+## Delete a Certificate
+
+Use `delete_certificate` to remove a certificate from the reader's store.
+
+**Request:**
+
+```json
+{
+  "requestId": "req-cert-004",
+  "command": "delete_certificate",
+  "payload": {
+    "certificateId": "broker-ca-root"
+  }
+}
+```
+
+**Response:**
+
+```json
+{
+  "requestId": "req-cert-004",
+  "command": "delete_certificate",
+  "responseCode": 0,
+  "responseMessage": "Success"
+}
+```
+
+> **Dependency check:** If a certificate is referenced by a Wi-Fi profile (EAP-TLS) or an MQTT endpoint configuration, deleting it will break that connection. Remove or update the dependent configuration before deleting the certificate.
+
+---
+
+## Best Practices
+
+1. **Use unique, descriptive certificate IDs**: e.g., `prod-broker-ca-2026` rather than `cert1`. This makes rotation and troubleshooting easier.
+2. **Install the full certificate chain**: if your broker uses an intermediate CA, install both the root and intermediate CA certificates.
+3. **Monitor expiration dates**: query `get_installed_certificate` periodically and alert when certificates are within 30 days of expiry.
+4. **Test before fleet-wide deployment**: install on a single reader and verify connectivity before rolling out to hundreds of devices.
+
+---
+
+## Next Steps
+
+- [Rotate Certificates at Scale](./rotate-certificates): automated rotation patterns
+- [Secure the MQTT Connection with TLS](./secure-mqtt-connection): use installed certificates for TLS
+- [About the Security Model](./about-security-model): understand how certificates fit the security architecture

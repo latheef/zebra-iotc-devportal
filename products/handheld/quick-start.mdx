@@ -1,0 +1,794 @@
+---
+sidebar_position: 3
+title: "Quick Start: First Tag Read"
+description: "Go from a configured reader to live tag data in 15 minutes"
+---
+
+# Quick Start: First Tag Read in 15 Minutes
+
+This walkthrough takes you from a configured reader to your first live tag data in eight steps. Each step produces a verifiable result; check the expected response before moving on.
+
+**What you'll do:** Set the regulatory region → connect the reader to Wi-Fi → point it at your MQTT broker → subscribe to topics → verify connectivity → start an inventory → read tag data → stop the inventory.
+
+**What you need (from Chapter 5):**
+
+- A Zebra RFD40 or RFD90 reader paired to a host device, with 123RFID Desktop connected
+- An MQTT broker running and reachable (Mosquitto on `localhost:1883` is fine for this walkthrough)
+- An MQTT client tool installed (MQTTX, mosquitto_pub/sub, or mqtt-cli)
+- One or more UHF RFID tags within arm's reach
+
+---
+
+> ### Before You Begin; Replace Placeholders
+>
+> Every topic and payload in this guide uses angle-bracket placeholders. Replace them with your actual values before publishing any message.
+>
+> | Placeholder | Description | Example |
+> |-------------|-------------|---------|
+> | `<TENANT_ID>` | Your tenant identifier (configured during endpoint setup) | `zebra` |
+> | `<DEVICE_SERIAL>` | Reader serial number (printed on the device, or via `get_version`) | `RFD40-212735201D0053` |
+> | `<WIFI_SSID>` | Your Wi-Fi network name | `Lab-5G` |
+> | `<WIFI_PASSWORD>` | Your Wi-Fi password | `my-secure-pass` |
+> | `<BROKER_HOST>` | MQTT broker hostname or IP address | `192.168.1.100` |
+> | `<BROKER_PORT>` | MQTT broker port | `1883` |
+
+---
+
+## 6.1 Step 1: Set the Region (123RFID Desktop)
+
+The reader will not perform any RF operation until a regulatory region is configured. This step uses 123RFID Desktop; it is the only way to set the region.
+
+1. Connect the reader to your PC via USB (through the charging cradle) or over the local network.
+2. Open **123RFID Desktop**. The reader should appear in the device list.
+3. Navigate to **Region Configuration**.
+4. Select the **country** matching your deployment location (e.g., United States, European Union, Japan).
+5. Click **Apply**.
+
+The region is stored in non-volatile memory and persists across reboots. You only need to do this once per reader.
+
+> **Verify:** After completing the remaining steps, you can confirm the region via the MQTT API using `get_current_region`. If you skip this step, `control_operation` START will return response code `6` ("Region is not configured").
+
+---
+
+## 6.2 Step 2: Connect to Wi-Fi (set_wifi)
+
+Configure the reader's Wi-Fi connection so it can reach your MQTT broker. This example uses WPA2 Personal; the simplest option for a development lab.
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-001",
+  "wifiConfig": {
+    "operation": "ADD",
+    "ssid": "<WIFI_SSID>",
+    "securityType": "WPA2_PERSONAL",
+    "password": "<WIFI_PASSWORD>"
+  }
+}
+```
+
+**Expected Response** on `<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>`:
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+`response.code: 0` means the Wi-Fi profile was saved. The reader will connect to the network automatically.
+
+> **Enterprise Wi-Fi?** For WPA2/WPA3 Enterprise with EAP-TLS, PEAP, or EAP-TTLS, see the [`set_wifi`](#) reference and Section 7 (Securing the Connection) for certificate-based authentication.
+
+---
+
+## 6.3 Step 3: Configure the MQTT Endpoint (config_endpoint)
+
+Tell the reader where your MQTT broker is. You need to configure endpoints for each interface you want to use. For this quick start, configure **MGMT** (commands/responses), **CTRL** (inventory control), and **DATA** (tag data).
+
+### 6.3.1 MGMT Endpoint
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-mgmt",
+  "endpointConfig": {
+    "operation": "ADD",
+    "name": "Dev-MGMT",
+    "type": "MGMT",
+    "host": "<BROKER_HOST>",
+    "port": <BROKER_PORT>,
+    "tls": false,
+    "tenantId": "<TENANT_ID>",
+    "keepAlive": 60,
+    "cleanSession": true,
+    "publishTopics": [
+      "<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>",
+      "<TENANT_ID>/MGMT/clients/event/<DEVICE_SERIAL>"
+    ],
+    "subscribeTopics": [
+      "<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>"
+    ]
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-mgmt",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+### 6.3.2 CTRL Endpoint
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-ctrl",
+  "endpointConfig": {
+    "operation": "ADD",
+    "name": "Dev-CTRL",
+    "type": "CTRL",
+    "host": "<BROKER_HOST>",
+    "port": <BROKER_PORT>,
+    "tls": false,
+    "tenantId": "<TENANT_ID>",
+    "publishTopics": [
+      "<TENANT_ID>/CTRL/clients/resp/<DEVICE_SERIAL>"
+    ],
+    "subscribeTopics": [
+      "<TENANT_ID>/CTRL/clients/cmnd/<DEVICE_SERIAL>"
+    ]
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-ctrl",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+### 6.3.3 DATA Endpoint
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-data",
+  "endpointConfig": {
+    "operation": "ADD",
+    "name": "Dev-DATA",
+    "type": "DATA",
+    "host": "<BROKER_HOST>",
+    "port": <BROKER_PORT>,
+    "tls": false,
+    "tenantId": "<TENANT_ID>",
+    "publishTopics": [
+      "<TENANT_ID>/DATA/clients/data1event/<DEVICE_SERIAL>",
+      "<TENANT_ID>/DATA/clients/data2event/<DEVICE_SERIAL>"
+    ]
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-data",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+Three `response.code: 0` confirmations, all three interfaces are pointed at your broker.
+
+> **TLS in production:** These examples use `"tls": false` and port `1883` for development simplicity. For production, set `"tls": true`, use port `8883`, and install a CA certificate first. See Section 7.
+
+---
+
+## 6.4 Step 4: Subscribe to Response and Data Topics
+
+Before sending any more commands, subscribe to the topics where the reader will publish its responses and tag data. Open your MQTT client and subscribe to these four topics:
+
+| Topic | What You'll Receive |
+|-------|--------------------|
+| `<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>` | Responses to management commands (get_status, get_version, etc.) |
+| `<TENANT_ID>/CTRL/clients/resp/<DEVICE_SERIAL>` | Responses to control commands (control_operation) |
+| `<TENANT_ID>/DATA/clients/data1event/<DEVICE_SERIAL>` | Tag data events during inventory |
+| `<TENANT_ID>/MGMT/clients/event/<DEVICE_SERIAL>` | System events (heartbeats, alerts) |
+
+**Using MQTTX:** Add a new subscription for each topic above. Use QoS 1 for reliable delivery.
+
+**Using mosquitto_sub:**
+
+```bash
+mosquitto_sub -h <BROKER_HOST> -p <BROKER_PORT> \
+  -t "<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>" \
+  -t "<TENANT_ID>/CTRL/clients/resp/<DEVICE_SERIAL>" \
+  -t "<TENANT_ID>/DATA/clients/data1event/<DEVICE_SERIAL>" \
+  -t "<TENANT_ID>/MGMT/clients/event/<DEVICE_SERIAL>"
+```
+
+Leave this subscription running. All subsequent responses will appear here.
+
+---
+
+## 6.5 Step 5: Verify Connectivity (get_status)
+
+Send your first command to the reader. This confirms that the reader is online, connected to the broker, and responding to commands.
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "get_status",
+  "requestId": "qs-status-001"
+}
+```
+
+**Expected Response** on `<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>`:
+
+```json
+{
+  "command": "get_status",
+  "requestId": "qs-status-001",
+  "apiVersion": "V1.1",
+  "deviceStatus": {
+    "powerSource": "CRADLE",
+    "radioActivity": "INACTIVE",
+    "radioConnection": "CONNECTED",
+    "hostname": "<DEVICE_SERIAL>.local",
+    "systemTime": "2026-04-09T10:00:00.000Z",
+    "temperature": 28,
+    "ntp": {
+      "offset": 0,
+      "reach": 377
+    },
+    "terminalConnection": {
+      "status": "connected",
+      "type": "BLUETOOTH"
+    },
+    "batteryStatus": {
+      "capacity": 6400,
+      "stateOfHealth": "GOOD",
+      "chargePercentage": 100,
+      "chargeStatus": 2
+    }
+  },
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+**You should see `response.code: 0` and `radioConnection: "CONNECTED"`.** That means your reader is online, talking to the broker, and ready to scan tags.
+
+> **No response?** Check that: (1) the reader is powered on and connected to Wi-Fi, (2) the broker is running and reachable, (3) your publish topic exactly matches the reader's subscribe topic (case-sensitive), (4) your subscription from Step 4 is active. See Section 14 (Troubleshooting) for detailed diagnostic steps.
+
+---
+
+## 6.6 Step 6: Start an Inventory (control_operation START)
+
+Time to scan tags. This command starts the RFID radio using the reader's default operating mode. Place one or more RFID tags within range of the reader (within ~1 meter for a handheld sled).
+
+**Publish to:**
+
+```
+<TENANT_ID>/CTRL/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "qs-start-001",
+  "ctrlOprPayload": {
+    "controlType": "RFID",
+    "operation": "START"
+  }
+}
+```
+
+**Expected Response** on `<TENANT_ID>/CTRL/clients/resp/<DEVICE_SERIAL>`:
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "qs-start-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+`response.code: 0`; the radio is now scanning. Tag data will begin arriving on the DATA topic within milliseconds.
+
+> **Got `code: 6` ("Region is not configured")?** Go back to Step 1. The region must be set before any RF operation.
+
+---
+
+## 6.7 Step 7: Read Tag Data (dataEVT)
+
+With the inventory running, look at your subscribed DATA topic. The reader publishes `dataEVT` messages containing the tags it reads.
+
+**Arriving on** `<TENANT_ID>/DATA/clients/data1event/<DEVICE_SERIAL>`:
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "<DEVICE_SERIAL>",
+  "timestamp": "2026-04-09T10:00:05.123Z",
+  "apiVersion": "V1.1",
+  "tagData": [
+    {
+      "epc": "E2801170000002059E42A82B",
+      "rssi": -420,
+      "pc": "3000",
+      "antenna": 1,
+      "readCount": 5,
+      "timestamp": "2026-04-09T10:00:05.100Z",
+      "phase": 127,
+      "channel": 903250
+    }
+  ]
+}
+```
+
+**You are reading live RFID tag data.** Each object in the `tagData` array represents one tag:
+
+| Field | What It Tells You |
+|-------|------------------|
+| `epc` | The tag's Electronic Product Code; its unique identifier (hex-encoded) |
+| `rssi` | Signal strength in 1/10 dBm (e.g., `-420` = –42.0 dBm). Closer to 0 = stronger signal. |
+| `readCount` | How many times this tag was read in this reporting interval |
+| `phase` | Phase angle (degrees); useful for tag localization. See Section 4.5. |
+| `channel` | RF frequency in kHz (e.g., `903250` = 903.25 MHz) |
+
+Move tags closer and farther from the reader; watch the `rssi` values change in real time.
+
+> **Multiple tags?** The `tagData` array will contain multiple objects, one per unique tag read in each reporting cycle. See Section 9 for payload structure details and high-throughput handling.
+
+---
+
+## 6.8 Step 8: Stop the Inventory (control_operation STOP)
+
+Stop the radio when you are done scanning.
+
+**Publish to:**
+
+```
+<TENANT_ID>/CTRL/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "qs-stop-001",
+  "ctrlOprPayload": {
+    "controlType": "RFID",
+    "operation": "STOP"
+  }
+}
+```
+
+**Expected Response** on `<TENANT_ID>/CTRL/clients/resp/<DEVICE_SERIAL>`:
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "qs-stop-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+The radio is off. No more `dataEVT` messages will arrive. You have completed your first end-to-end RFID tag read over MQTT.
+
+---
+
+### What's Next
+
+You now have a working MQTT connection to your reader and have verified the command→response→data flow. From here:
+
+- **Customize the scan**: Configure operating profiles, transmit power, sessions, and select filters with `set_operating_mode`. See Section 8.
+- **Secure the connection**: Add TLS encryption and certificate-based authentication. See Section 7.
+- **Process tag data at scale**: Handle high-throughput `dataEVT` streams, deduplication, and RSSI-based filtering. See Section 9.
+- **Monitor the fleet**: Subscribe to `heartBeatEVT`, `alerts`, and `exceptionEVT` for real-time device health. See Section 10.
+
+---
+
+## 6.9 Complete Code: Worked Examples
+
+The following scripts automate the full lifecycle from Steps 5–8: connect to the broker, subscribe to topics, verify the reader is online, start an inventory, print tag data for 10 seconds, and stop the inventory.
+
+> **Prerequisites:** The reader must already have Wi-Fi configured (Step 2) and MQTT endpoints configured (Step 3). These scripts assume the reader is already connected to the broker.
+
+Replace all `<PLACEHOLDER>` values with your actual configuration before running.
+
+### Python (paho-mqtt)
+
+```bash
+pip install paho-mqtt
+```
+
+```python
+import json
+import time
+import paho.mqtt.client as mqtt
+
+# ── Configuration ────────────────────────────────────────────
+BROKER_HOST = "<BROKER_HOST>"
+BROKER_PORT = <BROKER_PORT>  # 1883 for dev, 8883 for TLS
+TENANT_ID = "<TENANT_ID>"
+DEVICE_SERIAL = "<DEVICE_SERIAL>"
+
+# ── Topics ───────────────────────────────────────────────────
+MGMT_CMD = f"{TENANT_ID}/MGMT/clients/cmnd/{DEVICE_SERIAL}"
+MGMT_RESP = f"{TENANT_ID}/MGMT/clients/resp/{DEVICE_SERIAL}"
+CTRL_CMD = f"{TENANT_ID}/CTRL/clients/cmnd/{DEVICE_SERIAL}"
+CTRL_RESP = f"{TENANT_ID}/CTRL/clients/resp/{DEVICE_SERIAL}"
+DATA_EVT = f"{TENANT_ID}/DATA/clients/data1event/{DEVICE_SERIAL}"
+
+# ── Callback: handle all incoming messages ───────────────────
+def on_message(client, userdata, msg):
+    payload = json.loads(msg.payload.decode())
+    topic = msg.topic
+
+    if topic == DATA_EVT:
+        # Tag data arrived; print each tag's EPC and RSSI
+        for tag in payload.get("tagData", []):
+            rssi_dbm = tag["rssi"] / 10  # Convert from 1/10 dBm
+            print(f"  TAG: {tag['epc']}  RSSI: {rssi_dbm:.1f} dBm")
+    else:
+        # Command response; print the result
+        cmd = payload.get("command") or payload.get("event")
+        code = payload.get("response", {}).get("code")
+        desc = payload.get("response", {}).get("description")
+        print(f"  [{cmd}] code={code}; {desc}")
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("Connected to broker.")
+        # Subscribe to response and data topics
+        client.subscribe([(MGMT_RESP, 1), (CTRL_RESP, 1), (DATA_EVT, 1)])
+    else:
+        print(f"Connection failed with code {rc}")
+
+# ── Connect ──────────────────────────────────────────────────
+client = mqtt.Client(protocol=mqtt.MQTTv311)
+client.on_connect = on_connect
+client.on_message = on_message
+client.connect(BROKER_HOST, BROKER_PORT)
+client.loop_start()
+time.sleep(1)  # Wait for subscriptions to establish
+
+# ── Step 1: Verify connectivity ──────────────────────────────
+print("\n→ Sending get_status...")
+client.publish(MGMT_CMD, json.dumps({
+    "command": "get_status",
+    "requestId": "qs-py-status"
+}), qos=1)
+time.sleep(2)
+
+# ── Step 2: Start inventory ──────────────────────────────────
+print("\n→ Starting RFID inventory...")
+client.publish(CTRL_CMD, json.dumps({
+    "command": "control_operation",
+    "requestId": "qs-py-start",
+    "ctrlOprPayload": {
+        "controlType": "RFID",
+        "operation": "START"
+    }
+}), qos=1)
+
+# ── Step 3: Collect tag data for 10 seconds ──────────────────
+print("\n→ Reading tags for 10 seconds...\n")
+time.sleep(10)
+
+# ── Step 4: Stop inventory ───────────────────────────────────
+print("\n→ Stopping inventory...")
+client.publish(CTRL_CMD, json.dumps({
+    "command": "control_operation",
+    "requestId": "qs-py-stop",
+    "ctrlOprPayload": {
+        "controlType": "RFID",
+        "operation": "STOP"
+    }
+}), qos=1)
+time.sleep(2)
+
+# ── Disconnect ───────────────────────────────────────────────
+client.loop_stop()
+client.disconnect()
+print("\nDone. Disconnected.")
+```
+
+### Node.js (mqtt.js)
+
+```bash
+npm install mqtt
+```
+
+```javascript
+const mqtt = require("mqtt");
+
+// ── Configuration ────────────────────────────────────────────
+const BROKER_HOST = "<BROKER_HOST>";
+const BROKER_PORT = "<BROKER_PORT>"; // "1883" for dev, "8883" for TLS
+const TENANT_ID = "<TENANT_ID>";
+const DEVICE_SERIAL = "<DEVICE_SERIAL>";
+
+// ── Topics ───────────────────────────────────────────────────
+const MGMT_CMD = `${TENANT_ID}/MGMT/clients/cmnd/${DEVICE_SERIAL}`;
+const MGMT_RESP = `${TENANT_ID}/MGMT/clients/resp/${DEVICE_SERIAL}`;
+const CTRL_CMD = `${TENANT_ID}/CTRL/clients/cmnd/${DEVICE_SERIAL}`;
+const CTRL_RESP = `${TENANT_ID}/CTRL/clients/resp/${DEVICE_SERIAL}`;
+const DATA_EVT = `${TENANT_ID}/DATA/clients/data1event/${DEVICE_SERIAL}`;
+
+// ── Connect ──────────────────────────────────────────────────
+const client = mqtt.connect(`mqtt://${BROKER_HOST}:${BROKER_PORT}`, {
+  protocolVersion: 4, // MQTT 3.1.1
+});
+
+client.on("connect", () => {
+  console.log("Connected to broker.");
+
+  // Subscribe to response and data topics
+  client.subscribe([MGMT_RESP, CTRL_RESP, DATA_EVT], { qos: 1 }, (err) => {
+    if (err) {
+      console.error("Subscribe error:", err);
+      return;
+    }
+    console.log("Subscribed to response and data topics.\n");
+    startQuickStart();
+  });
+});
+
+// ── Handle incoming messages ─────────────────────────────────
+client.on("message", (topic, message) => {
+  const payload = JSON.parse(message.toString());
+
+  if (topic === DATA_EVT) {
+    // Tag data arrived; print each tag's EPC and RSSI
+    for (const tag of payload.tagData || []) {
+      const rssiDbm = (tag.rssi / 10).toFixed(1); // Convert from 1/10 dBm
+      console.log(`  TAG: ${tag.epc}  RSSI: ${rssiDbm} dBm`);
+    }
+  } else {
+    // Command response
+    const cmd = payload.command || payload.event;
+    const code = payload.response?.code;
+    const desc = payload.response?.description;
+    console.log(`  [${cmd}] code=${code}; ${desc}`);
+  }
+});
+
+// ── Quick start lifecycle ────────────────────────────────────
+function publish(topic, payload) {
+  client.publish(topic, JSON.stringify(payload), { qos: 1 });
+}
+
+async function startQuickStart() {
+  // Step 1: Verify connectivity
+  console.log("→ Sending get_status...");
+  publish(MGMT_CMD, {
+    command: "get_status",
+    requestId: "qs-js-status",
+  });
+  await delay(2000);
+
+  // Step 2: Start inventory
+  console.log("\n→ Starting RFID inventory...");
+  publish(CTRL_CMD, {
+    command: "control_operation",
+    requestId: "qs-js-start",
+    ctrlOprPayload: { controlType: "RFID", operation: "START" },
+  });
+
+  // Step 3: Collect tag data for 10 seconds
+  console.log("\n→ Reading tags for 10 seconds...\n");
+  await delay(10000);
+
+  // Step 4: Stop inventory
+  console.log("\n→ Stopping inventory...");
+  publish(CTRL_CMD, {
+    command: "control_operation",
+    requestId: "qs-js-stop",
+    ctrlOprPayload: { controlType: "RFID", operation: "STOP" },
+  });
+  await delay(2000);
+
+  // Disconnect
+  client.end();
+  console.log("\nDone. Disconnected.");
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+```
+
+### C# (MQTTnet)
+
+```bash
+dotnet add package MQTTnet
+```
+
+```csharp
+using System.Text;
+using System.Text.Json;
+using MQTTnet;
+using MQTTnet.Client;
+using MQTTnet.Protocol;
+
+// ── Configuration ────────────────────────────────────────────
+const string BROKER_HOST = "<BROKER_HOST>";
+const int BROKER_PORT = 1883; // 1883 for dev, 8883 for TLS
+const string TENANT_ID = "<TENANT_ID>";
+const string DEVICE_SERIAL = "<DEVICE_SERIAL>";
+
+// ── Topics ───────────────────────────────────────────────────
+string MGMT_CMD = $"{TENANT_ID}/MGMT/clients/cmnd/{DEVICE_SERIAL}";
+string MGMT_RESP = $"{TENANT_ID}/MGMT/clients/resp/{DEVICE_SERIAL}";
+string CTRL_CMD = $"{TENANT_ID}/CTRL/clients/cmnd/{DEVICE_SERIAL}";
+string CTRL_RESP = $"{TENANT_ID}/CTRL/clients/resp/{DEVICE_SERIAL}";
+string DATA_EVT = $"{TENANT_ID}/DATA/clients/data1event/{DEVICE_SERIAL}";
+
+// ── Connect ──────────────────────────────────────────────────
+var factory = new MqttFactory();
+using var client = factory.CreateMqttClient();
+
+var options = new MqttClientOptionsBuilder()
+    .WithTcpServer(BROKER_HOST, BROKER_PORT)
+    .WithProtocolVersion(MQTTnet.Formatter.MqttProtocolVersion.V311)
+    .Build();
+
+// ── Handle incoming messages ─────────────────────────────────
+client.ApplicationMessageReceivedAsync += e =>
+{
+    var topic = e.ApplicationMessage.Topic;
+    var json = Encoding.UTF8.GetString(e.ApplicationMessage.PayloadSegment);
+    using var doc = JsonDocument.Parse(json);
+    var root = doc.RootElement;
+
+    if (topic == DATA_EVT)
+    {
+        foreach (var tag in root.GetProperty("tagData").EnumerateArray())
+        {
+            var epc = tag.GetProperty("epc").GetString();
+            var rssi = tag.GetProperty("rssi").GetInt32() / 10.0;
+            Console.WriteLine($"  TAG: {epc}  RSSI: {rssi:F1} dBm");
+        }
+    }
+    else
+    {
+        var cmd = root.TryGetProperty("command", out var c) ? c.GetString() : "event";
+        var code = root.GetProperty("response").GetProperty("code").GetInt32();
+        var desc = root.GetProperty("response").GetProperty("description").GetString();
+        Console.WriteLine($"  [{cmd}] code={code}; {desc}");
+    }
+    return Task.CompletedTask;
+};
+
+await client.ConnectAsync(options);
+Console.WriteLine("Connected to broker.");
+
+var subOptions = new MqttClientSubscribeOptionsBuilder()
+    .WithTopicFilter(MGMT_RESP, MqttQualityOfServiceLevel.AtLeastOnce)
+    .WithTopicFilter(CTRL_RESP, MqttQualityOfServiceLevel.AtLeastOnce)
+    .WithTopicFilter(DATA_EVT, MqttQualityOfServiceLevel.AtLeastOnce)
+    .Build();
+await client.SubscribeAsync(subOptions);
+Console.WriteLine("Subscribed to response and data topics.\n");
+
+async Task Publish(string topic, object payload)
+{
+    var json = JsonSerializer.Serialize(payload);
+    var message = new MqttApplicationMessageBuilder()
+        .WithTopic(topic)
+        .WithPayload(json)
+        .WithQualityOfServiceLevel(MqttQualityOfServiceLevel.AtLeastOnce)
+        .Build();
+    await client.PublishAsync(message);
+}
+
+Console.WriteLine("→ Sending get_status...");
+await Publish(MGMT_CMD, new { command = "get_status", requestId = "qs-cs-status" });
+await Task.Delay(2000);
+
+Console.WriteLine("\n→ Starting RFID inventory...");
+await Publish(CTRL_CMD, new
+{
+    command = "control_operation",
+    requestId = "qs-cs-start",
+    ctrlOprPayload = new { controlType = "RFID", operation = "START" }
+});
+
+Console.WriteLine("\n→ Reading tags for 10 seconds...\n");
+await Task.Delay(10000);
+
+Console.WriteLine("\n→ Stopping inventory...");
+await Publish(CTRL_CMD, new
+{
+    command = "control_operation",
+    requestId = "qs-cs-stop",
+    ctrlOprPayload = new { controlType = "RFID", operation = "STOP" }
+});
+await Task.Delay(2000);
+
+await client.DisconnectAsync();
+Console.WriteLine("\nDone. Disconnected.");
+```

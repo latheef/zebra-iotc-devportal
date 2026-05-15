@@ -1,0 +1,233 @@
+---
+sidebar_position: 2
+title: "How to Configure the Operating Mode"
+description: "Step-by-step guide to configuring RFID operating modes on the RFD40/RFD90 via MQTT, from simple inventory to full RF customization."
+---
+
+# How to Configure the Operating Mode
+
+This guide walks you through configuring the RFID operating mode on the RFD40/RFD90 reader sled via MQTT. Start with reading the current configuration, then apply changes progressively, from basic mode selection to full RF parameter customization.
+
+## Prerequisites
+
+- Device connected and online (verify via `get_status`)
+- MQTT client subscribed to the control response topic
+- No active RFID operation running (stop any active operation first)
+
+## Step 1: Read the Current Operating Mode
+
+Before changing the configuration, retrieve the current settings to understand the baseline.
+
+**Publish to:**
+```
+{tenantId}/CTRL/clients/cmnd/{deviceSerial}
+```
+
+**Payload:**
+```json
+{
+  "command": "get_operating_mode",
+  "command_id": "cmd-001"
+}
+```
+
+**Response on:**
+```
+{tenantId}/CTRL/clients/resp/{deviceSerial}
+```
+
+**Example response:**
+```json
+{
+  "command": "get_operating_mode",
+  "command_id": "cmd-001",
+  "status": "OK",
+  "payload": {
+    "mode": "SIMPLE_INVENTORY",
+    "antenna_power": 270,
+    "link_profile": 0,
+    "session": "S0",
+    "tag_population": 30,
+    "dynamic_power": false,
+    "filter": null
+  }
+}
+```
+
+## Step 2: Set a Basic Operating Mode
+
+Start with a simple mode change. This sets the mode while keeping other RF parameters at their defaults.
+
+**Publish to:**
+```
+{tenantId}/CTRL/clients/cmnd/{deviceSerial}
+```
+
+### Example: Switch to Inventory with RSSI
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-002",
+  "payload": {
+    "mode": "INVENTORY_RSSI"
+  }
+}
+```
+
+### Example: Switch to Simple Inventory
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-003",
+  "payload": {
+    "mode": "SIMPLE_INVENTORY"
+  }
+}
+```
+
+### Valid Mode Values
+
+| Mode Value | Description |
+|---|---|
+| `SIMPLE_INVENTORY` | EPC only; fastest, lowest power |
+| `INVENTORY_RSSI` | EPC + RSSI signal strength |
+| `INVENTORY_TID` | EPC + TID memory bank |
+| `TAG_LOCATIONING` | EPC + spatial data for locating a specific tag |
+
+## Step 3: Customize RF Parameters
+
+For production deployments, you often need to tune the RF configuration beyond just the mode. The `set_operating_mode` command accepts optional RF parameters.
+
+### Antenna Power
+
+Controls the RF output power in tenths of dBm (e.g., `270` = 27.0 dBm). Higher power reads farther but consumes more battery.
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-004",
+  "payload": {
+    "mode": "INVENTORY_RSSI",
+    "antenna_power": 200
+  }
+}
+```
+
+> **Warning**: Setting `antenna_power` above the regulatory maximum for your region will be rejected by the firmware. The RFD40 supports up to 30.0 dBm (300) in most regions.
+
+### Session and Tag Population
+
+The **session** parameter controls how the reader interacts with tags that have already been read. The **tag_population** gives the reader a hint about the expected number of tags, optimizing the anti-collision algorithm.
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-005",
+  "payload": {
+    "mode": "SIMPLE_INVENTORY",
+    "session": "S1",
+    "tag_population": 100
+  }
+}
+```
+
+| Session | Behavior |
+|---|---|
+| `S0` | Tags respond every round; best for small populations |
+| `S1` | Tags flag after first read; better for large populations |
+| `S2` | Similar to S1 with different persistence |
+| `S3` | Longest persistence; tags remember being read longest |
+
+### Full RF Customization
+
+A complete configuration with all parameters:
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-006",
+  "payload": {
+    "mode": "INVENTORY_RSSI",
+    "antenna_power": 250,
+    "link_profile": 1,
+    "session": "S1",
+    "tag_population": 200,
+    "dynamic_power": true,
+    "filter": {
+      "epc_pattern": "30**",
+      "match": "INCLUDE"
+    }
+  }
+}
+```
+
+### Field Reference
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `mode` | string | Yes | Operating mode identifier |
+| `antenna_power` | integer | No | RF power in tenths of dBm (0–300) |
+| `link_profile` | integer | No | RF link profile index (0–5) |
+| `session` | string | No | RFID session: S0, S1, S2, S3 |
+| `tag_population` | integer | No | Expected tag count hint (1–600) |
+| `dynamic_power` | boolean | No | Enable adaptive power control |
+| `filter` | object | No | Optional EPC pre-filter |
+
+## Step 4: Configure Tag Locationing Mode
+
+Tag Locationing requires an additional `target_epc` to focus the reader on a specific tag.
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-007",
+  "payload": {
+    "mode": "TAG_LOCATIONING",
+    "antenna_power": 270,
+    "target_epc": "3034257BF400B7800004E3A1"
+  }
+}
+```
+
+## Step 5: Verify the Configuration
+
+After setting the mode, read it back to confirm the change was applied:
+
+```json
+{
+  "command": "get_operating_mode",
+  "command_id": "cmd-008"
+}
+```
+
+## Error Handling
+
+If the command fails, the response includes an `error` field:
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-004",
+  "status": "ERROR",
+  "error": {
+    "code": "OPERATION_ACTIVE",
+    "message": "Cannot change mode while an RFID operation is running. Stop the operation first."
+  }
+}
+```
+
+Common errors:
+
+| Error Code | Cause | Resolution |
+|---|---|---|
+| `OPERATION_ACTIVE` | RFID scan is running | Send `control_operation` STOP first |
+| `INVALID_POWER` | Power exceeds regulatory limit | Reduce `antenna_power` |
+| `INVALID_MODE` | Unrecognized mode value | Check mode value spelling |
+
+## Related Topics
+
+- [About RFID Operating Modes](./about-operating-modes.mdx): mode explanations and comparisons
+- [How to Start and Stop RFID Operations](./start-stop-operations.mdx): controlling scan sessions
+- [About Post-Filters](./about-post-filters.mdx): filtering tag reads

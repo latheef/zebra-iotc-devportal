@@ -1,0 +1,164 @@
+---
+sidebar_position: 1
+title: "MQTT API Reference Overview"
+description: "Complete reference for all MQTT 3.1.1 commands, responses, and events supported by Zebra RFD40/RFD90 handheld RFID reader sleds via IoT Connector."
+---
+
+# MQTT API Reference Overview
+
+Complete inventory of MQTT 3.1.1 endpoints for managing and operating Zebra RFD40/RFD90 handheld RFID reader sleds through the IoT Connector.
+
+## Protocol
+
+All communication uses **MQTT 3.1.1** with JSON-encoded payloads. The reader connects to a configured MQTT broker and subscribes to command topics. Applications publish commands and subscribe to response and event topics.
+
+## Topic Pattern
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+| Segment | Description |
+|---|---|
+| `tenantId` | Tenant identifier assigned during provisioning |
+| `interface` | `MGMT`, `CTRL`, or `DATA` |
+| `channel` | `cmnd` (command), `resp` (response), `event`, `data1event`, or `data2event` |
+| `deviceSerial` | Device serial number (e.g., `24042AR50033`) |
+
+## Interfaces
+
+| Interface | Purpose | Channels |
+|---|---|---|
+| **MGMT** | Device management; configuration, networking, firmware, certificates | `cmnd`, `resp`, `event` |
+| **CTRL** | RFID operations; operating modes, filters, start/stop | `cmnd`, `resp` |
+| **DATA** | Tag data; read events streamed from the reader | `data1event`, `data2event` |
+
+## Channel Directions
+
+| Channel | Direction | Description |
+|---|---|---|
+| `cmnd` | Application → Reader | Commands sent to the device |
+| `resp` | Reader → Application | Responses to commands |
+| `event` | Reader → Application | Asynchronous events (heartbeats, alerts) |
+| `data1event` / `data2event` | Reader → Application | Tag read data |
+
+## Payload Format
+
+All payloads are JSON objects. Every command includes a `command` field and a `requestId` field. Every response includes a `command` field, `requestId`, and a `statusCode`.
+
+### Request Structure
+
+```json
+{
+  "command": "<command_name>",
+  "requestId": "<unique_id>",
+  ...
+}
+```
+
+### Response Structure
+
+```json
+{
+  "command": "<command_name>",
+  "requestId": "<unique_id>",
+  "statusCode": 0,
+  "statusMessage": "Success",
+  ...
+}
+```
+
+### Standard Status Codes
+
+| Code | Name | Description |
+|---|---|---|
+| `0` | Success | Command executed successfully |
+| `1` | GeneralError | An unspecified error occurred |
+| `2` | InvalidCommand | The command name is not recognized |
+| `3` | InvalidParameter | A parameter value is out of range or malformed |
+| `4` | InvalidRequestId | The `requestId` field is missing or empty |
+| `5` | DeviceBusy | The device is processing another command |
+| `10` | OperationFailed | The command was understood but execution failed |
+| `15` | NotFound | The requested resource does not exist |
+| `16` | ResourceInUse | The resource cannot be modified because it is active |
+
+## Field Table Format
+
+Throughout this reference, field tables use the following columns:
+
+| Column | Description |
+|---|---|
+| **Field** | JSON path using dot notation (e.g., `ntp.status`) |
+| **Type** | `string`, `integer`, `boolean`, `number`, `array`, `object` |
+| **Required** | Whether the field must be present in the request |
+| **Description** | Meaning and constraints |
+
+## Interactive Reference
+
+For an interactive, schema-driven view of all MQTT topics and payloads, see the [AsyncAPI Reference](/handheld/mqtt-api-reference).
+
+## Endpoint Inventory
+
+### Management Interface (MGMT): 17 Commands
+
+| # | Command | Tier | Description |
+|---|---|---|---|
+| 1 | [`get_version`](mgmt/get-version) | T4 | Retrieve firmware and hardware version information |
+| 2 | [`get_status`](mgmt/get-status) | T4 | Query device operational status |
+| 3 | [`get_current_region`](mgmt/get-current-region) | T4 | Get regulatory region and RF configuration |
+| 4 | [`get_eth`](mgmt/get-eth) | T4 | Query Ethernet interface status |
+| 5 | [`get_wifi`](mgmt/get-wifi) | T3 | Query Wi-Fi profiles and status |
+| 6 | [`delete_wifi_profile`](mgmt/delete-wifi-profile) | T3 | Remove a saved Wi-Fi profile |
+| 7 | [`set_wifi`](mgmt/set-wifi) | T2 | Create or modify a Wi-Fi profile |
+| 8 | [`get_installed_certificate`](mgmt/get-installed-certificate) | T4 | List installed certificates |
+| 9 | [`delete_certificate`](mgmt/delete-certificate) | T3 | Remove an installed certificate |
+| 10 | [`install_certificate`](mgmt/install-certificate) | T2 | Install a certificate for TLS or authentication |
+| 11 | [`get_endpoint_config`](mgmt/get-endpoint-config) | T3 | Query MQTT endpoint configuration |
+| 12 | [`config_endpoint`](mgmt/config-endpoint) | T2 | Create or modify an MQTT endpoint |
+| 13 | [`config_events`](mgmt/config-events) | T2 | Configure event reporting and thresholds |
+| 14 | [`get_config`](mgmt/get-config) | T4 | Retrieve the complete device configuration |
+| 15 | [`set_config`](mgmt/set-config) | T1 | Apply a partial or full configuration document |
+| 16 | [`reboot`](mgmt/reboot) | T4 | Restart the device |
+| 17 | [`set_os`](mgmt/set-os) | T2 | Initiate a firmware update |
+
+### Control Interface (CTRL): 5 Commands
+
+| # | Command | Tier | Description |
+|---|---|---|---|
+| 1 | [`get_operating_mode`](ctrl/get-operating-mode) | T4 | Retrieve current RFID operating mode |
+| 2 | [`get_post_filter`](ctrl/get-post-filter) | T3 | Query active post-read filters |
+| 3 | [`control_operation`](ctrl/control-operation) | T3 | Start or stop RFID operations |
+| 4 | [`set_post_filter`](ctrl/set-post-filter) | T2 | Configure post-read tag filters |
+| 5 | [`set_operating_mode`](ctrl/set-operating-mode) | T1 | Configure RFID operating mode parameters |
+
+### Data Interface (DATA): 1 Event
+
+| # | Event | Description |
+|---|---|---|
+| 1 | [`dataEVT`](data/dataevt) | Tag read data events |
+
+### Events: 4 Event Types
+
+| # | Event | Description |
+|---|---|---|
+| 1 | [`heartBeatEVT`](events/heartbeatevt) | Periodic device health heartbeat |
+| 2 | [`alerts`](events/alerts) | Threshold-based alert notifications |
+| 3 | [`alert_short`](events/alert-short) | Compact MDM-optimized alerts |
+| 4 | [`mqttConnEVT`](events/mqttconnevt) | MQTT connection/disconnection events |
+
+## Functional Groups
+
+1. **Device Identity**: `get_version`
+2. **Device Health**: `get_status`, `heartBeatEVT`, `alerts`, `alert_short`
+3. **Networking**: `get_eth`, `get_wifi`, `set_wifi`, `delete_wifi_profile`
+4. **Security**: `get_installed_certificate`, `install_certificate`, `delete_certificate`
+5. **Endpoint Management**: `get_endpoint_config`, `config_endpoint`
+6. **Configuration**: `get_config`, `set_config`, `config_events`
+7. **RFID Operations**: `get_operating_mode`, `set_operating_mode`, `control_operation`, `get_post_filter`, `set_post_filter`, `dataEVT`
+8. **Firmware & Lifecycle**: `set_os`, `reboot`, `mqttConnEVT`
+
+## See Also
+
+- [MQTT Topic Reference](/handheld/mqtt-reference): Topic structure and subscription patterns
+- [AsyncAPI Reference](/handheld/mqtt-api-reference): Interactive schema browser
+- [Quick Start](/handheld/quick-start): First connection walkthrough

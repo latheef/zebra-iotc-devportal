@@ -1,0 +1,100 @@
+---
+sidebar_position: 13
+title: Delete Certificate
+description: Remove an installed TLS certificate by name.
+---
+
+# Delete Certificate
+
+Remove an installed TLS certificate from the reader by its name. This permanently deletes the certificate from the device's certificate store. Ensure the certificate is not actively in use by any endpoint before deleting it.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `delete_certificate` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "delete_certificate",
+  "requestId": "req-delcert-001",
+  "certificate": {
+    "name": "mqtt-broker-ca"
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"delete_certificate"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+| `certificate.name` | string | Yes | Name of the certificate to delete. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "delete_certificate",
+  "requestId": "req-delcert-001",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"delete_certificate"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `11` | Configuration not found |
+| `16` | Delete certificate error |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "delete_certificate",
+  "requestId": "req-delcert-002",
+  "certificate": {
+    "name": "client-mtls-cert"
+  }
+}
+```
+
+### Response
+
+```json
+{
+  "command": "delete_certificate",
+  "requestId": "req-delcert-002",
+  "responseCode": 0,
+  "message": "Success"
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

@@ -1,0 +1,58 @@
+---
+sidebar_position: 2
+title: Quick Start
+---
+
+# Quick Start
+
+Get started with your Zebra Gen2x fixed RFID reader.
+
+## Prerequisites
+
+- A Zebra Gen2x-capable fixed RFID reader connected to your network
+- Network access to the reader's IP address
+- Gen2x-compliant RFID tags (for Gen2x-specific features)
+- An MQTT broker for telemetry (optional for REST-only usage)
+
+## Step 1: Discover the Reader
+
+Access the reader at its IP address:
+
+```bash
+curl -k https://<READER_IP>/api/v2/status
+```
+
+:::note
+Gen2x readers use API **v2** endpoints. Standard Gen2 features are also available via v1 endpoints for backward compatibility.
+:::
+
+## Step 2: Authenticate
+
+```bash
+curl -k -u admin:password https://<READER_IP>/api/v2/status
+```
+
+## Step 3: Enable Gen2x Features
+
+```bash
+curl -k -u admin:password \
+  -X PUT https://<READER_IP>/api/v2/config/gen2x \
+  -H "Content-Type: application/json" \
+  -d '{
+    "cryptoAuth": true,
+    "untraceable": false,
+    "extendedMemory": true
+  }'
+```
+
+## Step 4: Start Inventory
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v2/inventory/start
+```
+
+## Next Steps
+
+- [REST Configuration](./rest/configuration): Configure Gen2x features
+- [MQTT Telemetry](./mqtt/telemetry): Tag data with Gen2x metadata

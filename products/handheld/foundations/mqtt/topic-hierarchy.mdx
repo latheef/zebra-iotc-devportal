@@ -1,0 +1,181 @@
+---
+sidebar_position: 2
+title: "About Topic Hierarchy & Naming Conventions"
+---
+
+# About Topic Hierarchy & Naming Conventions
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+IOTC defines a structured topic hierarchy that organizes all MQTT communication by tenant, interface, channel, and device. This page documents the complete topic taxonomy and the naming conventions you must follow when building integrations.
+
+## Topic Pattern
+
+Every IOTC topic follows this base pattern:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}[/{direction}]
+```
+
+The five-segment base path uniquely identifies a communication endpoint. An optional sixth segment indicates the message direction.
+
+### Segment Definitions
+
+| Segment | Type | Constraints | Example |
+|---------|------|-------------|---------|
+| `{tenantId}` | Variable | 1–64 characters, alphanumeric plus `-` and `_` | `acme-corp` |
+| `{interface}` | Fixed set | One of: `mgmt`, `ctrl`, `data`, `mdm` | `mgmt` |
+| `clients` | Literal | Always the string `clients` | `clients` |
+| `{channel}` | Variable | 1–64 characters, alphanumeric plus `-` and `_` | `warehouse-app` |
+| `{deviceSerial}` | Variable | Reader serial number (14-digit numeric) | `23044501500123` |
+| `{direction}` | Fixed set | One of: `command`, `response`, `event` (not used with `data`) | `command` |
+
+## Complete Topic Taxonomy
+
+### Pattern 1: Management Commands (App → Reader)
+
+```
+{tenantId}/mgmt/clients/{channel}/{deviceSerial}/command
+```
+
+Used by the application to send configuration and management commands to a specific reader. Published with QoS 1.
+
+**Example:**
+```
+acme-corp/mgmt/clients/warehouse-app/23044501500123/command
+```
+
+### Pattern 2: Management Responses (Reader → App)
+
+```
+{tenantId}/mgmt/clients/{channel}/{deviceSerial}/response
+```
+
+Used by the reader to publish responses to management commands. Published with QoS 1.
+
+**Example:**
+```
+acme-corp/mgmt/clients/warehouse-app/23044501500123/response
+```
+
+### Pattern 3: Management Events (Reader → App)
+
+```
+{tenantId}/mgmt/clients/{channel}/{deviceSerial}/event
+```
+
+Used by the reader to publish asynchronous events (trigger actions, battery warnings, connection state changes). Published with QoS 0 or QoS 1 depending on event severity.
+
+**Example:**
+```
+acme-corp/mgmt/clients/warehouse-app/23044501500123/event
+```
+
+### Pattern 4: Control Commands and Responses
+
+```
+{tenantId}/ctrl/clients/{channel}/{deviceSerial}/command
+{tenantId}/ctrl/clients/{channel}/{deviceSerial}/response
+```
+
+Used for real-time operational commands (start/stop inventory, tag access operations) and their responses. Published with QoS 1.
+
+**Example:**
+```
+acme-corp/ctrl/clients/warehouse-app/23044501500123/command
+acme-corp/ctrl/clients/warehouse-app/23044501500123/response
+```
+
+### Pattern 5: Tag Data Stream (Reader → App)
+
+```
+{tenantId}/data/clients/{channel}/{deviceSerial}
+```
+
+Used by the reader to stream tag observation data during active inventory. This topic has no `/command` or `/response` sub-segment; it is a unidirectional stream. Published with QoS 0.
+
+**Example:**
+```
+acme-corp/data/clients/warehouse-app/23044501500123
+```
+
+## Channel Semantics
+
+The `{channel}` segment enables multiple independent application clients to communicate with the same reader without interference.
+
+### How Channels Work
+
+- Each channel receives its own copy of responses and events
+- Commands published on one channel do not appear on another channel's response topic
+- The DATA interface delivers the same tag data to all subscribed channels
+- Channels are logical; they do not require pre-registration on the reader
+
+### Channel Naming Guidelines
+
+| Use Case | Recommended Channel Name |
+|----------|------------------------|
+| Primary warehouse application | `warehouse-app` |
+| Monitoring dashboard | `monitoring` |
+| Development/testing | `dev-testing` |
+| 123RFID Desktop | `rfid-desktop` |
+| SOTI Connect MDM | `soti-connect` |
+
+## Wildcard Subscriptions
+
+MQTT supports two wildcard characters for subscribing to multiple topics:
+
+### Single-Level Wildcard: `+`
+
+Matches exactly one topic level. Use `+` in place of any single segment.
+
+```
+# Subscribe to all readers on a specific channel
+acme-corp/data/clients/warehouse-app/+
+
+# Subscribe to all channels for a specific reader
+acme-corp/mgmt/clients/+/23044501500123/response
+
+# Subscribe to events from all readers on all channels
+acme-corp/mgmt/clients/+/+/event
+```
+
+### Multi-Level Wildcard: `#`
+
+Matches zero or more topic levels. Must be the last character in the subscription.
+
+```
+# Subscribe to ALL messages for a tenant
+acme-corp/#
+
+# Subscribe to ALL management messages
+acme-corp/mgmt/#
+
+# Subscribe to ALL data from ALL readers
+acme-corp/data/#
+```
+
+## Naming Conventions
+
+Follow these conventions to ensure consistent, collision-free topic usage:
+
+| Rule | Good | Bad |
+|------|------|-----|
+| Use lowercase | `acme-corp` | `Acme-Corp` |
+| Use hyphens for word separation | `warehouse-app` | `warehouse_app`, `warehouseApp` |
+| Keep tenant IDs globally unique | `acme-corp-prod` | `prod` |
+| Use descriptive channel names | `inventory-service` | `ch1` |
+| Do not include special characters | `east-warehouse` | `east/warehouse`, `east.warehouse` |
+| Do not use leading or trailing slashes | `acme-corp/data/...` | `/acme-corp/data/...` |
+
+## Topic Access Control
+
+Most enterprise MQTT brokers support topic-level access control lists (ACLs). Use the topic hierarchy to implement least-privilege access:
+
+| Client Role | Allowed Publish | Allowed Subscribe |
+|-------------|----------------|-------------------|
+| Application (standard) | `{tenant}/mgmt/.../command`, `{tenant}/ctrl/.../command` | `{tenant}/mgmt/.../response`, `{tenant}/mgmt/.../event`, `{tenant}/ctrl/.../response`, `{tenant}/data/...` |
+| Application (read-only) | *(none)* | `{tenant}/data/...`, `{tenant}/mgmt/.../event` |
+| MDM platform | `{tenant}/mdm/.../command` | `{tenant}/mdm/.../response` |
+| Reader device | `{tenant}/.../response`, `{tenant}/.../event`, `{tenant}/data/...` | `{tenant}/.../command` |

@@ -1,0 +1,67 @@
+---
+sidebar_position: 1
+title: "About Zebra IoT Connector for Handheld RFID"
+---
+
+# About Zebra IoT Connector for Handheld RFID
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## What Is IOTC?
+
+Zebra IoT Connector (IOTC) is a firmware-embedded software agent that runs directly on Zebra handheld RFID reader sleds, specifically the RFD40 and RFD90 series. It transforms these readers from locally-controlled peripherals into cloud-connected, remotely manageable IoT devices by exposing a standardized MQTT 3.1.1 interface for configuration, control, and real-time RFID tag data streaming.
+
+IOTC eliminates the need for custom middleware or proprietary SDKs at the edge. Any application that can speak MQTT can command a reader, receive tag reads, and monitor device health, regardless of programming language or platform.
+
+## Value Proposition
+
+### Remote Configuration
+
+Configure reader parameters (RF power, antenna settings, session persistence, singulation algorithms) over the network without physical access to the device. Push configuration profiles to individual readers or entire fleets from a centralized application.
+
+### Real-Time Tag Data Streaming
+
+Receive RFID tag observations (EPC, RSSI, antenna port, timestamp, phase angle, channel index) as structured JSON messages the instant tags are read. IOTC streams tag data over MQTT with minimal latency, enabling real-time inventory visibility and asset tracking workflows.
+
+### Fleet Management
+
+Monitor the health and status of hundreds of handheld readers across distributed locations. IOTC publishes device telemetry; battery level, Bluetooth connection state, firmware version, temperature, read statistics, enabling centralized fleet dashboards, alerting, and lifecycle management.
+
+## The Three Core Interfaces
+
+IOTC organizes all MQTT communication into three logical interfaces, each serving a distinct purpose:
+
+| Interface | Segment | Direction | Purpose |
+|-----------|---------|-----------|---------|
+| **MGMT** (Management) | `mgmt` | Bidirectional | Device configuration, firmware queries, health monitoring, operating mode changes |
+| **CTRL** (Control) | `ctrl` | Bidirectional | Real-time operational commands; start/stop inventory, set antenna power, trigger calibration |
+| **DATA** | `data` | Reader → Application | Tag observation streaming; EPC reads, RSSI values, timestamps, location data |
+
+A fourth interface, **MDM** (Mobile Device Management), provides integration with enterprise MDM platforms such as SOTI Connect for device enrollment and policy enforcement.
+
+## How Handheld IOTC Differs from Fixed Readers
+
+While Zebra also offers IOTC for fixed RFID readers (FX series), the handheld variant has important architectural differences:
+
+| Aspect | Fixed Reader IOTC | Handheld Reader IOTC |
+|--------|-------------------|----------------------|
+| Network connectivity | Direct Ethernet / Wi-Fi | Via host mobile device (Bluetooth → Wi-Fi/Cellular) |
+| Power source | AC mains | Battery (rechargeable) |
+| Antenna count | 4–32 ports | Single integrated antenna |
+| MQTT connection | Reader connects directly to broker | Host device proxies the MQTT connection |
+| Trigger mechanism | Software-only or GPIO | Physical trigger button on reader or host device |
+| Operating modes | Always-on | Battery-conscious modes with idle/sleep states |
+| Protocol version | MQTT 3.1.1 or 5.0 | MQTT 3.1.1 exclusively |
+
+These differences influence topic structure, power management strategies, connection lifecycle handling, and the operational workflows documented throughout this guide.
+
+## When to Use IOTC
+
+IOTC is the right choice when your solution requires:
+
+- **Cloud-based reader management**: configuring and monitoring readers without on-premises infrastructure
+- **Multi-site fleet visibility**: tracking reader health and utilization across warehouses, retail stores, or field locations
+- **Standards-based integration**: connecting RFID data to cloud platforms (AWS IoT Core, Azure IoT Hub, HiveMQ, Mosquitto) via MQTT
+- **Separation of concerns**: decoupling the RFID reader logic from the mobile application logic
+
+If your application requires low-latency, local-only reader control with no cloud component, consider using the Zebra RFID SDK for Android instead.

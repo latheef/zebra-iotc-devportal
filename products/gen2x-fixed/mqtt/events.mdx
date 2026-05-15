@@ -1,0 +1,38 @@
+---
+sidebar_position: 6
+title: MQTT Events
+---
+
+# MQTT Events
+
+Gen2x fixed readers publish system events over MQTT, including Gen2x-specific events.
+
+## Event Types
+
+| Event Type | Description |
+|------------|-------------|
+| `heartbeat` | Periodic health check |
+| `connection` | MQTT connection state changes |
+| `gpioEvent` | GPIO pin state changes |
+| `antennaStatus` | Antenna connect/disconnect |
+| `alert` | System alerts (temperature, antenna fault) |
+| `authFailure` | Gen2x cryptographic authentication failure for a tag |
+
+## Authentication Failure Event
+
+When a tag fails Gen2x cryptographic authentication:
+
+```json
+{
+  "type": "authFailure",
+  "timestamp": "2026-04-13T10:30:00.000Z",
+  "data": {
+    "epc": "300833B2DDD9014000000000",
+    "antennaPort": 1,
+    "reason": "CRYPTO_MISMATCH",
+    "details": "Tag response did not match expected AES-128 challenge response"
+  }
+}
+```
+
+Use authentication failure events to detect counterfeit or tampered tags in your supply chain.

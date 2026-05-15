@@ -1,0 +1,165 @@
+---
+sidebar_position: 2
+title: How to View Endpoint Configuration
+description: "Query the current MQTT endpoint configuration on handheld RFID readers"
+---
+
+# How to View Endpoint Configuration
+
+Use the `get_endpoint_config` command to retrieve the current MQTT endpoint settings for any of the three endpoint types (MDM, CTRL, DATA). This is essential for verifying configuration, troubleshooting connectivity, and auditing fleet settings.
+
+**Publish to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+---
+
+## Query All Endpoints
+
+To retrieve the configuration for all three endpoint types at once, send `get_endpoint_config` without specifying an endpoint type:
+
+**Request:**
+
+```json
+{
+  "requestId": "req-ep-001",
+  "command": "get_endpoint_config"
+}
+```
+
+**Response:**
+
+```json
+{
+  "requestId": "req-ep-001",
+  "command": "get_endpoint_config",
+  "responseCode": 0,
+  "responseMessage": "Success",
+  "payload": {
+    "endpoints": [
+      {
+        "endpointType": "MDM",
+        "host": "mdm-broker.zebra.com",
+        "port": 8883,
+        "tlsEnabled": true,
+        "caCertificateId": "zebra-root-ca",
+        "clientCertificateId": "reader-mdm-cert",
+        "username": "",
+        "connectionStatus": "CONNECTED",
+        "keepAlive": 60,
+        "cleanSession": false,
+        "autoReconnect": true,
+        "reconnectInterval": 5
+      },
+      {
+        "endpointType": "CTRL",
+        "host": "mdm-broker.zebra.com",
+        "port": 8883,
+        "tlsEnabled": true,
+        "caCertificateId": "zebra-root-ca",
+        "clientCertificateId": "reader-mdm-cert",
+        "username": "",
+        "connectionStatus": "CONNECTED",
+        "keepAlive": 60,
+        "cleanSession": false,
+        "autoReconnect": true,
+        "reconnectInterval": 5
+      },
+      {
+        "endpointType": "DATA",
+        "host": "data-broker.example.com",
+        "port": 8883,
+        "tlsEnabled": true,
+        "caCertificateId": "customer-broker-ca",
+        "clientCertificateId": "reader-data-cert",
+        "username": "",
+        "connectionStatus": "CONNECTED",
+        "keepAlive": 30,
+        "cleanSession": false,
+        "autoReconnect": true,
+        "reconnectInterval": 3
+      }
+    ]
+  }
+}
+```
+
+## Query a Specific Endpoint
+
+To retrieve configuration for a single endpoint type:
+
+**Request:**
+
+```json
+{
+  "requestId": "req-ep-002",
+  "command": "get_endpoint_config",
+  "payload": {
+    "endpointType": "DATA"
+  }
+}
+```
+
+The response contains only the specified endpoint's configuration.
+
+---
+
+## Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `endpointType` | String | `MDM`, `CTRL`, or `DATA`. Identifies which endpoint this configuration belongs to. |
+| `host` | String | MQTT broker hostname or IP address. |
+| `port` | Integer | MQTT broker port. `8883` for TLS, `1883` for plaintext. |
+| `tlsEnabled` | Boolean | Whether the connection uses TLS encryption. |
+| `caCertificateId` | String | ID of the installed CA certificate used to validate the broker's server certificate. Empty if TLS is disabled. |
+| `clientCertificateId` | String | ID of the installed client certificate for mutual TLS. Empty if not using mTLS. |
+| `username` | String | MQTT username for password-based authentication. Empty if using certificate authentication. |
+| `connectionStatus` | String | Current connection state: `CONNECTED`, `DISCONNECTED`, `CONNECTING`, or `ERROR`. |
+| `keepAlive` | Integer | MQTT keep-alive interval in seconds. The reader sends a PINGREQ if no other message is sent within this interval. |
+| `cleanSession` | Boolean | MQTT clean session flag. `false` preserves subscriptions and queued messages across reconnections. |
+| `autoReconnect` | Boolean | Whether the reader automatically attempts to reconnect after a disconnection. |
+| `reconnectInterval` | Integer | Base interval in seconds between reconnection attempts. Uses exponential backoff. |
+
+---
+
+## Reading the Configuration
+
+**Healthy indicators:**
+- `connectionStatus: CONNECTED` on all endpoints
+- `tlsEnabled: true` on all endpoints (production)
+- `caCertificateId` is not empty when TLS is enabled
+- `keepAlive` is between 30–120 seconds
+
+**Warning signs:**
+- `connectionStatus: DISCONNECTED` or `ERROR`; check network connectivity and certificates
+- `tlsEnabled: false` in production; connection is unencrypted
+- `caCertificateId` is empty but `tlsEnabled: true`; the reader may not validate the broker's certificate (insecure)
+- `cleanSession: true`; the reader loses subscriptions on every reconnect, which can cause missed commands
+
+---
+
+## Use Cases
+
+| Scenario | What to Check |
+|----------|--------------|
+| Reader not receiving commands | Verify MDM and CTRL endpoint `connectionStatus` |
+| Tag data not reaching application | Verify DATA endpoint `connectionStatus` and `host` |
+| Post-certificate-rotation verification | Confirm `caCertificateId` and `clientCertificateId` match new certificates |
+| Pre-deployment audit | Verify all endpoints use TLS, correct hosts, and appropriate keep-alive values |
+
+---
+
+## Next Steps
+
+- [Configure MQTT Endpoints](./configure-endpoints): modify endpoint settings
+- [About MQTT Endpoint Configuration](./about-endpoint-config): understand endpoint types and architecture
+- [Troubleshoot Network Issues](../network/troubleshoot-network): diagnose connectivity problems

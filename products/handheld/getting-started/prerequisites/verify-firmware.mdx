@@ -1,0 +1,104 @@
+---
+sidebar_position: 4
+title: "How to Verify Reader Firmware Version"
+description: "Two methods to check the firmware version on your RFD40 or RFD90 reader sled: via 123RFID Desktop and via MQTT."
+---
+
+# How to Verify Reader Firmware Version
+
+📙 **HOW-TO GUIDE**: Verify that your RFD40 or RFD90 reader sled is running firmware version 3.10.27 or later, which is required for IOTC MQTT connectivity.
+
+## Method 1: Via 123RFID Desktop
+
+This method requires a USB connection to a Windows PC.
+
+1. Connect the reader to your PC via USB cable.
+2. Open **123RFID Desktop**.
+3. Select your reader from the **Connected Readers** panel.
+4. Navigate to **Status** → **Device Information**.
+5. Locate the **Firmware Version** field.
+
+The firmware version is displayed in the format `X.Y.Z` (e.g., `3.10.27`).
+
+> **Note:** If the firmware version is below 3.10.27, you must update it before proceeding with IOTC integration. Firmware updates can be performed through 123RFID Desktop under **Maintenance** → **Firmware Update**.
+
+## Method 2: Via MQTT `get_version` Command
+
+This method requires that the reader is already bootstrapped and connected to the IOTC MQTT broker (see [Reader Bootstrap with 123RFID Desktop](./bootstrap-123rfid.mdx)).
+
+### Step 1: Subscribe to the Response Topic
+
+Open a terminal and subscribe to the MGMT response topic for your reader:
+
+```bash
+mosquitto_sub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>"
+```
+
+### Step 2: Publish the `get_version` Command
+
+In a second terminal, publish the `get_version` command to the MGMT command topic:
+
+```bash
+mosquitto_pub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>" \
+  -m '{"command":"get_version","requestId":"fw-check-001"}'
+```
+
+### Command Payload
+
+```json
+{
+  "command": "get_version",
+  "requestId": "fw-check-001"
+}
+```
+
+### Expected Response
+
+The reader responds on the MGMT response topic with a payload similar to:
+
+```json
+{
+  "command": "get_version",
+  "requestId": "fw-check-001",
+  "status": "OK",
+  "payload": {
+    "model": "RFD40",
+    "serialNumber": "RFD40-1234567890",
+    "firmwareVersion": "3.10.27",
+    "bluetoothVersion": "1.2.3",
+    "hardwareVersion": "A0"
+  }
+}
+```
+
+### Interpreting the Response
+
+| Field | Description |
+|-------|-------------|
+| `model` | Reader model; `RFD40` or `RFD90` |
+| `serialNumber` | Unique device serial number |
+| `firmwareVersion` | Current firmware version installed on the reader |
+| `bluetoothVersion` | Bluetooth module firmware version |
+| `hardwareVersion` | Hardware revision identifier |
+
+## Version Comparison
+
+Ensure the `firmwareVersion` value meets or exceeds the minimum required version:
+
+| Minimum Required | Your Version | Status |
+|------------------|-------------|--------|
+| 3.10.27 | ≥ 3.10.27 | ✅ Ready for IOTC |
+| 3.10.27 | < 3.10.27 | ❌ Update required |
+
+> **Warning:** If your firmware version is below 3.10.27, do not proceed with IOTC integration. Connect the reader via USB and update the firmware through 123RFID Desktop before continuing.
+
+## Next Steps
+
+- [How to Pair the Reader Sled via Bluetooth](./pair-bluetooth.mdx)
+- [Quick Start Tutorial](../quick-start/overview.mdx)

@@ -1,0 +1,1021 @@
+---
+sidebar_position: 4
+title: Controlling RFID Operations
+---
+
+# Controlling RFID Operations
+
+The [Quick Start](/handheld/quick-start) ran your first inventory with default settings; `BALANCED_PERFORMANCE` profile, no filters, no stop conditions, manual START/STOP. That was enough to prove connectivity. It is not enough for production.
+
+Production environments impose constraints that defaults cannot anticipate: a dock door portal must read 500 tags on a moving pallet in under 3 seconds. A retail point-of-sale must read exactly one tag at 30 cm without picking up the shelf behind it. A manufacturing line must write inspection data to each tag as it passes, then lock the memory bank. Each scenario demands a different combination of transmit power, modulation, filtering, and lifecycle control.
+
+This chapter covers the full RFID configuration pipeline, from high-level profile selection through fine-grained RF tuning, tag filtering, memory access, and operation lifecycle. Every configuration flows through a single command: `set_operating_mode`, published on the CTRL interface. Post-filters use a separate command (`set_post_filter`) on the same interface.
+
+**Publish to:**
+
+```
+<TENANT_ID>/CTRL/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Subscribe to (for responses):**
+
+```
+<TENANT_ID>/CTRL/clients/resp/<DEVICE_SERIAL>
+```
+
+> **Stop before you configure.** You cannot change the operating mode while an inventory is in progress. If you receive response code `11` ("Inventory in progress"), send a `control_operation` STOP first, then reconfigure.
+
+---
+
+## 8.1 The Operating Mode Mental Model
+
+The `set_operating_mode` command controls everything: RF power, modulation, anti-collision behavior, tag filtering, memory access operations, and start/stop triggers. It uses a **modular payload**; send only the sub-objects you want to change, and omitted sub-objects retain their current values.
+
+At the top level, you make one decision: **profile or advanced?**
+
+### Profiles: Preset Configurations
+
+A profile is a factory-tuned preset that sets RF parameters, session behavior, and power management to optimize for a specific goal.
+
+| Profile | Optimizes For | Tradeoff | Use When |
+|---------|--------------|----------|----------|
+| `BALANCED_PERFORMANCE` | Equal balance of read speed and battery life | No extreme in either direction | **Default.** General-purpose scanning, development, testing. Start here. |
+| `FAST_READ` | Maximum read speed, shortest singulation time | High power drain; short range; **`dataEVT` not supported** | Timed race conditions; read as many tags as possible in a fixed window. |
+| `CYCLE_COUNT` | Maximum unique tags per inventory cycle | Slower per-tag reads; longer cycle time | Full-room inventory counts; warehouse cycle counts, asset audits. |
+| `DENSE_READERS` | Interference avoidance when multiple readers overlap | Reduced individual reader throughput | Multi-reader deployments; dock doors, conveyor tunnels, retail stores. |
+| `OPTIMAL_BATTERY` | Maximum battery life | Lower transmit power; reduced read range and speed | Roaming workers scanning intermittently; receiving, shelf checks, put-away. |
+| `ADVANCED` | Full manual control of all RF parameters | Requires explicit configuration; misconfiguration risk | None of the above profiles fit. |
+
+**Setting a profile:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "mode-001",
+  "operatingMode": {
+    "operatingModes": {
+      "profiles": "CYCLE_COUNT"
+    }
+  }
+}
+```
+
+> **⚠ WARNING:** The `FAST_READ` profile does not generate `dataEVT` events. If your application depends on receiving tag data via MQTT, do not use `FAST_READ`. This profile is intended for local barcode-pairing workflows where the host device reads tag data directly over Bluetooth.
+
+### When to Use ADVANCED
+
+Switch to `ADVANCED` when you need to control at least one of the following:
+
+- **Transmit power**: because your read zone must be shorter or longer than the profile default.
+- **Link profile**: because your RF environment (metal, liquids, interference) demands a specific modulation.
+- **Session and tag population**: because your tag count, persistence requirements, or multi-reader coordination do not match any preset.
+- **Dynamic power**: because you need the reader to automatically adjust power based on tag distance.
+
+Selecting `ADVANCED` **requires** the `advancedConfigurations` object. Omitting it returns response code `22` ("Advanced configuration not set").
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "mode-002",
+  "operatingMode": {
+    "operatingModes": {
+      "profiles": "ADVANCED",
+      "advancedConfigurations": {
+        "transmitPower": 270,
+        "linkProfile": "M4_256K",
+        "session": "SESSION_1",
+        "dynamicPower": false
+      }
+    }
+  }
+}
+```
+
+---
+
+## 8.2 Configuring RF Parameters
+
+When you select the `ADVANCED` profile, you gain direct control over the physical RF layer.
+
+### Transmit Power
+
+`advancedConfigurations.transmitPower` sets the reader's RF output power in **tenths of a dBm**, so `300` means 30.0 dBm, and `150` means 15.0 dBm.
+
+**What it controls:** Read range. Higher power means the RF signal reaches farther and powers tags at greater distances.
+
+| Scenario | Recommended Power | Rationale |
+|----------|-------------------|-----------|
+| Dock door portal (read pallets at 5–10 m) | `270`–`300` (27–30 dBm) | Maximize range to capture all tags on a pallet |
+| Retail point-of-sale (one item at 30 cm) | `100`–`150` (10–15 dBm) | Minimize read zone to avoid scanning adjacent items |
+| Warehouse pick-and-pack (1–2 m) | `200`–`240` (20–24 dBm) | Medium range; covers the pick zone |
+| Asset tracking in metal-heavy environment | `270`–`300` (27–30 dBm) | Compensate for RF absorption from metal surfaces |
+
+Setting `dynamicPower: true` enables automatic power adjustment based on tag distance (estimated from RSSI). Useful for handheld workflows where the reader-to-tag distance varies continuously.
+
+> The maximum power depends on the reader model and regulatory region. RFD40 supports 0–30 dBm (RFD40-M: 4–34 dBm). RFD90 supports 0–30 dBm.
+
+### Link Profile Selection
+
+`advancedConfigurations.linkProfile` selects the modulation scheme and data rate. Link profiles follow the pattern `{encoding}_{dataRate}`.
+
+| Encoding | Noise Tolerance | Data Rate | Best For |
+|----------|----------------|-----------|----------|
+| **FM0** | Low | Highest | Ideal RF environment; open air, minimal metal, single reader. |
+| **M2** | Medium | Moderate | Light interference; standard warehouse, some metal shelving. |
+| **M4** | High | Lower | Moderate interference; metal environment, multiple readers nearby. |
+| **M8** | Highest | Lowest | Extreme interference; heavy metal, dense reader deployments. |
+
+| Environment | Recommended Link Profile |
+|-------------|------------------------|
+| Open warehouse, single reader | `FM0_320K` |
+| Multi-reader dock door array | `M4_256K` |
+| Metal manufacturing floor | `M4_320K` or `M8_240K` |
+| Clean retail floor | `M2_320K` |
+
+> **If you are unsure, start with `M4_256K`.** It provides good noise tolerance without severe throughput penalty.
+
+### Tag Population and the Q Algorithm
+
+`query.tagPopulation` tells the reader approximately how many tags to expect in the field of view. The reader uses this hint to select an initial Q value for the Gen2 anti-collision algorithm.
+
+**When unsure, overestimate slightly.** Empty slots cost microseconds; collisions cost entire re-interrogation cycles.
+
+| Deployment | Expected Tags | Recommended `tagPopulation` |
+|-----------|--------------|---------------------------|
+| Point-of-sale (single item) | 1–5 | `10` |
+| Shelf audit (one bay) | 20–50 | `50` |
+| Pallet scan (dock door) | 100–300 | `300`–`500` |
+| Full-room cycle count | 500–2,000+ | `500`–`1000` |
+
+**Session selection:**
+
+| Goal | Session | Inventory State | Behavior |
+|------|---------|----------------|----------|
+| Count every unique tag once per cycle | `SESSION_1` | `STATE_A` | Tags flip to B after first read; auto-revert for re-scan |
+| Detect new tag arrivals only | `SESSION_2` | `STATE_A` | Tags stay in B, only new arrivals respond |
+| Continuous monitoring (every tag, every round) | `SESSION_0` | `STATE_A` | Tags always respond, no deduplication |
+| Flip-flop between A and B populations | `SESSION_1` | `STATE_AB` | Alternates target between A and B |
+
+**Complete ADVANCED configuration example:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "mode-advanced-full",
+  "operatingMode": {
+    "operatingModes": {
+      "profiles": "ADVANCED",
+      "advancedConfigurations": {
+        "transmitPower": 270,
+        "linkProfile": "M4_256K",
+        "session": "SESSION_1",
+        "dynamicPower": false
+      },
+      "query": {
+        "session": "SESSION_1",
+        "inventoryState": "STATE_A",
+        "slFlag": "ALL",
+        "tagPopulation": 500
+      }
+    }
+  }
+}
+```
+
+---
+
+## 8.3 Select Filters and Pre-Filters
+
+Pre-filters are the Gen2 `WHERE` clause; a comparison that runs at the air interface, before inventory, to narrow the tag population that participates.
+
+### Where Filtering Happens
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Tag Population in RF Field (hundreds or thousands of tags) │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+            ┌────────────▼───────────────┐
+            │   Pre-Filter (select[])    │  ◄── Gen2 air protocol
+            │   Tags flag themselves     │      Saves RF time
+            │   A or B based on match    │      Unmatched tags never respond
+            └────────────┬───────────────┘
+                         │
+          Only matching tags participate
+                         │
+            ┌────────────▼───────────────┐
+            │   Inventory (singulation)  │
+            │   Reader reads each tag    │
+            └────────────┬───────────────┘
+                         │
+            ┌────────────▼───────────────┐
+            │   Post-Filter (§ 8.5)      │  ◄── Reader CPU
+            │   Suppress unwanted reads  │      Saves MQTT bandwidth
+            └────────────┬───────────────┘
+                         │
+            ┌────────────▼───────────────┐
+            │   dataEVT published        │
+            │   to MQTT broker           │
+            └────────────────────────────┘
+```
+
+**Pre-filters save RF time.** Tags that do not match the filter never backscatter, never consume air-interface slots, and never contribute to collisions. In a field of 1,000 tags where you only care about 50, a pre-filter reduces inventory time by an order of magnitude.
+
+### Configuring a Pre-Filter
+
+Pre-filters are configured in the `select` array of `set_operating_mode`. Each element defines one Gen2 Select command. You can chain up to **32** select filters.
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "filter-pre-001",
+  "operatingMode": {
+    "operatingModes": {
+      "select": [
+        {
+          "enable": true,
+          "tagPattern": "3034",
+          "memoryBank": "EPC",
+          "offset": 32,
+          "action": "INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL",
+          "target": "SESSION_SL",
+          "length": 16
+        }
+      ]
+    }
+  }
+}
+```
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| `enable` | `true` | Activate this filter. |
+| `tagPattern` | `"3034"` | The hex bit pattern to match. |
+| `memoryBank` | `"EPC"` | Compare against EPC memory bank. Also accepts `"TID"` or `"USER"`. |
+| `offset` | `32` | Start at bit 32 of the EPC bank. Bits 0–31 are CRC/PC. **For EPC prefix matching, always use offset 32.** |
+| `action` | `"INV_A_NOT_INV_B..."` | Matching tags → State A. Non-matching → State B (skipped). |
+| `target` | `"SESSION_SL"` | Apply the action to the SL (Select) flag. |
+| `length` | `16` | Compare 16 bits (4 hex characters). Must match the bit length of `tagPattern`. |
+
+### EPC Prefix Matching
+
+**Match all tags with EPC prefix `E280`:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "filter-prefix-e280",
+  "operatingMode": {
+    "operatingModes": {
+      "select": [
+        {
+          "enable": true,
+          "tagPattern": "E280",
+          "memoryBank": "EPC",
+          "offset": 32,
+          "action": "INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL",
+          "target": "SESSION_SL",
+          "length": 16
+        }
+      ],
+      "query": {
+        "slFlag": "ASSERTED"
+      }
+    }
+  }
+}
+```
+
+Note `query.slFlag: "ASSERTED"`; this tells the reader to inventory only tags whose SL flag is asserted by the select filter. Without this, the reader inventories all tags regardless.
+
+### Chaining Multiple Filters
+
+Multiple select entries execute sequentially; implementing an AND operation.
+
+**Match tags with EPC prefix `3034` AND a specific TID manufacturer code:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "filter-chain-001",
+  "operatingMode": {
+    "operatingModes": {
+      "select": [
+        {
+          "enable": true,
+          "tagPattern": "3034",
+          "memoryBank": "EPC",
+          "offset": 32,
+          "action": "INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL",
+          "target": "SESSION_SL",
+          "length": 16
+        },
+        {
+          "enable": true,
+          "tagPattern": "E2801104",
+          "memoryBank": "TID",
+          "offset": 0,
+          "action": "INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL",
+          "target": "SESSION_SL",
+          "length": 32
+        }
+      ],
+      "query": {
+        "slFlag": "ASSERTED"
+      }
+    }
+  }
+}
+```
+
+### Select Action Reference
+
+| Action Value | On Match | On Non-Match | Common Use |
+|-------------|----------|--------------|------------|
+| `INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL` | → State A / Assert SL | → State B / Deassert SL | **Most common.** Include matches, exclude non-matches. |
+| `INV_A_OR_ASRT_SL` | → State A / Assert SL | No change | Include matches; leave others unchanged. |
+| `NOT_INV_B_OR_NOT_DSRT_SL` | No change | → State B / Deassert SL | Exclude non-matches; leave matches unchanged. |
+| `INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL` | → State B / Deassert SL | → State A / Assert SL | **Inverse.** Exclude matches, include non-matches. |
+| `INV_B_OR_DSRT_SL` | → State B / Deassert SL | No change | Exclude matches; leave non-matches unchanged. |
+| `NOT_INV_A_OR_NOT_ASRT_SL` | No change | → State A / Assert SL | Include non-matches; leave matches unchanged. |
+
+### Clearing Pre-Filters
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "filter-clear",
+  "operatingMode": {
+    "operatingModes": {
+      "select": []
+    }
+  }
+}
+```
+
+---
+
+## 8.4 Access Operations
+
+Standard inventory returns the EPC, the tag's identifier. Access operations go further: they read additional memory banks, write data to tags, lock memory, or permanently deactivate tags. These operations execute **during inventory**; the reader singulates each tag, then performs the configured access operation.
+
+Access operations are configured in the `accessOperations` array of `set_operating_mode`. Multiple operations can be stacked; for example, read TID, write to User memory, then lock User memory, all in a single inventory pass.
+
+### Reading Tag Memory
+
+Read data from any memory bank. Offset and length are specified in **16-bit words**.
+
+**Read the full TID bank:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "access-read-tid",
+  "operatingMode": {
+    "operatingModes": {
+      "accessOperations": [
+        {
+          "operationType": "READ",
+          "config": {
+            "memoryBank": "TID",
+            "offset": 0,
+            "length": 6
+          }
+        }
+      ],
+      "tagMetaDataToEnable": {
+        "TID": true
+      }
+    }
+  }
+}
+```
+
+The read data appears in the `tid` field of each `dataEVT` tag object.
+
+**Read User memory (4 words starting at offset 2):**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "access-read-user",
+  "operatingMode": {
+    "operatingModes": {
+      "accessOperations": [
+        {
+          "operationType": "READ",
+          "config": {
+            "memoryBank": "USER",
+            "offset": 2,
+            "length": 4
+          }
+        }
+      ],
+      "tagMetaDataToEnable": {
+        "USER": true
+      }
+    }
+  }
+}
+```
+
+> **offset is in 16-bit words.** An offset of `2` means "start at word 2" (byte 4, bit 32). This differs from pre-filter offsets, which are in bits.
+
+### Writing Data to Tags
+
+Write hex-encoded data to a tag's memory. Writing requires the tag's **access password**, if the tag's access password is `00000000` (the default), pass `"00000000"`.
+
+**Write 2 words to User memory:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "access-write-user",
+  "operatingMode": {
+    "operatingModes": {
+      "accessOperations": [
+        {
+          "operationType": "WRITE",
+          "config": {
+            "memoryBank": "USER",
+            "offset": 0,
+            "length": 2,
+            "data": "48656C6C",
+            "password": "00000000"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| `memoryBank` | `"USER"` | Write to User memory bank |
+| `offset` | `0` | Start at word 0 |
+| `length` | `2` | Write 2 words (4 bytes = 8 hex characters) |
+| `data` | `"48656C6C"` | The hex data to write. Length must equal `length × 4` hex characters. |
+| `password` | `"00000000"` | The tag's 32-bit access password in hex |
+
+> **⚠ WARNING:** Writing to the EPC bank changes the tag's identity. All downstream systems that reference this tag by EPC will lose track of it.
+
+### Locking Tag Memory
+
+**Lock the EPC bank permanently:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "access-lock-epc",
+  "operatingMode": {
+    "operatingModes": {
+      "accessOperations": [
+        {
+          "operationType": "LOCK",
+          "config": {
+            "password": "00000000",
+            "lockMemBank": "EPC",
+            "lockAction": "PERMANENT_LOCK"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**Lock actions:**
+
+| Action | Effect | Reversible? |
+|--------|--------|-------------|
+| `READ_AND_WRITE` | Bank is read/write accessible (with access password) | Yes |
+| `PERMANENT_LOCK` | Bank is permanently read-only. | **No** |
+| `PERMANENT_UNLOCK` | Bank is permanently read/write. | **No** |
+| `UNLOCK` | Remove temporary lock; restore read/write access | Yes |
+
+**Lockable memory banks:** `EPC`, `TID`, `USER`, `ACCESS_PWD`, `KILL_PWD`, `ALL`.
+
+> **⚠ WARNING:** `PERMANENT_LOCK` and `PERMANENT_UNLOCK` are irreversible. Test lock operations on disposable tags before applying to production inventory.
+
+### Killing Tags
+
+The kill operation **permanently and irreversibly deactivates a tag**. A killed tag never responds to any reader again.
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "access-kill",
+  "operatingMode": {
+    "operatingModes": {
+      "accessOperations": [
+        {
+          "operationType": "KILL",
+          "config": {
+            "password": "12345678"
+          }
+        }
+      ]
+    }
+  }
+}
+```
+
+**Requirements:** The tag must have a **non-zero kill password** programmed. Tags with kill password `00000000` (factory default) cannot be killed.
+
+> **⚠ WARNING:** Kill is permanent and irreversible. Every tag singulated during the inventory will be killed. Always use a pre-filter to target specific tags.
+
+### Combining Multiple Access Operations
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "access-combo",
+  "operatingMode": {
+    "operatingModes": {
+      "accessOperations": [
+        {
+          "operationType": "READ",
+          "config": {
+            "memoryBank": "TID",
+            "offset": 0,
+            "length": 6
+          }
+        },
+        {
+          "operationType": "WRITE",
+          "config": {
+            "memoryBank": "USER",
+            "offset": 0,
+            "length": 2,
+            "data": "FFFFEEEE",
+            "password": "00000000"
+          }
+        },
+        {
+          "operationType": "LOCK",
+          "config": {
+            "password": "00000000",
+            "lockMemBank": "USER",
+            "lockAction": "READ_AND_WRITE"
+          }
+        }
+      ],
+      "tagMetaDataToEnable": {
+        "TID": true,
+        "USER": true
+      }
+    }
+  }
+}
+```
+
+---
+
+## 8.5 Post-Filters
+
+Pre-filters narrow the tag population *before* inventory. Post-filters narrow the data stream *after* inventory; tags are read over RF, but their data is discarded before being published to the MQTT broker.
+
+| | Pre-Filter (select) | Post-Filter (set_post_filter) |
+|---|---|---|
+| **Where it runs** | Over the air; Gen2 Select command | On the reader's CPU; application-level |
+| **What it saves** | RF time; unmatched tags never backscatter | MQTT bandwidth; unmatched reads not published |
+| **Tags still read?** | No | Yes |
+| **Filter criteria** | Bit pattern matching against memory banks | EPC prefix/suffix, regex, RSSI threshold, whitelist/blacklist |
+| **Configuration** | `set_operating_mode` → `select[]` | `set_post_filter` (separate command) |
+| **Max filters** | 32 | 1 active filter |
+
+**When to use each:**
+- **Use pre-filters** when you know the memory-bank bit pattern. This eliminates RF overhead.
+- **Use post-filters** when your criterion is not expressible as a Gen2 Select; RSSI threshold, regex patterns, or explicit tag lists.
+- **Use both** for maximum efficiency.
+
+### Configuring Post-Filters
+
+Post-filters use `set_post_filter`, published on the same CTRL interface.
+
+### RSSI Threshold
+
+**Read only tags stronger than -55 dBm:**
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "pf-rssi-001",
+  "postFilter": {
+    "filterType": "RSSI",
+    "action": "INCLUDE",
+    "rssiThreshold": -55,
+    "enable": true
+  }
+}
+```
+
+The `rssiThreshold` is in dBm. Note that `dataEVT` reports RSSI in **tenths of dBm** (`-550` = -55.0 dBm), but the filter threshold uses whole dBm.
+
+> **RSSI is not a reliable distance measurement.** Use RSSI thresholds as a coarse proximity filter. Calibrate in your actual deployment environment.
+
+### EPC Prefix and Suffix Matching
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "pf-prefix-001",
+  "postFilter": {
+    "filterType": "PREFIX",
+    "action": "INCLUDE",
+    "pattern": "3034",
+    "enable": true
+  }
+}
+```
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "pf-suffix-001",
+  "postFilter": {
+    "filterType": "SUFFIX",
+    "action": "EXCLUDE",
+    "pattern": "0000",
+    "enable": true
+  }
+}
+```
+
+### Regex Filtering
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "pf-regex-001",
+  "postFilter": {
+    "filterType": "REGEX",
+    "action": "INCLUDE",
+    "pattern": "^E280.*82B$",
+    "enable": true
+  }
+}
+```
+
+### Whitelists and Blacklists
+
+**Whitelist: only publish data for specific tags:**
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "pf-whitelist-001",
+  "postFilter": {
+    "filterType": "WHITELIST",
+    "action": "INCLUDE",
+    "tagList": [
+      "E2801170000002059E42A82B",
+      "E2801170000002059E42A82C",
+      "300833B2DDD9014000000000"
+    ],
+    "enable": true
+  }
+}
+```
+
+**Blacklist: suppress known infrastructure tags:**
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "pf-blacklist-001",
+  "postFilter": {
+    "filterType": "BLACKLIST",
+    "action": "EXCLUDE",
+    "tagList": [
+      "30340000000000000000AAAA",
+      "30340000000000000000BBBB"
+    ],
+    "enable": true
+  }
+}
+```
+
+### Disabling a Post-Filter
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "pf-disable",
+  "postFilter": {
+    "filterType": "PREFIX",
+    "action": "INCLUDE",
+    "pattern": "3034",
+    "enable": false
+  }
+}
+```
+
+### Retrieving the Current Post-Filter
+
+```json
+{
+  "command": "get_post_filter",
+  "requestId": "pf-get-001"
+}
+```
+
+---
+
+## 8.6 Start and Stop Conditions
+
+This section controls *when* inventory begins, how it ends, and whether it repeats.
+
+In the [Quick Start](/handheld/quick-start), you started inventory with `control_operation` START and stopped with `control_operation` STOP. Start and stop **conditions** add hardware triggers and automatic termination logic that supplement explicit MQTT commands.
+
+### Start Conditions
+
+Configure via `radioStartConditions` in `set_operating_mode`.
+
+**Start on trigger button press:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "start-trigger",
+  "operatingMode": {
+    "operatingModes": {
+      "radioStartConditions": {
+        "trigger": "PRESSED",
+        "startDelay": 0,
+        "repeat": true
+      }
+    }
+  }
+}
+```
+
+**Trigger values:**
+
+| Value | Behavior |
+|-------|----------|
+| `IMMEDIATE` | Inventory starts as soon as `control_operation` START is received. Default. |
+| `PRESSED` | Inventory starts when the reader's trigger button is pressed. |
+| `RELEASED` | Inventory starts when the trigger button is released. |
+
+### Stop Conditions
+
+Configure via `radioStopConditions` in `set_operating_mode`.
+
+**Stop after reading 50 unique tags:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "stop-tagcount",
+  "operatingMode": {
+    "operatingModes": {
+      "radioStopConditions": {
+        "trigger": "IMMEDIATE",
+        "tagCount": 50,
+        "stopTimeout": 0,
+        "inventoryCount": 0
+      }
+    }
+  }
+}
+```
+
+**Stop after 10 seconds:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "stop-timeout",
+  "operatingMode": {
+    "operatingModes": {
+      "radioStopConditions": {
+        "trigger": "IMMEDIATE",
+        "tagCount": 0,
+        "stopTimeout": 10000,
+        "inventoryCount": 0
+      }
+    }
+  }
+}
+```
+
+| Field | Value | Meaning |
+|-------|-------|---------|
+| `trigger` | `"RELEASED"` / `"PRESSED"` / `"IMMEDIATE"` | Stop on button release, press, or no trigger-based stop. |
+| `tagCount` | `50` | Stop after reading 50 unique tags. `0` = no limit. |
+| `stopTimeout` | `10000` | Stop after 10,000 ms. `0` = no timeout. |
+| `inventoryCount` | `5` | Stop after 5 complete inventory cycles. `0` = unlimited. |
+
+**Multiple stop conditions are evaluated as OR**: stops when *any* condition is met.
+
+> A stop condition value of `0` means "disabled" for that criterion.
+
+### Common Patterns
+
+#### Continuous Inventory (Server-Driven Control)
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "pattern-continuous",
+  "operatingMode": {
+    "operatingModes": {
+      "radioStartConditions": { "trigger": "IMMEDIATE", "startDelay": 0, "repeat": false },
+      "radioStopConditions": { "trigger": "IMMEDIATE", "tagCount": 0, "stopTimeout": 0, "inventoryCount": 0 }
+    }
+  }
+}
+```
+
+**Use case:** Dock door portal, conveyor belt monitoring. Application manages lifecycle via `control_operation` START/STOP.
+
+#### Burst Inventory (Time-Limited)
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "pattern-burst",
+  "operatingMode": {
+    "operatingModes": {
+      "radioStartConditions": { "trigger": "IMMEDIATE", "startDelay": 0, "repeat": false },
+      "radioStopConditions": { "trigger": "IMMEDIATE", "tagCount": 0, "stopTimeout": 5000, "inventoryCount": 0 }
+    }
+  }
+}
+```
+
+**Use case:** Scheduled cycle counts; server sends START, reader scans 5 seconds and stops automatically.
+
+#### Trigger-Controlled Scanning (Press to Scan, Release to Stop)
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "pattern-trigger",
+  "operatingMode": {
+    "operatingModes": {
+      "radioStartConditions": { "trigger": "PRESSED", "startDelay": 0, "repeat": true },
+      "radioStopConditions": { "trigger": "RELEASED", "tagCount": 0, "stopTimeout": 30000, "inventoryCount": 0 }
+    }
+  }
+}
+```
+
+The `stopTimeout: 30000` acts as a safety net if the operator holds the trigger too long.
+
+**Use case:** Warehouse pick-and-pack, shelf audits, receiving inspections.
+
+#### Target Count Scanning (Stop at N Tags)
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "pattern-target",
+  "operatingMode": {
+    "operatingModes": {
+      "radioStartConditions": { "trigger": "PRESSED", "startDelay": 0, "repeat": true },
+      "radioStopConditions": { "trigger": "IMMEDIATE", "tagCount": 24, "stopTimeout": 15000, "inventoryCount": 0 }
+    }
+  }
+}
+```
+
+**Use case:** Case verification; scans until 24 unique tags are read (success) or 15 seconds elapse (timeout).
+
+### Production Configuration Example
+
+A complete production configuration requiring two commands:
+
+**Command 1: `set_operating_mode`:**
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "production-config",
+  "operatingMode": {
+    "operatingModes": {
+      "profiles": "ADVANCED",
+      "advancedConfigurations": {
+        "transmitPower": 270,
+        "linkProfile": "M4_256K",
+        "session": "SESSION_1",
+        "dynamicPower": false
+      },
+      "query": {
+        "session": "SESSION_1",
+        "inventoryState": "STATE_A",
+        "slFlag": "ASSERTED",
+        "tagPopulation": 500
+      },
+      "select": [
+        {
+          "enable": true,
+          "tagPattern": "3034",
+          "memoryBank": "EPC",
+          "offset": 32,
+          "action": "INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL",
+          "target": "SESSION_SL",
+          "length": 16
+        }
+      ],
+      "accessOperations": [
+        {
+          "operationType": "READ",
+          "config": { "memoryBank": "TID", "offset": 0, "length": 6 }
+        }
+      ],
+      "radioStartConditions": { "trigger": "PRESSED", "startDelay": 0, "repeat": true },
+      "radioStopConditions": { "trigger": "RELEASED", "tagCount": 0, "stopTimeout": 30000, "inventoryCount": 0 },
+      "tagMetaDataToEnable": {
+        "RSSI": true,
+        "PHASE": false,
+        "SEENCOUNT": true,
+        "CHANNEL": false,
+        "PC": false,
+        "XPC": false,
+        "CRC": false,
+        "EPC": true,
+        "TID": true,
+        "USER": false,
+        "MAC": true,
+        "HOSTNAME": true
+      }
+    }
+  }
+}
+```
+
+**Command 2: `set_post_filter` (RSSI threshold):**
+
+```json
+{
+  "command": "set_post_filter",
+  "requestId": "production-filter",
+  "postFilter": {
+    "filterType": "RSSI",
+    "action": "INCLUDE",
+    "rssiThreshold": -60,
+    "enable": true
+  }
+}
+```
+
+**Then start:** Send `control_operation` START. The reader is armed and waits for a trigger press. On press: inventory begins with ADVANCED RF settings, pre-filtered to EPC prefix `3034`, reading TID on each tag, suppressing reads weaker than -60 dBm, stopping when the trigger is released or after 30 seconds.
+
+## Select Filters
+
+Filter tags before inventory to read only specific tags:
+
+```json
+{
+  "command": "set_select_filter",
+  "payload": {
+    "memoryBank": "EPC",
+    "bitOffset": 32,
+    "bitLength": 64,
+    "mask": "300833B2DDD9014000000000"
+  }
+}
+```
+
+## Tag Access Operations
+
+### Read Tag Memory
+
+```json
+{
+  "command": "tag_read",
+  "payload": {
+    "memoryBank": "USER",
+    "offset": 0,
+    "length": 4
+  }
+}
+```
+
+### Write Tag Memory
+
+```json
+{
+  "command": "tag_write",
+  "payload": {
+    "memoryBank": "USER",
+    "offset": 0,
+    "data": "DEADBEEF"
+  }
+}
+```
+
+### Lock Tag
+
+```json
+{
+  "command": "tag_lock",
+  "payload": {
+    "memoryBank": "EPC",
+    "lockType": "PERMALOCK"
+  }
+}
+```

@@ -1,0 +1,187 @@
+---
+sidebar_position: 4
+title: "How to Configure Post-Filters"
+description: "Step-by-step guide to configuring tag post-filters on the RFD40/RFD90 via MQTT."
+---
+
+# How to Configure Post-Filters
+
+This guide walks you through reading, setting, and clearing post-filters on the RFD40/RFD90 reader sled via MQTT. Post-filters control which tags generate `dataEVT` payloads based on EPC pattern matching.
+
+## Prerequisites
+
+- Device connected and online
+- MQTT client subscribed to the control response topic
+- No active RFID operation running
+
+## Step 1: Read the Current Post-Filter
+
+Retrieve the currently configured post-filter to check the baseline.
+
+**Publish to:**
+```
+{tenantId}/CTRL/clients/cmnd/{deviceSerial}
+```
+
+```json
+{
+  "command": "get_post_filter",
+  "command_id": "cmd-010"
+}
+```
+
+**Response on:**
+```
+{tenantId}/CTRL/clients/resp/{deviceSerial}
+```
+
+**Example response (no filter set):**
+```json
+{
+  "command": "get_post_filter",
+  "command_id": "cmd-010",
+  "status": "OK",
+  "payload": {
+    "enabled": false,
+    "pattern": null,
+    "bit_offset": 0,
+    "match_action": null
+  }
+}
+```
+
+**Example response (filter active):**
+```json
+{
+  "command": "get_post_filter",
+  "command_id": "cmd-010",
+  "status": "OK",
+  "payload": {
+    "enabled": true,
+    "pattern": "3034257B",
+    "bit_offset": 32,
+    "match_action": "INCLUDE"
+  }
+}
+```
+
+## Step 2: Set a Post-Filter
+
+### Include Only Tags with a Specific Company Prefix
+
+This filter reports only tags whose EPC starts with `3034257B` at bit offset 32 (after the EPC header).
+
+```json
+{
+  "command": "set_post_filter",
+  "command_id": "cmd-011",
+  "payload": {
+    "enabled": true,
+    "pattern": "3034257B",
+    "bit_offset": 32,
+    "match_action": "INCLUDE"
+  }
+}
+```
+
+### Exclude Infrastructure Tags
+
+This filter discards tags whose EPC starts with `E200` (common for infrastructure markers) and reports everything else.
+
+```json
+{
+  "command": "set_post_filter",
+  "command_id": "cmd-012",
+  "payload": {
+    "enabled": true,
+    "pattern": "E200",
+    "bit_offset": 0,
+    "match_action": "EXCLUDE"
+  }
+}
+```
+
+### Using Wildcards
+
+Match tags where bytes 1–2 are `30` and bytes 5–6 are `7B`, with any value for bytes 3–4:
+
+```json
+{
+  "command": "set_post_filter",
+  "command_id": "cmd-013",
+  "payload": {
+    "enabled": true,
+    "pattern": "30**7B",
+    "bit_offset": 0,
+    "match_action": "INCLUDE"
+  }
+}
+```
+
+## Field Reference
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `enabled` | boolean | Yes | Enable or disable the post-filter |
+| `pattern` | string | Yes (if enabled) | Hex pattern to match against. Supports `*` wildcards per nibble |
+| `bit_offset` | integer | No | Bit position in the EPC to start matching (default: 0) |
+| `match_action` | string | Yes (if enabled) | `INCLUDE`: report only matching tags. `EXCLUDE`: discard matching tags |
+
+## Step 3: Verify the Filter
+
+Read back the filter to confirm it was applied:
+
+```json
+{
+  "command": "get_post_filter",
+  "command_id": "cmd-014"
+}
+```
+
+## Step 4: Clear the Filter
+
+To remove the post-filter and return to reporting all tags:
+
+```json
+{
+  "command": "set_post_filter",
+  "command_id": "cmd-015",
+  "payload": {
+    "enabled": false
+  }
+}
+```
+
+## Testing the Filter
+
+1. Set the filter with your target pattern
+2. Start an RFID operation (`control_operation` START)
+3. Present a tag that should **match** the filter; verify a `dataEVT` appears
+4. Present a tag that should **not match**; verify no `dataEVT` is generated
+5. Clear the filter and verify both tags now generate events
+
+## Error Handling
+
+```json
+{
+  "command": "set_post_filter",
+  "command_id": "cmd-011",
+  "status": "ERROR",
+  "error": {
+    "code": "OPERATION_ACTIVE",
+    "message": "Cannot modify post-filter while an RFID operation is running."
+  }
+}
+```
+
+| Error Code | Cause | Resolution |
+|---|---|---|
+| `OPERATION_ACTIVE` | RFID operation is running | Stop the operation first |
+| `INVALID_PATTERN` | Malformed hex pattern | Check pattern syntax and length |
+| `INVALID_OFFSET` | Bit offset exceeds EPC length | Use a valid bit offset |
+
+## Related Topics
+
+- [About Post-Filters](./about-post-filters.mdx): conceptual overview
+- [How to Configure the Operating Mode](./configure-operating-mode.mdx): RF-level pre-filters
+- [How to Start and Stop RFID Operations](./start-stop-operations.mdx)

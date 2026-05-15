@@ -1,0 +1,100 @@
+---
+sidebar_position: 6
+title: "About Trigger-Based Operations"
+description: "Understanding how the physical trigger button on the RFD40/RFD90 maps to RFID operations via MQTT."
+---
+
+# About Trigger-Based Operations
+
+The RFD40/RFD90 handheld reader sleds have a physical trigger button that operators use to initiate RFID scans. This page explains how trigger presses map to `control_operation` commands, the available trigger modes, and how trigger-initiated operations interact with MQTT-initiated operations.
+
+## Trigger and MQTT Integration
+
+When the operator presses the physical trigger, the reader firmware translates the button press into the same operation lifecycle as an MQTT `control_operation` START command. The resulting tag data is published to the same `dataEVT` topics regardless of whether the operation was started by the trigger or by an MQTT command.
+
+From your application's perspective, the data stream is identical; the origin of the start command (trigger vs. MQTT) is transparent.
+
+## Trigger Modes
+
+The reader supports multiple trigger behaviors that determine how the physical button maps to start and stop actions.
+
+### Press-to-Start / Release-to-Stop
+
+This is the default trigger mode. The reader scans only while the operator holds down the trigger button.
+
+- **Trigger press** → `control_operation` START
+- **Trigger release** → `control_operation` STOP
+- **Behavior**: Continuous scanning while held. Natural for point-and-scan workflows.
+
+This mode gives the operator direct, tactile control over when scanning occurs. Releasing the trigger immediately ends the scan session.
+
+### Toggle Mode
+
+In toggle mode, the trigger acts as an on/off switch.
+
+- **First press** → `control_operation` START
+- **Second press** → `control_operation` STOP
+- **Behavior**: Scanning continues after the first press until the operator presses again.
+
+Toggle mode is useful when the operator needs to set the reader down while scanning continues, or when extended scan sessions are needed without sustained grip pressure.
+
+### Trigger Disabled
+
+The trigger can be disabled entirely, restricting RFID operations to MQTT-initiated commands only. This is useful in kiosk or fixed-mount scenarios where the reader sled is attached to a dock and operations are controlled by the application.
+
+## Configuring the Trigger Mode
+
+The trigger mode is set via the `set_operating_mode` command as part of the overall operating configuration:
+
+```json
+{
+  "command": "set_operating_mode",
+  "command_id": "cmd-030",
+  "payload": {
+    "mode": "SIMPLE_INVENTORY",
+    "trigger_mode": "PRESS_AND_RELEASE"
+  }
+}
+```
+
+| Trigger Mode Value | Behavior |
+|---|---|
+| `PRESS_AND_RELEASE` | Scan while held, stop on release (default) |
+| `TOGGLE` | First press starts, second press stops |
+| `DISABLED` | Physical trigger has no effect |
+
+## Interaction with MQTT-Initiated Operations
+
+A key consideration is what happens when both the physical trigger and MQTT commands attempt to control the same reader.
+
+### Trigger Start + MQTT Stop
+
+If the operator starts scanning via the trigger, your application can stop the operation via an MQTT `control_operation` STOP command. The reader transitions to IDLE regardless of whether the trigger is still held.
+
+### MQTT Start + Trigger Stop
+
+If your application starts scanning via MQTT, the operator can stop it by pressing the trigger (in press-and-release mode, releasing the trigger). The reader treats trigger input as authoritative for stop actions.
+
+### Conflict Prevention
+
+The reader does not allow simultaneous conflicting commands. If an operation is already active (regardless of origin), a START from either source returns an `ALREADY_ACTIVE` error. The current operation must be stopped before a new one can begin.
+
+> **Note**: In production deployments, decide whether the trigger or MQTT is the primary control mechanism and communicate this to operators. Mixed-mode control can cause confusion if the operator and application both attempt to manage the reader simultaneously.
+
+## Trigger Events in MQTT
+
+When the trigger is pressed or released, the reader can optionally publish a trigger event so your application knows the operator interacted with the device. This is configured via `config_events` and appears as part of the heartbeat or as a dedicated event, depending on firmware version.
+
+## Battery Considerations
+
+Trigger mode affects battery consumption:
+
+- **Press-and-release**: Shortest average scan duration; the operator controls the window naturally
+- **Toggle**: Potentially longer scans if the operator forgets to press again
+- **MQTT-only**: Application controls duration, which can be optimized programmatically
+
+## Related Topics
+
+- [How to Start and Stop RFID Operations](./start-stop-operations.mdx): MQTT-based operation control
+- [About RFID Operating Modes](./about-operating-modes.mdx): mode selection and configuration
+- [How to Configure Event Reporting](../../observability/events/configure-event-reporting.mdx): trigger event reporting

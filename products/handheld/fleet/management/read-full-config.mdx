@@ -1,0 +1,169 @@
+---
+sidebar_position: 2
+title: "How to Read Full Device Configuration"
+---
+
+# How to Read Full Device Configuration
+
+This guide explains how to retrieve the complete configuration from an RFD40 or RFD90 reader sled using the `get_config` MQTT command.
+
+## Prerequisites
+
+- Reader sled connected to the MQTT broker and online
+- MQTT client with publish and subscribe permissions on the reader's command topics
+- Knowledge of the reader's device ID (used in topic paths)
+
+## Step 1: Subscribe to the Response Topic
+
+Before issuing the command, subscribe to the response topic so you receive the reply:
+
+```
+zebra/rfid/{device_id}/get_config/response
+```
+
+Replace `{device_id}` with the target reader's identifier (e.g., `RFD40-SN12345`).
+
+## Step 2: Publish the get_config Command
+
+Publish a request to the reader's `get_config` command topic:
+
+**Topic:**
+```
+zebra/rfid/{device_id}/get_config
+```
+
+**Payload:**
+```json
+{
+  "command_id": "cfg-read-001"
+}
+```
+
+The `command_id` is a client-generated identifier that correlates the request with the response. Use a unique value for each request to avoid confusion when issuing multiple commands.
+
+## Step 3: Receive and Interpret the Response
+
+The reader responds on the subscribed response topic with the complete configuration document:
+
+```json
+{
+  "command_id": "cfg-read-001",
+  "status": "SUCCESS",
+  "device_id": "RFD40-SN12345",
+  "firmware_version": "2.3.1",
+  "config": {
+    "mqtt": {
+      "broker_host": "broker.example.com",
+      "broker_port": 8883,
+      "tls_enabled": true,
+      "client_id": "rfd40-sn12345",
+      "keepalive_seconds": 60,
+      "clean_session": true,
+      "qos": 1
+    },
+    "rf_config": {
+      "power_level_dbm": 27.0,
+      "session": "S1",
+      "link_profile": "AUTO",
+      "tag_population": 100,
+      "dynamic_power": true,
+      "frequency_hop_table": "FCC"
+    },
+    "operating_mode": "INVENTORY",
+    "reporting": {
+      "interval_ms": 500,
+      "rssi_threshold_dbm": -72,
+      "duplicate_elimination_ms": 3000,
+      "include_antenna_id": true,
+      "include_timestamp": true,
+      "include_phase": false
+    },
+    "antenna": {
+      "antenna_1_enabled": true,
+      "antenna_2_enabled": false
+    },
+    "filters": {
+      "epc_prefix_filter": "",
+      "rssi_min_dbm": -80,
+      "rssi_max_dbm": 0
+    },
+    "device": {
+      "name": "warehouse-dock-3",
+      "location": "Building A, Dock 3",
+      "timezone": "America/New_York"
+    }
+  },
+  "config_version": "2026-05-14T08:00:00Z",
+  "timestamp": "2026-05-14T08:00:01Z"
+}
+```
+
+## Understanding the Configuration Sections
+
+| Section | Description |
+|---|---|
+| `mqtt` | MQTT broker connection parameters including host, port, TLS, and keepalive |
+| `rf_config` | Radio frequency parameters; power, session, link profile, frequency table |
+| `operating_mode` | Current operating mode: `INVENTORY`, `LOCATE`, or `ACCESS` |
+| `reporting` | Tag report delivery settings; interval, thresholds, included fields |
+| `antenna` | Per-antenna enable/disable state |
+| `filters` | Tag filtering rules; EPC prefix, RSSI bounds |
+| `device` | Device metadata; friendly name, location, timezone |
+
+## Handling Error Responses
+
+If the reader cannot process the request, the response includes an error status:
+
+```json
+{
+  "command_id": "cfg-read-001",
+  "status": "ERROR",
+  "error_code": "DEVICE_BUSY",
+  "error_message": "Reader is currently performing a firmware update",
+  "timestamp": "2026-05-14T08:00:01Z"
+}
+```
+
+Common error codes:
+
+| Error Code | Meaning | Action |
+|---|---|---|
+| `DEVICE_BUSY` | Reader is processing another command | Retry after a brief delay |
+| `NOT_CONNECTED` | Reader is offline | Verify reader connectivity |
+| `TIMEOUT` | No response within the expected window | Check broker connectivity; retry |
+
+> **Note:** The `get_config` command is read-only and does not modify any reader settings. It is safe to issue at any time, including during active inventory operations.
+
+## Using get_config for Auditing
+
+The `get_config` response includes a `config_version` timestamp indicating when the configuration was last modified. Use this field to:
+
+- Track when a reader's configuration was last changed
+- Compare configurations across readers in the same deployment
+- Detect unauthorized configuration changes by comparing the `config_version` against your change management records
+
+## Programmatic Example
+
+```python
+import paho.mqtt.client as mqtt
+import json
+
+DEVICE_ID = "RFD40-SN12345"
+RESPONSE_TOPIC = f"zebra/rfid/{DEVICE_ID}/get_config/response"
+COMMAND_TOPIC = f"zebra/rfid/{DEVICE_ID}/get_config"
+
+def on_message(client, userdata, message):
+    config = json.loads(message.payload)
+    if config["status"] == "SUCCESS":
+        print(json.dumps(config["config"], indent=2))
+    else:
+        print(f"Error: {config.get('error_message', 'Unknown error')}")
+    client.disconnect()
+
+client = mqtt.Client()
+client.on_message = on_message
+client.connect("broker.example.com", 8883)
+client.subscribe(RESPONSE_TOPIC)
+client.publish(COMMAND_TOPIC, json.dumps({"command_id": "cfg-read-001"}))
+client.loop_forever()
+```

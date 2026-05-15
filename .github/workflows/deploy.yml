@@ -1,0 +1,60 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build Docusaurus site (debug)
+        run: |
+          echo "--- Environment versions ---"
+          echo "node:" && node -v || true
+          echo "npm:" && npm -v || true
+          echo "pnpm:" && pnpm -v || true
+          echo "--- PATH ---"
+          echo $PATH
+          echo "--- Listing workspace ---"
+          ls -la
+          echo "--- Running pnpm build (debug) ---"
+          pnpm build
+
+      # Generate Docfind search index from built output
+      - name: Generate search index data
+        run: node scripts/generate-search-index.js
+
+      - name: Install Docfind CLI
+        run: curl -fsSL https://microsoft.github.io/docfind/install.sh | sh
+
+      - name: Build Docfind WASM index
+        run: |
+          ~/.local/bin/docfind search-documents.json build/search/
+        continue-on-error: true
+
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./build

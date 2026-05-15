@@ -1,0 +1,78 @@
+---
+sidebar_position: 6
+title: "delete_wifi_profile"
+description: "Remove a saved Wi-Fi profile from a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# delete_wifi_profile
+
+Removes a saved Wi-Fi profile from the device by SSID.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "delete_wifi_profile",
+  "requestId": "6",
+  "wifiProfileInfo": {
+    "essid": "Corp-Secure"
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"delete_wifi_profile"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `wifiProfileInfo` | object | Yes | Profile identification |
+| `wifiProfileInfo.essid` | string | Yes | SSID of the Wi-Fi profile to delete |
+
+## Response Payload
+
+```json
+{
+  "command": "delete_wifi_profile",
+  "requestId": "6",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `15` | NotFound | No Wi-Fi profile exists with the specified SSID |
+| `16` | ResourceInUse | The profile is currently the active connection and cannot be deleted |
+
+## Notes
+
+- You cannot delete the currently connected Wi-Fi profile. Disconnect from the network first or connect to a different profile using `set_wifi` before deleting.
+- The SSID match is case-sensitive.
+- After deletion, the profile is permanently removed. To restore it, use `set_wifi` to create a new profile.
+
+## See Also
+
+- [get_wifi](get-wifi): List current Wi-Fi profiles
+- [set_wifi](set-wifi): Create or modify a Wi-Fi profile
+- [API Overview](../api-overview): Complete endpoint inventory

@@ -1,0 +1,41 @@
+---
+sidebar_position: 8
+title: Troubleshooting
+---
+
+# Troubleshooting
+
+Common issues and solutions for Zebra Gen2x fixed RFID readers.
+
+## Gen2x-Specific Issues
+
+### Cryptographic authentication always fails
+
+- Verify the AES-128 key configured on the reader matches the key programmed into the tags.
+- Ensure `cryptoAuth` is enabled in the Gen2x configuration.
+- Confirm the tags are Gen2x (Gen2v2) compliant; standard Gen2 tags do not support crypto auth.
+
+### Extended memory returns empty data
+
+- Verify the tags have user memory bank data programmed.
+- Enable `extendedMemory` in the Gen2x configuration.
+- Check that `includeGen2xData` is set to `true` in the MQTT telemetry configuration.
+
+## General Issues
+
+### Cannot reach the reader's REST API
+
+- Verify the reader's IP address and network connectivity.
+- Gen2x readers use **v2** API endpoints. Ensure you are using `/api/v2/` not `/api/v1/`.
+- Check HTTPS certificate configuration.
+
+### No tag data on MQTT
+
+- Verify inventory is running (`GET /api/v2/inventory/status`).
+- Check MQTT broker configuration (`GET /api/v2/mqtt/config`).
+- Verify topic subscriptions match the reader's tenant ID and serial number.
+
+### Antenna disconnected
+
+- Check physical antenna cable connections.
+- Gen2x readers support up to 8 antenna ports; verify the correct port numbers.

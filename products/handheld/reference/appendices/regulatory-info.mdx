@@ -1,0 +1,129 @@
+---
+sidebar_position: 5
+title: "Regulatory & Regional Information"
+---
+
+# Regulatory & Regional Information
+
+📕 **REFERENCE**: Region codes, frequency bands, supported countries, and compliance certifications for the RFD40/RFD90 reader sleds.
+
+## Overview
+
+UHF RFID operates in the 860–960 MHz Industrial, Scientific, and Medical (ISM) band. The exact frequencies, power limits, and channel plans vary by country and regulatory authority. The device must be configured with the correct regulatory region before RFID operations can begin.
+
+> **Warning:** Operating an RFID reader in a region for which it is not certified is a violation of radio frequency regulations and may result in interference with licensed services, legal penalties, or both. Always configure the correct region.
+
+## Setting the Regulatory Region
+
+The regulatory region is set using the **123RFID Desktop** application. It cannot be changed remotely via MQTT. This restriction exists to prevent accidental or unauthorized changes to regulatory-controlled radio parameters.
+
+Once set, the region code is stored persistently on the device and survives reboots and factory resets of application settings.
+
+## Region Code Table
+
+| Region Code | Region Name | Frequency Band (MHz) | Max Power (EIRP) | Channels |
+|---|---|---|---|---|
+| `NA` | North America (FCC) | 902.75–927.25 | 36 dBm | 50, frequency hopping |
+| `EU` | Europe (ETSI) | 865.6–867.6 | 33 dBm (2W ERP) | 4 |
+| `IN` | India | 865–867 | 36 dBm | 4 |
+| `JP` | Japan (ARIB) | 916.8–920.4 | 36 dBm | 9, LBT required |
+| `CN` | China (SRRC) | 920.5–924.5 | 33 dBm | 16 |
+| `KR` | South Korea (KCC) | 917–923.5 | 36 dBm | 6, frequency hopping |
+| `AU` | Australia/NZ (ACMA) | 920–926 | 36 dBm | 10 |
+| `BR` | Brazil (ANATEL) | 902–907.5, 915–928 | 36 dBm | 50, frequency hopping |
+| `TW` | Taiwan (NCC) | 922–928 | 33 dBm | 12 |
+| `SG` | Singapore (IMDA) | 920–925 | 33 dBm | 10 |
+| `TH` | Thailand (NBTC) | 920–925 | 36 dBm | 10 |
+| `MY` | Malaysia (MCMC) | 919–923 | 33 dBm | 8 |
+| `ID` | Indonesia (SDPPI) | 923–925 | 33 dBm | 4 |
+| `PH` | Philippines (NTC) | 918–920 | 33 dBm | 4 |
+| `ZA` | South Africa (ICASA) | 915.4–919 | 33 dBm | 16 |
+| `IL` | Israel (MOC) | 915–917 | 33 dBm | 4 |
+| `AR` | Argentina (ENACOM) | 902–928 | 36 dBm | 50, frequency hopping |
+| `CO` | Colombia (ANE) | 902–928 | 36 dBm | 50, frequency hopping |
+| `MX` | Mexico (IFT) | 902–928 | 36 dBm | 50, frequency hopping |
+
+> **Note:** The regions listed above represent the most common configurations. Additional regional profiles may be available in newer firmware versions. Contact Zebra support for region-specific inquiries.
+
+## Supported Countries by Region Code
+
+### NA: North America (FCC Part 15.247)
+
+United States, Canada, Mexico, and other countries that follow FCC Part 15 regulations.
+
+### EU: Europe (ETSI EN 302 208)
+
+All EU member states, United Kingdom, Norway, Switzerland, Iceland, Turkey, and other countries that follow ETSI regulations.
+
+### JP: Japan (ARIB STD-T106)
+
+Japan. Uses Listen Before Talk (LBT) protocol, where the reader checks for channel occupancy before transmitting.
+
+### CN: China (SRRC)
+
+People's Republic of China. Requires separate SRRC type approval.
+
+## Frequency Band Details
+
+### FCC Band (North America)
+
+| Parameter | Value |
+|---|---|
+| Frequency range | 902.75–927.25 MHz |
+| Channel spacing | 500 kHz |
+| Number of channels | 50 |
+| Channel access | Frequency Hopping Spread Spectrum (FHSS) |
+| Max dwell time | 400 ms per channel |
+| Max EIRP | 4W (36 dBm) |
+
+### ETSI Band (Europe)
+
+| Parameter | Value |
+|---|---|
+| Frequency range | 865.6–867.6 MHz |
+| Channel spacing | 600 kHz |
+| Number of channels | 4 (865.7, 866.3, 866.9, 867.5 MHz) |
+| Channel access | Listen Before Talk (LBT) |
+| Max duty cycle | Varies by sub-band |
+| Max ERP | 2W (33 dBm) |
+
+## Compliance Certifications
+
+The RFD40 and RFD90 reader sleds hold the following regulatory certifications:
+
+| Certification | Authority | Scope |
+|---|---|---|
+| FCC Part 15 | Federal Communications Commission (USA) | Radio emissions, intentional radiator |
+| IC RSS-210 | Innovation, Science and Economic Development (Canada) | Radio equipment |
+| CE RED | European Union | Radio Equipment Directive 2014/53/EU |
+| UKCA | UK Government | UK Conformity Assessed marking |
+| TELEC/ARIB | Japan Ministry of Internal Affairs | Radio certification for Japan |
+| SRRC | State Radio Regulation Committee (China) | Radio type approval for China |
+| KCC | Korea Communications Commission | Radio certification for South Korea |
+| ACMA RCM | Australian Communications and Media Authority | Regulatory compliance mark for Australia/NZ |
+| ANATEL | National Telecommunications Agency (Brazil) | Radio certification for Brazil |
+| BIS | Bureau of Indian Standards (India) | Radio certification for India |
+
+## Safety and Emissions
+
+| Standard | Description |
+|---|---|
+| IEC 62368-1 | Audio/video, information and communication technology equipment; Safety |
+| IEC 62311 | Assessment of electronic and electrical equipment related to human exposure restrictions for electromagnetic fields (0 Hz–300 GHz) |
+| FCC Part 15 Class B | Unintentional radiator emissions limits (digital device) |
+| EN 55032 / EN 55035 | Electromagnetic compatibility; multimedia equipment emissions and immunity |
+
+## Power Considerations by Region
+
+When configuring transmit power via the `transmitPowerIndex` setting, be aware that the maximum effective power varies by region:
+
+| Region | Max Index | Approximate Max Power |
+|---|---|---|
+| NA (FCC) | 300 | 30.0 dBm EIRP |
+| EU (ETSI) | 270 | 27.0 dBm ERP (≈ 29.15 dBm EIRP) |
+| JP (ARIB) | 300 | 30.0 dBm EIRP |
+| Others | Varies | Check region-specific documentation |
+
+The device firmware enforces the regulatory power limit for the configured region. Setting a `transmitPowerIndex` above the regional maximum results in the power being capped at the regulatory limit, no error is returned, but the actual output power does not exceed the legal maximum.
+
+> **Tip:** For maximum interoperability across regions, design your application to query the device configuration and respect the regional power limits rather than hardcoding a specific transmit power value.

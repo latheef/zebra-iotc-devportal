@@ -1,0 +1,171 @@
+---
+sidebar_position: 3
+title: "How to Integrate with Azure IoT Hub"
+---
+
+# How to Integrate with Azure IoT Hub
+
+This guide walks through connecting Zebra RFD40/RFD90 reader sleds to Azure IoT Hub for tag data ingestion and device management.
+
+## Prerequisites
+
+- Azure subscription with an IoT Hub instance created
+- Azure CLI installed and authenticated
+- Reader sleds with firmware version 2.0 or later
+- X.509 certificates or SAS tokens for device authentication
+
+## Architecture Overview
+
+Azure IoT Hub provides an MQTT 3.1.1-compatible endpoint. Readers connect directly and publish tag data, which IoT Hub routes to downstream Azure services.
+
+```
+┌──────────┐    MQTT/TLS    ┌──────────────┐   Routing   ┌──────────────┐
+│  Reader   │──────────────►│  Azure IoT   │────────────►│  Event Hubs  │
+│  Sled     │               │  Hub         │             │  Blob / ASA  │
+└──────────┘                └──────────────┘             └──────────────┘
+```
+
+## Step 1: Register a Device in IoT Hub
+
+Register each reader sled as a device identity in Azure IoT Hub:
+
+```bash
+az iot hub device-identity create \
+  --hub-name your-iot-hub \
+  --device-id rfd40-sn12345 \
+  --auth-method x509_thumbprint \
+  --primary-thumbprint <CERT_THUMBPRINT>
+```
+
+For SAS token authentication:
+
+```bash
+az iot hub device-identity create \
+  --hub-name your-iot-hub \
+  --device-id rfd40-sn12345 \
+  --auth-method shared_private_key
+```
+
+Retrieve the connection string:
+
+```bash
+az iot hub device-identity connection-string show \
+  --hub-name your-iot-hub \
+  --device-id rfd40-sn12345
+```
+
+## Step 2: Configure Device Provisioning (Optional)
+
+For fleet-scale deployment, use Azure IoT Hub Device Provisioning Service (DPS) to automate device registration:
+
+1. Create a DPS instance and link it to your IoT Hub
+2. Create an enrollment group using X.509 certificates or symmetric keys
+3. Configure readers to contact the DPS endpoint on first boot
+4. DPS automatically registers the device in the linked IoT Hub
+
+This enables zero-touch provisioning for new readers added to the fleet.
+
+## Step 3: Understand Azure IoT Hub MQTT Topic Constraints
+
+Azure IoT Hub imposes specific topic structures for MQTT communication. Readers cannot publish to arbitrary topics; they must use IoT Hub's prescribed format:
+
+**Device-to-cloud (telemetry):**
+```
+devices/{device_id}/messages/events/
+```
+
+**Cloud-to-device (commands):**
+```
+devices/{device_id}/messages/devicebound/#
+```
+
+This means the Zebra reader's native topic structure (`zebra/rfid/{device_id}/tagEvents`) must be mapped to IoT Hub's format.
+
+## Step 4: Map Zebra Topics to Azure IoT Hub
+
+Since readers publish to Zebra's topic structure, you have two options:
+
+**Option A: Bridge pattern**: Deploy a local MQTT broker that accepts Zebra-format topics and bridges them to Azure IoT Hub's topic structure.
+
+**Option B: Reader-side configuration**: If the reader firmware supports configurable topic prefixes, configure the reader to publish to IoT Hub's expected topic format.
+
+For most deployments, **Option A** is recommended because it decouples readers from cloud-specific topic requirements.
+
+## Step 5: Configure the Reader's MQTT Endpoint
+
+For direct integration with SAS token authentication, configure the reader with the following `config_endpoint` payload:
+
+```json
+{
+  "command_id": "azure-endpoint-001",
+  "config": {
+    "mqtt": {
+      "broker_host": "your-iot-hub.azure-devices.net",
+      "broker_port": 8883,
+      "tls_enabled": true,
+      "tls_ca_path": "/certs/DigiCertGlobalRootG2.pem",
+      "client_id": "rfd40-sn12345",
+      "username": "your-iot-hub.azure-devices.net/rfd40-sn12345/?api-version=2021-04-12",
+      "password": "<SAS_TOKEN>",
+      "clean_session": true,
+      "keepalive_seconds": 300
+    }
+  }
+}
+```
+
+For X.509 certificate authentication:
+
+```json
+{
+  "command_id": "azure-endpoint-002",
+  "config": {
+    "mqtt": {
+      "broker_host": "your-iot-hub.azure-devices.net",
+      "broker_port": 8883,
+      "tls_enabled": true,
+      "tls_cert_path": "/certs/reader-cert.pem",
+      "tls_key_path": "/certs/reader-private.key",
+      "tls_ca_path": "/certs/DigiCertGlobalRootG2.pem",
+      "client_id": "rfd40-sn12345",
+      "username": "your-iot-hub.azure-devices.net/rfd40-sn12345/?api-version=2021-04-12",
+      "clean_session": true,
+      "keepalive_seconds": 300
+    }
+  }
+}
+```
+
+> **Note:** Azure IoT Hub requires the MQTT username to follow the format `{iothub-hostname}/{device-id}/?api-version={api-version}`. The `client_id` must match the registered device identity.
+
+## Step 6: Route Data to Downstream Services
+
+Configure IoT Hub message routing to send tag data to downstream Azure services:
+
+1. In the Azure portal, navigate to **IoT Hub → Message routing**
+2. Add a route:
+   - **Source:** Device Telemetry Messages
+   - **Endpoint:** Event Hubs, Blob Storage, or Service Bus
+   - **Query:** `true` (route all messages) or filter by message properties
+
+## Step 7: Use Device Twins for Configuration Management
+
+Azure IoT Hub Device Twins provide a cloud-side representation of each reader's configuration. Use desired properties to push configuration changes and reported properties to track current state:
+
+```bash
+az iot hub device-twin update \
+  --hub-name your-iot-hub \
+  --device-id rfd40-sn12345 \
+  --desired '{"rf_config": {"power_level_dbm": 27.0}}'
+```
+
+> **Warning:** SAS tokens have an expiration time. Implement a token refresh mechanism or use X.509 certificates for long-lived deployments to avoid authentication failures.
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Resolution |
+|---|---|---|
+| 401 Unauthorized | Expired SAS token or wrong device ID | Regenerate SAS token; verify device ID matches registration |
+| Connected but no telemetry in IoT Hub | Publishing to wrong topic | Ensure topic format matches `devices/{device_id}/messages/events/` |
+| TLS handshake failure | Wrong CA certificate | Use DigiCert Global Root G2 for Azure IoT Hub |
+| Device not appearing in IoT Hub | Device not registered | Register the device identity via CLI or DPS |

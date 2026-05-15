@@ -1,0 +1,10 @@
+extends: existence
+message: "Avoid using passive voice. Use active voice instead."
+level: suggestion
+tokens:
+  - was \w+ed
+  - were \w+ed
+  - is being \w+ed
+  - has been \w+ed
+  - have been \w+ed
+  - will be \w+ed

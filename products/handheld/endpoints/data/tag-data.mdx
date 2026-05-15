@@ -1,0 +1,133 @@
+---
+sidebar_position: 1
+title: Tag Data Event
+description: Real-time RFID tag read data published during active inventory operations.
+---
+
+# Tag Data Event
+
+The `dataEVT` event is published in real time during active inventory operations. Each message contains an array of RFID tag reads with EPC, RSSI, antenna port, and optional metadata fields that are included based on the reader's reporting configuration. Tag data is received on two independent channels (primary and secondary).
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Event Name** | `dataEVT` |
+| **Interface** | DATA |
+| **Direction** | SUB (subscribe to receive) |
+| **Primary Topic** | `{tenantId}/DATA/clients/data1event/{deviceSerial}` |
+| **Secondary Topic** | `{tenantId}/DATA/clients/data2event/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+:::tip
+Subscribe to **both** `data1event` and `data2event` topics to receive all tag data. The device distributes reads across both channels for throughput.
+:::
+
+## Event Payload (SUB)
+
+Each data event contains the device identification fields and an array of tag read objects. Optional fields in each tag object are included only when the corresponding reporting option is enabled in the reader configuration.
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "string",
+  "timestamp": "2026-04-14T12:00:00.000Z",
+  "apiVersion": "string",
+  "tagData": [
+    {
+      "epc": "string",
+      "rssi": 0,
+      "pc": "string",
+      "antenna": 0,
+      "readCount": 0,
+      "timestamp": "2026-04-14T12:00:00.000Z",
+      "phase": 0,
+      "channel": 0,
+      "tid": "string",
+      "userData": "string",
+      "seenCount": 0,
+      "firstSeenTime": "2026-04-14T12:00:00.000Z",
+      "lastSeenTime": "2026-04-14T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `event` | string | Yes | Constant value `"dataEVT"`. |
+| `deviceSerial` | string | Yes | Serial number of the reporting device. |
+| `timestamp` | string (date-time) | Yes | ISO 8601 timestamp of the event. |
+| `apiVersion` | string | Yes | API version identifier. |
+| `tagData` | array | Yes | Array of tag read objects. |
+| `tagData[].epc` | string | Yes | Electronic Product Code in hexadecimal. |
+| `tagData[].rssi` | integer | No | Received signal strength in 1/10 dBm (e.g., `-420` = -42.0 dBm). |
+| `tagData[].pc` | string | No | Protocol Control word in hexadecimal. |
+| `tagData[].antenna` | integer | No | Antenna port number that read the tag. |
+| `tagData[].readCount` | integer | No | Number of times this tag was read in the current batch. |
+| `tagData[].timestamp` | string (date-time) | No | ISO 8601 timestamp of the individual tag read. |
+| `tagData[].phase` | integer | No | Phase angle of the tag response. Included when PHASE reporting is enabled. |
+| `tagData[].channel` | integer | No | Operating frequency in kHz. Included when CHANNEL reporting is enabled. |
+| `tagData[].tid` | string | No | Tag Identifier memory bank contents in hexadecimal. Included when TID reporting is enabled. |
+| `tagData[].userData` | string | No | User memory bank contents in hexadecimal. Included when USER reporting is enabled. |
+| `tagData[].seenCount` | integer | No | Cumulative number of times this EPC has been seen. |
+| `tagData[].firstSeenTime` | string (date-time) | No | ISO 8601 timestamp of when this EPC was first seen. |
+| `tagData[].lastSeenTime` | string (date-time) | No | ISO 8601 timestamp of when this EPC was most recently seen. |
+
+## Example
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-14T14:22:05.123Z",
+  "apiVersion": "1.0",
+  "tagData": [
+    {
+      "epc": "E28011700000020B6E194126",
+      "rssi": -385,
+      "pc": "3000",
+      "antenna": 1,
+      "readCount": 3,
+      "timestamp": "2026-04-14T14:22:05.100Z",
+      "phase": 112,
+      "channel": 920625,
+      "tid": "E2801170200046E7",
+      "seenCount": 47,
+      "firstSeenTime": "2026-04-14T14:20:01.000Z",
+      "lastSeenTime": "2026-04-14T14:22:05.100Z"
+    },
+    {
+      "epc": "3034257BF400B78000000D42",
+      "rssi": -420,
+      "pc": "3000",
+      "antenna": 1,
+      "readCount": 1,
+      "timestamp": "2026-04-14T14:22:05.110Z",
+      "seenCount": 12,
+      "firstSeenTime": "2026-04-14T14:21:30.000Z",
+      "lastSeenTime": "2026-04-14T14:22:05.110Z"
+    },
+    {
+      "epc": "E200340420005003C2E004E2",
+      "rssi": -510,
+      "pc": "3000",
+      "antenna": 2,
+      "readCount": 1,
+      "timestamp": "2026-04-14T14:22:05.115Z",
+      "userData": "48656C6C6F",
+      "seenCount": 3,
+      "firstSeenTime": "2026-04-14T14:22:00.000Z",
+      "lastSeenTime": "2026-04-14T14:22:05.115Z"
+    }
+  ]
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

@@ -1,0 +1,23 @@
+extends:
+  - spectral:oas
+  - spectral:asyncapi
+
+rules:
+  # ——— OpenAPI rules ———
+  operation-operationId:
+    severity: error
+    description: Every operation must have an operationId.
+  info-contact:
+    severity: warn
+  oas3-api-servers:
+    severity: error
+  operation-description:
+    severity: warn
+  operation-tags:
+    severity: warn
+
+  # ——— AsyncAPI rules ———
+  asyncapi-info-contact:
+    severity: warn
+  asyncapi-channel-no-empty-params:
+    severity: error

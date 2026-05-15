@@ -1,0 +1,60 @@
+---
+sidebar_position: 3
+title: Authentication
+---
+
+# Authentication
+
+Securing communication between your application and Zebra RFID readers is critical for production deployments. This guide covers authentication and encryption for both REST and MQTT protocols.
+
+## MQTT Authentication
+
+### Broker-Level Authentication
+
+MQTT authentication is handled at the broker level. Common approaches include:
+
+| Method | Description | Use Case |
+|--------|-------------|----------|
+| **Username/Password** | Basic credentials configured on the broker | Development and testing |
+| **Client Certificates (mTLS)** | Mutual TLS with X.509 certificates | Production deployments |
+| **Token-Based (JWT)** | JSON Web Tokens validated by the broker | Cloud-native architectures |
+
+### TLS/SSL Encryption
+
+All production MQTT connections should use TLS encryption:
+
+- **Port 8883**: Standard MQTT over TLS
+- **Port 443**: MQTT over WebSocket with TLS (for firewall-restricted environments)
+
+Configure the reader with:
+
+1. **CA certificate**: The certificate authority that signed the broker's certificate
+2. **Client certificate**: The reader's identity certificate (for mTLS)
+3. **Client private key**: The reader's private key
+
+Refer to your product's security guide for step-by-step TLS configuration:
+
+- [Handheld: Securing the Connection](/handheld/mqtt/securing-the-connection)
+
+## REST API Authentication
+
+Fixed and Gen2x Fixed Readers expose a REST API for configuration and management.
+
+### Basic Authentication
+
+REST endpoints use HTTP Basic Authentication:
+
+```
+Authorization: Basic <base64(username:password)>
+```
+
+### HTTPS
+
+All REST API calls should use HTTPS (port 443) in production. The reader supports self-signed and CA-signed certificates.
+
+## Best Practices
+
+1. **Never use plaintext MQTT (port 1883) in production.** Always enable TLS.
+2. **Rotate credentials regularly.** Use your broker's credential management features.
+3. **Use unique client IDs per reader.** This prevents session conflicts on the broker.
+4. **Implement certificate pinning** for high-security deployments.

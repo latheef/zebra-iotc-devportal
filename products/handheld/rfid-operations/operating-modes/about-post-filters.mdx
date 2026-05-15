@@ -1,0 +1,80 @@
+---
+sidebar_position: 3
+title: "About Post-Filters (Tag Filtering)"
+description: "Understanding post-filters for tag filtering on the RFD40/RFD90 handheld RFID reader sleds."
+---
+
+# About Post-Filters (Tag Filtering)
+
+Post-filters allow you to control which tags the reader reports back to your application. Instead of receiving data for every tag in RF range, you define pattern-based rules that include or exclude tags based on their EPC content.
+
+## What Are Post-Filters?
+
+A post-filter is a pattern-matching rule applied by the reader firmware after a tag is singulated (identified by the RF protocol) but before the tag data is sent over MQTT. Tags that do not match the filter criteria are silently discarded; they never generate a `dataEVT` payload.
+
+Post-filters operate on the **EPC memory bank** contents. You specify a hex pattern, a bit offset, and a match action (include or exclude). The reader firmware compares each tag's EPC against your pattern and only reports matching (or non-matching) tags.
+
+## Why Use Post-Filters?
+
+### Reduce Data Volume
+
+In a warehouse with thousands of tags, your application may only care about a specific product category or location zone. Without filtering, every tag in range generates MQTT traffic. Post-filters eliminate irrelevant reads at the source, reducing:
+
+- MQTT message volume
+- Network bandwidth consumption
+- Application processing load
+- Battery drain (less data transmission)
+
+### Company Prefix Matching
+
+GS1-encoded EPCs embed a **company prefix** in the first portion of the EPC. By filtering on this prefix, you can restrict reads to tags belonging to your organization or a specific supplier.
+
+For example, if your GS1 company prefix encodes as hex `3034257B` in the EPC header, a post-filter matching that prefix returns only your tags.
+
+### Excluding Infrastructure Tags
+
+Facilities often have fixed infrastructure RFID tags (for location markers, zone identifiers, or equipment tracking) that should not appear in inventory counts. An **exclude** filter matching the known prefix of infrastructure tags removes them from the data stream.
+
+### Zone-Based Filtering
+
+When combined with antenna power tuning, post-filters can create logical zones. Tags in a specific range of EPCs assigned to a particular zone are included while others are excluded.
+
+## How Post-Filters Work
+
+The filter evaluation flow:
+
+1. **RF singulation**: the reader identifies a tag in the field
+2. **EPC read**: the reader retrieves the tag's EPC memory bank
+3. **Pattern match**: the firmware compares the EPC against the configured filter pattern starting at the specified bit offset
+4. **Action**: if the pattern matches and the action is `INCLUDE`, the tag is reported. If the action is `EXCLUDE`, matching tags are discarded.
+
+Tags that pass the filter appear in `dataEVT` payloads. Tags that fail the filter are dropped silently, no event is generated for them.
+
+## Filter Pattern Syntax
+
+Patterns are specified as hexadecimal strings. Wildcards (`*`) can represent any nibble (4 bits). The filter also supports a **bit offset** to start matching at a specific position within the EPC.
+
+| Pattern | Meaning |
+|---|---|
+| `3034257B` | Exact match on first 4 bytes |
+| `30**257B` | Match bytes 1 and 4, any value for bytes 2–3 |
+| `3034*` | Match first 2 bytes, any suffix |
+
+## Filter Limitations
+
+- Only one active post-filter at a time per reader
+- Patterns match the EPC memory bank only (not TID or user memory)
+- Maximum pattern length is typically 62 hex characters (248 bits)
+- Changing the filter requires stopping any active RFID operation
+
+> **Note**: Post-filters are different from the `filter` field in `set_operating_mode`. The operating mode filter is a pre-filter applied at the RF protocol level (select command), while post-filters apply after singulation. For most use cases, post-filters are simpler to configure and sufficient.
+
+## Performance Impact
+
+Post-filters have negligible impact on read performance. The pattern matching occurs in firmware before MQTT transmission, so the reader still singulates all tags at full speed. The benefit is reduced data output, not faster RF reads.
+
+## Related Topics
+
+- [How to Configure Post-Filters](./configure-post-filters.mdx): step-by-step configuration
+- [About RFID Operating Modes](./about-operating-modes.mdx): operating mode overview
+- [dataEVT Payload Schema](../tag-data/dataevt-payload.mdx): understanding filtered tag data

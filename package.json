@@ -1,0 +1,64 @@
+{
+  "name": "zebra-iotc-devportal",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zebra IOTC Developer Portal — REST & MQTT Documentation",
+  "scripts": {
+    "docusaurus": "docusaurus",
+    "start": "docusaurus start",
+    "build": "docusaurus build",
+    "swizzle": "docusaurus swizzle",
+    "deploy": "docusaurus deploy",
+    "clear": "docusaurus clear",
+    "serve": "docusaurus serve",
+    "write-translations": "docusaurus write-translations",
+    "write-heading-ids": "docusaurus write-heading-ids",
+    "lint:specs": "spectral lint specs/**/*.yml",
+    "lint:prose": "vale products/ docs/",
+    "lint:format": "prettier --check .",
+    "lint:spell": "cspell \"**/*.{md,mdx,ts,tsx}\"",
+    "lint": "npm run lint:specs && npm run lint:prose && npm run lint:format && npm run lint:spell",
+    "format": "prettier --write ."
+  },
+  "dependencies": {
+    "@asyncapi/react-component": "^2.5.0",
+    "@docusaurus/core": "^3.7.0",
+    "@docusaurus/plugin-content-docs": "^3.7.0",
+    "@docusaurus/preset-classic": "^3.7.0",
+    "@docusaurus/theme-mermaid": "^3.7.0",
+    "@mdx-js/react": "^3.0.0",
+    "@scalar/docusaurus": "^0.4.0",
+    "clsx": "^2.1.0",
+    "docusaurus-asyncapi": "^1.0.2",
+    "prism-react-renderer": "^2.4.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@docusaurus/module-type-aliases": "^3.7.0",
+    "@docusaurus/tsconfig": "^3.7.0",
+    "@docusaurus/types": "^3.7.0",
+    "@stoplight/spectral-cli": "^6.14.0",
+    "cspell": "^8.17.0",
+    "prettier": "^3.4.0",
+    "typescript": "~5.6.0"
+  },
+  "browserslist": {
+    "production": [
+      ">0.5%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 3 chrome version",
+      "last 3 firefox version",
+      "last 5 safari version"
+    ]
+  },
+  "engines": {
+    "node": ">=18.0"
+  },
+  "overrides": {
+    "webpack": "~5.98.0"
+  }
+}

@@ -1,0 +1,106 @@
+---
+sidebar_position: 2
+title: "About Supported Hardware (RFD40 / RFD90 Series)"
+---
+
+# About Supported Hardware (RFD40 / RFD90 Series)
+
+<span className="badge badge--primary">📘 EXPLANATION</span>
+
+## Overview
+
+Zebra IoT Connector for Handheld RFID is supported on Zebra's current-generation UHF RFID reader sleds. These devices attach to or pair with Zebra Android mobile computers and provide enterprise-grade RFID read/write capabilities in a handheld form factor.
+
+## Supported Reader Models
+
+### RFD40 Premium / Premium Plus
+
+The RFD40 Premium is Zebra's flagship handheld RFID reader sled, designed for demanding enterprise environments. The Premium Plus variant adds long-range reading capabilities.
+
+- **RFID frequency**: 865–928 MHz (UHF, region-configurable)
+- **RFID standard**: EPC Gen2 V2 (ISO 18000-63)
+- **Max RF power**: 30 dBm (1 W) conducted
+- **Read range**: Up to 6 m (Premium), up to 9 m (Premium Plus)
+- **Connectivity**: Bluetooth 5.2 (BLE + Classic)
+- **Barcode scanning**: Integrated SE55 1D/2D scan engine
+- **Battery**: 3,000 mAh rechargeable Li-ion
+- **Trigger**: Physical gun-style trigger + programmable side button
+- **Form factor**: Pistol-grip sled attachment
+
+### RFD40 Standard
+
+A cost-optimized variant for medium-range RFID applications.
+
+- **RFID frequency**: 865–928 MHz (UHF, region-configurable)
+- **RFID standard**: EPC Gen2 V2 (ISO 18000-63)
+- **Max RF power**: 27 dBm (500 mW) conducted
+- **Read range**: Up to 3 m
+- **Connectivity**: Bluetooth 5.2 (BLE + Classic)
+- **Barcode scanning**: Integrated 1D/2D scan engine
+- **Battery**: 3,000 mAh rechargeable Li-ion
+- **Trigger**: Physical trigger + programmable side button
+- **Form factor**: Pistol-grip sled attachment
+
+### RFD90
+
+The RFD90 is a next-generation ultra-rugged sled reader for high-volume inventory and asset tracking in harsh environments.
+
+- **RFID frequency**: 865–928 MHz (UHF, region-configurable)
+- **RFID standard**: EPC Gen2 V2 (ISO 18000-63)
+- **Max RF power**: 30 dBm (1 W) conducted
+- **Read range**: Up to 10 m
+- **Connectivity**: Bluetooth 5.3
+- **Barcode scanning**: Integrated SE58 scan engine
+- **Battery**: 3,600 mAh rechargeable Li-ion (hot-swappable)
+- **Trigger**: Ergonomic gun-style trigger + configurable side buttons
+- **Form factor**: Pistol-grip sled with enhanced ergonomics
+
+## Capability Matrix
+
+| Feature | RFD40 Standard | RFD40 Premium | RFD40 Premium Plus | RFD90 |
+|---------|---------------|---------------|---------------------|-------|
+| Max RF power | 27 dBm | 30 dBm | 30 dBm | 30 dBm |
+| Read range | ~3 m | ~6 m | ~9 m | ~10 m |
+| Bluetooth version | 5.2 | 5.2 | 5.2 | 5.3 |
+| Battery capacity | 3,000 mAh | 3,000 mAh | 3,000 mAh | 3,600 mAh |
+| Hot-swap battery | No | No | No | Yes |
+| Barcode scanner | SE55 | SE55 | SE55 | SE58 |
+| IP rating | IP52 | IP52 | IP52 | IP67 |
+| Drop spec | 1.5 m | 1.5 m | 1.5 m | 2.4 m |
+| Operating temp | -10°C to 50°C | -10°C to 50°C | -10°C to 50°C | -20°C to 50°C |
+| IOTC support | V1.0+ | V1.0+ | V1.0+ | V1.1+ |
+
+## Firmware Requirements
+
+IOTC functionality requires a minimum reader firmware version. Earlier firmware versions do not include the IOTC agent and cannot communicate via MQTT.
+
+| IOTC Version | Minimum Firmware | Notes |
+|-------------|-----------------|-------|
+| V1.0 | 3.10.27 | Initial IOTC release for RFD40 series |
+| V1.1 | 3.12.10 | Adds RFD90 support, enhanced tag filtering, battery telemetry |
+
+To check the current firmware version, query the reader via the `mgmt` interface or use 123RFID Desktop.
+
+## Compatible Host Devices
+
+The reader sled pairs with Zebra Android mobile computers via Bluetooth. Supported host devices include:
+
+- **TC21 / TC26**: Value-tier touch computers
+- **TC52 / TC57**: Mid-tier enterprise touch computers
+- **TC72 / TC77**: Premium enterprise touch computers
+- **EC50 / EC55**: Enterprise computers
+- **MC3300x**: Rugged mobile computers
+
+The host device must run the **Zebra RFID Mobile App** (or a custom application using the Zebra RFID SDK for Android) to establish the Bluetooth connection and proxy MQTT traffic to the broker over the host's Wi-Fi or cellular network connection.
+
+## Regional SKU Considerations
+
+Reader sleds are shipped with region-specific RF configurations. The configured frequency band affects available channels and maximum transmit power. Ensure the correct regional SKU is deployed:
+
+| Region | Frequency Band | Regulatory Standard |
+|--------|---------------|-------------------|
+| North America | 902–928 MHz | FCC Part 15 |
+| Europe | 865–868 MHz | ETSI EN 302 208 |
+| Japan | 916.8–920.4 MHz | ARIB STD-T106 |
+| China | 920–925 MHz | GB/T 29768 |
+| Australia/NZ | 920–926 MHz | AS/NZS 4268 |

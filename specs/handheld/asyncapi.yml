@@ -1,0 +1,1748 @@
+asyncapi: 2.6.0
+info:
+  title: Zebra Handheld RFID Reader IoT Connector - MQTT API
+  version: 1.1.0
+  description: |
+    Complete MQTT API reference for Zebra IoT Connector (IOTC) on **RFD40 / RFD90 Series** handheld RFID readers.
+
+    ## Overview
+
+    The API enables **cloud-based device management**, **RFID operation control**, **tag data collection**, and **fleet monitoring** via MQTT 3.1.1 messaging.
+
+    ### Interfaces
+
+    | Interface | Purpose | Channels |
+    |-----------|---------|----------|
+    | **MGMT** | Device management, monitoring, firmware | cmnd, resp, event |
+    | **CTRL** | RFID operation control and configuration | cmnd, resp |
+    | **DATA** | Tag data streaming | data1event, data2event |
+
+    ### Topic Pattern
+
+    ```
+    {tenantId}/{INTERFACE}/clients/{channel}/{deviceSerial}
+    ```
+
+    ### Response Codes
+
+    | Code | Meaning |
+    |------|---------|
+    | 0 | Success |
+    | 1 | Accepted (async processing) |
+    | 2 | Invalid payload |
+    | 3 | Unable to retrieve |
+    | 6 | Region not configured |
+    | 10 | Config already exists |
+    | 11 | Config not found / Inventory in progress |
+    | 12 | No operation in progress |
+    | 15 | SSID not found |
+    | 17 | SSID missing |
+    | 18 | Certificate parse error |
+    | 19 | Download failed |
+    | 20 | Firmware validation failed |
+    | 21 | Insufficient battery |
+    | 22 | Operation in progress |
+    | 23 | Invalid enum / Radio not connected |
+    | 24 | Max 32 pre-filters |
+    | 28 | Pattern too long / Not supported |
+
+  contact:
+    name: Zebra Technologies Developer Support
+    url: https://developer.zebra.com
+  license:
+    name: Proprietary
+    url: https://www.zebra.com
+
+servers:
+  production:
+    url: "{brokerHost}:{brokerPort}"
+    protocol: mqtt
+    protocolVersion: "3.1.1"
+    description: Production MQTT broker with TLS
+    variables:
+      brokerHost:
+        description: MQTT broker hostname
+        default: mqtt.example.com
+      brokerPort:
+        description: MQTT broker port
+        default: "8883"
+    security:
+      - mtls: []
+  development:
+    url: localhost:1883
+    protocol: mqtt
+    protocolVersion: "3.1.1"
+    description: Local development broker (no TLS)
+
+defaultContentType: application/json
+
+channels:
+  "{tenantId}/MGMT/clients/cmnd/{deviceSerial}":
+    description: |
+      **Management Command Channel** - Send device management commands to the reader.
+      Supports 17 commands for device info, configuration, networking, security, events, firmware, and system control.
+    parameters:
+      tenantId:
+        description: Tenant or organisation identifier
+        schema:
+          type: string
+          default: zebra
+      deviceSerial:
+        description: Unique device serial number (e.g. RFD40-212735201D0053)
+        schema:
+          type: string
+    publish:
+      operationId: sendMgmtCommand
+      summary: Send a management command to the reader
+      message:
+        oneOf:
+          - $ref: "#/components/messages/GetStatus"
+          - $ref: "#/components/messages/GetVersion"
+          - $ref: "#/components/messages/GetCurrentRegion"
+          - $ref: "#/components/messages/GetConfig"
+          - $ref: "#/components/messages/SetConfig"
+          - $ref: "#/components/messages/SetWifi"
+          - $ref: "#/components/messages/GetWifi"
+          - $ref: "#/components/messages/DeleteWifiProfile"
+          - $ref: "#/components/messages/GetEth"
+          - $ref: "#/components/messages/ConfigEndpoint"
+          - $ref: "#/components/messages/GetEndpointConfig"
+          - $ref: "#/components/messages/InstallCertificate"
+          - $ref: "#/components/messages/DeleteCertificate"
+          - $ref: "#/components/messages/GetInstalledCertificate"
+          - $ref: "#/components/messages/ConfigEvents"
+          - $ref: "#/components/messages/SetOs"
+          - $ref: "#/components/messages/Reboot"
+
+  "{tenantId}/MGMT/clients/resp/{deviceSerial}":
+    description: |
+      **Management Response Channel** - Receive responses to management commands.
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveMgmtResponse
+      summary: Receive management command responses
+      message:
+        oneOf:
+          - $ref: "#/components/messages/GetStatusResponse"
+          - $ref: "#/components/messages/GetVersionResponse"
+          - $ref: "#/components/messages/GetCurrentRegionResponse"
+          - $ref: "#/components/messages/GetConfigResponse"
+          - $ref: "#/components/messages/SetConfigResponse"
+          - $ref: "#/components/messages/SetWifiResponse"
+          - $ref: "#/components/messages/GetWifiResponse"
+          - $ref: "#/components/messages/DeleteWifiProfileResponse"
+          - $ref: "#/components/messages/GetEthResponse"
+          - $ref: "#/components/messages/ConfigEndpointResponse"
+          - $ref: "#/components/messages/GetEndpointConfigResponse"
+          - $ref: "#/components/messages/InstallCertificateResponse"
+          - $ref: "#/components/messages/DeleteCertificateResponse"
+          - $ref: "#/components/messages/GetInstalledCertificateResponse"
+          - $ref: "#/components/messages/ConfigEventsResponse"
+          - $ref: "#/components/messages/SetOsResponse"
+          - $ref: "#/components/messages/RebootResponse"
+
+  "{tenantId}/MGMT/clients/event/{deviceSerial}":
+    description: |
+      **Management Event Channel** - Receive asynchronous events from the reader.
+      Events are published unidirectionally: heartbeats, alerts, exceptions, and connection-state changes.
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveMgmtEvent
+      summary: Receive management events
+      message:
+        oneOf:
+          - $ref: "#/components/messages/HeartbeatEvent"
+          - $ref: "#/components/messages/AlertEvent"
+          - $ref: "#/components/messages/AlertShortEvent"
+          - $ref: "#/components/messages/ExceptionEvent"
+          - $ref: "#/components/messages/MqttConnectionEvent"
+
+  "{tenantId}/CTRL/clients/cmnd/{deviceSerial}":
+    description: |
+      **Control Command Channel** - Send RFID operation control commands to the reader.
+      Supports 5 commands for operating modes, start/stop operations, and post-filters.
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    publish:
+      operationId: sendCtrlCommand
+      summary: Send a control command to the reader
+      message:
+        oneOf:
+          - $ref: "#/components/messages/SetOperatingMode"
+          - $ref: "#/components/messages/GetOperatingMode"
+          - $ref: "#/components/messages/ControlOperation"
+          - $ref: "#/components/messages/SetPostFilter"
+          - $ref: "#/components/messages/GetPostFilter"
+
+  "{tenantId}/CTRL/clients/resp/{deviceSerial}":
+    description: |
+      **Control Response Channel** - Receive responses to control commands.
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveCtrlResponse
+      summary: Receive control command responses
+      message:
+        oneOf:
+          - $ref: "#/components/messages/SetOperatingModeResponse"
+          - $ref: "#/components/messages/GetOperatingModeResponse"
+          - $ref: "#/components/messages/ControlOperationResponse"
+          - $ref: "#/components/messages/SetPostFilterResponse"
+          - $ref: "#/components/messages/GetPostFilterResponse"
+
+  "{tenantId}/DATA/clients/data1event/{deviceSerial}":
+    description: |
+      **Primary Tag Data Channel** - Receive real-time RFID tag read data.
+      Published during active inventory operations with EPC, RSSI, timestamps, and optional metadata.
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveTagDataPrimary
+      summary: Receive primary tag data events
+      message:
+        $ref: "#/components/messages/DataEvent"
+
+  "{tenantId}/DATA/clients/data2event/{deviceSerial}":
+    description: |
+      **Secondary Tag Data Channel** - Receive tag data on a secondary stream.
+      Used when configured to publish tag data to two separate channels.
+    parameters:
+      tenantId:
+        schema:
+          type: string
+      deviceSerial:
+        schema:
+          type: string
+    subscribe:
+      operationId: receiveTagDataSecondary
+      summary: Receive secondary tag data events
+      message:
+        $ref: "#/components/messages/DataEvent"
+
+components:
+  securitySchemes:
+    mtls:
+      type: X509
+      description: Mutual TLS with client certificates
+    userPassword:
+      type: userPassword
+      description: Username/password credentials
+
+  messages:
+    SetOperatingMode:
+      name: set_operating_mode
+      title: Set Operating Mode
+      summary: Configure RFID operating parameters - profiles, power, filters, access operations, triggers, query/select, and tag metadata
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SetOperatingModePayload"
+
+    SetOperatingModeResponse:
+      name: set_operating_mode_response
+      title: Set Operating Mode Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    GetOperatingMode:
+      name: get_operating_mode
+      title: Get Operating Mode
+      summary: Retrieve the current operating mode configuration from the reader
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetOperatingModeResponse:
+      name: get_operating_mode_response
+      title: Get Operating Mode Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetOperatingModeResponsePayload"
+
+    ControlOperation:
+      name: control_operation
+      title: Control Operation
+      summary: Start or stop RFID inventory or barcode scanner operations
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ControlOperationPayload"
+
+    ControlOperationResponse:
+      name: control_operation_response
+      title: Control Operation Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    SetPostFilter:
+      name: set_post_filter
+      title: Set Post Filter
+      summary: Configure tag data post-filters - include/exclude by EPC prefix, suffix, regex, RSSI, whitelist, or blacklist
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SetPostFilterPayload"
+
+    SetPostFilterResponse:
+      name: set_post_filter_response
+      title: Set Post Filter Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    GetPostFilter:
+      name: get_post_filter
+      title: Get Post Filter
+      summary: Retrieve the current post-filter configuration
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetPostFilterResponse:
+      name: get_post_filter_response
+      title: Get Post Filter Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetPostFilterResponsePayload"
+
+    DataEvent:
+      name: dataEVT
+      title: Tag Data Event
+      summary: RFID tag data published during active inventory - contains tag records with EPC, RSSI, timestamps, and optional metadata
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DataEventPayload"
+
+    HeartbeatEvent:
+      name: heartBeatEVT
+      title: Heartbeat Event
+      summary: Periodic device health - uptime, temperature, and optionally battery, inventory, and network status
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/HeartbeatEventPayload"
+
+    AlertEvent:
+      name: alerts
+      title: Alert Event
+      summary: Threshold-based alerts - temperature, battery, or radio errors with full detail
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/AlertEventPayload"
+
+    AlertShortEvent:
+      name: alert_short
+      title: Alert Short Event
+      summary: Compact alert format with abbreviated field names for bandwidth-constrained environments
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/AlertShortEventPayload"
+
+    ExceptionEvent:
+      name: exceptionEVT
+      title: Exception Event
+      summary: Runtime errors and hardware exceptions - radio errors, communication failures, firmware exceptions
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ExceptionEventPayload"
+
+    MqttConnectionEvent:
+      name: mqttConnEVT
+      title: MQTT Connection Event
+      summary: MQTT broker connection state changes - connection, disconnection, reconnection attempts
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/MqttConnectionEventPayload"
+
+    GetStatus:
+      name: get_status
+      title: Get Status
+      summary: Retrieve device status - power, radio, battery, temperature, NTP, terminal connection
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetStatusResponse:
+      name: get_status_response
+      title: Get Status Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetStatusResponsePayload"
+
+    GetVersion:
+      name: get_version
+      title: Get Version
+      summary: Retrieve firmware version, device model, serial number, SKU, and component versions
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetVersionResponse:
+      name: get_version_response
+      title: Get Version Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetVersionResponsePayload"
+
+    GetCurrentRegion:
+      name: get_current_region
+      title: Get Current Region
+      summary: Retrieve regulatory region - country, standard, frequency hopping, LBT, power range, channels
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetCurrentRegionResponse:
+      name: get_current_region_response
+      title: Get Current Region Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetCurrentRegionResponsePayload"
+
+    GetConfig:
+      name: get_config
+      title: Get Config
+      summary: Retrieve complete device configuration - superset of all getter commands
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetConfigResponse:
+      name: get_config_response
+      title: Get Config Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetConfigResponsePayload"
+
+    SetConfig:
+      name: set_config
+      title: Set Config
+      summary: Set multiple configuration domains in one command - Wi-Fi, endpoints, events, certificates
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SetConfigPayload"
+
+    SetConfigResponse:
+      name: set_config_response
+      title: Set Config Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    SetWifi:
+      name: set_wifi
+      title: Set Wi-Fi
+      summary: Add or modify a Wi-Fi profile - WPA2/WPA3 Personal and Enterprise
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SetWifiPayload"
+
+    SetWifiResponse:
+      name: set_wifi_response
+      title: Set Wi-Fi Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    GetWifi:
+      name: get_wifi
+      title: Get Wi-Fi
+      summary: Retrieve all configured Wi-Fi profiles with connection status
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetWifiResponse:
+      name: get_wifi_response
+      title: Get Wi-Fi Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetWifiResponsePayload"
+
+    DeleteWifiProfile:
+      name: delete_wifi_profile
+      title: Delete Wi-Fi Profile
+      summary: Remove a stored Wi-Fi profile by SSID
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DeleteWifiProfilePayload"
+
+    DeleteWifiProfileResponse:
+      name: delete_wifi_profile_response
+      title: Delete Wi-Fi Profile Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    GetEth:
+      name: get_eth
+      title: Get Ethernet
+      summary: Retrieve Ethernet configuration - link status, DHCP, IP, MAC address
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetEthResponse:
+      name: get_eth_response
+      title: Get Ethernet Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetEthResponsePayload"
+
+    ConfigEndpoint:
+      name: config_endpoint
+      title: Config Endpoint
+      summary: Add, modify, or delete MQTT broker endpoint configurations
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ConfigEndpointPayload"
+
+    ConfigEndpointResponse:
+      name: config_endpoint_response
+      title: Config Endpoint Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    GetEndpointConfig:
+      name: get_endpoint_config
+      title: Get Endpoint Config
+      summary: Retrieve all configured MQTT broker endpoints with connection status
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetEndpointConfigResponse:
+      name: get_endpoint_config_response
+      title: Get Endpoint Config Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetEndpointConfigResponsePayload"
+
+    InstallCertificate:
+      name: install_certificate
+      title: Install Certificate
+      summary: Install a TLS certificate - CA root, client mutual TLS, or Wi-Fi EAP-TLS
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/InstallCertificatePayload"
+
+    InstallCertificateResponse:
+      name: install_certificate_response
+      title: Install Certificate Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    DeleteCertificate:
+      name: delete_certificate
+      title: Delete Certificate
+      summary: Remove an installed TLS certificate by name
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/DeleteCertificatePayload"
+
+    DeleteCertificateResponse:
+      name: delete_certificate_response
+      title: Delete Certificate Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    GetInstalledCertificate:
+      name: get_installed_certificate
+      title: Get Installed Certificates
+      summary: List all installed TLS certificates with issuer, subject, validity, and fingerprint
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    GetInstalledCertificateResponse:
+      name: get_installed_certificate_response
+      title: Get Installed Certificates Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/GetInstalledCertificateResponsePayload"
+
+    ConfigEvents:
+      name: config_events
+      title: Config Events
+      summary: Configure heartbeat interval, temperature alerts, and battery alerts (requires reboot)
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/ConfigEventsPayload"
+
+    ConfigEventsResponse:
+      name: config_events_response
+      title: Config Events Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    SetOs:
+      name: set_os
+      title: Set OS (Firmware Update)
+      summary: Initiate a firmware update - reader downloads, validates, and reboots to apply
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SetOsPayload"
+
+    SetOsResponse:
+      name: set_os_response
+      title: Set OS Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+    Reboot:
+      name: reboot
+      title: Reboot
+      summary: Restart the reader - required after config_events changes. Reader reconnects in 30-60 seconds.
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/SimpleCommandPayload"
+
+    RebootResponse:
+      name: reboot_response
+      title: Reboot Response
+      contentType: application/json
+      payload:
+        $ref: "#/components/schemas/CommandResponse"
+
+  schemas:
+    ResponseObject:
+      type: object
+      required: [code, description]
+      properties:
+        code:
+          type: integer
+          description: Numeric response code (0 = success)
+          enum: [0, 1, 2, 3, 6, 10, 11, 12, 15, 17, 18, 19, 20, 21, 22, 23, 24, 28]
+        description:
+          type: string
+          description: Human-readable description
+
+    SimpleCommandPayload:
+      type: object
+      required: [command, requestId]
+      properties:
+        command:
+          type: string
+          description: The command name
+        requestId:
+          type: string
+          description: Client-generated unique request identifier for correlating responses
+
+    CommandResponse:
+      type: object
+      required: [command, requestId, response]
+      properties:
+        command:
+          type: string
+        requestId:
+          type: string
+        apiVersion:
+          type: string
+          enum: ["V1.0", "V1.1"]
+        response:
+          $ref: "#/components/schemas/ResponseObject"
+
+    SetOperatingModePayload:
+      type: object
+      required: [command, requestId]
+      properties:
+        command:
+          type: string
+          const: set_operating_mode
+        requestId:
+          type: string
+        operatingMode:
+          type: object
+          properties:
+            operatingModes:
+              type: object
+              properties:
+                profiles:
+                  type: string
+                  description: RF performance profile
+                  enum: [FAST_READ, CYCLE_COUNT, DENSE_READERS, OPTIMAL_BATTERY, BALANCED_PERFORMANCE, ADVANCED]
+                advancedConfigurations:
+                  type: object
+                  description: Required when profiles is ADVANCED
+                  properties:
+                    transmitPower:
+                      type: integer
+                      description: Transmit power in 1/10 dBm (e.g. 270 = 27.0 dBm)
+                    linkProfile:
+                      type: string
+                      enum: [M4_256K, M2_240K, M2_256K, M2_320K, M4_240K, M4_320K, FM0_0K, FM0_320K, M8_240K, M8_256K, M8_320K]
+                    session:
+                      type: string
+                      enum: [SESSION_0, SESSION_1, SESSION_2, SESSION_3]
+                    dynamicPower:
+                      type: boolean
+                accessOperations:
+                  type: array
+                  description: Gen2 access operations (READ, WRITE, ACCESS, LOCK, KILL)
+                  items:
+                    type: object
+                    required: [operationType]
+                    properties:
+                      operationType:
+                        type: string
+                        enum: [READ, WRITE, ACCESS, LOCK, KILL]
+                      config:
+                        type: object
+                        properties:
+                          memoryBank:
+                            type: string
+                            enum: [EPC, TID, USER, RESERVED]
+                          offset:
+                            type: integer
+                          length:
+                            type: integer
+                          data:
+                            type: string
+                            description: Hex string for WRITE operations
+                          password:
+                            type: string
+                            description: 8-character hex string for ACCESS/LOCK/KILL
+                          lockMemBank:
+                            type: string
+                            enum: [EPC, TID, USER, ACCESS_PWD, KILL_PWD, ALL]
+                          lockAction:
+                            type: string
+                            enum: [READ_AND_WRITE, PERMANENT_LOCK, PERMANENT_UNLOCK, UNLOCK]
+                radioStartConditions:
+                  type: object
+                  properties:
+                    trigger:
+                      type: string
+                      enum: [PRESSED, RELEASED, IMMEDIATE]
+                    startDelay:
+                      type: integer
+                      description: Milliseconds
+                    repeat:
+                      type: boolean
+                radioStopConditions:
+                  type: object
+                  properties:
+                    trigger:
+                      type: string
+                      enum: [PRESSED, RELEASED, IMMEDIATE]
+                    tagCount:
+                      type: integer
+                    stopTimeout:
+                      type: integer
+                      description: Milliseconds
+                    inventoryCount:
+                      type: integer
+                      description: 0 = unlimited
+                query:
+                  type: object
+                  properties:
+                    session:
+                      type: string
+                      enum: [SESSION_0, SESSION_1, SESSION_2, SESSION_3]
+                    inventoryState:
+                      type: string
+                      enum: [STATE_A, STATE_B, STATE_AB]
+                    slFlag:
+                      type: string
+                      enum: [ALL, ASSERTED, DEASSERTED]
+                    tagPopulation:
+                      type: integer
+                      minimum: 0
+                select:
+                  type: array
+                  maxItems: 32
+                  items:
+                    type: object
+                    required: [enable, tagPattern, memoryBank, offset, action, target, length]
+                    properties:
+                      enable:
+                        type: boolean
+                      tagPattern:
+                        type: string
+                        description: Hex pattern, max 64 characters
+                        maxLength: 64
+                      memoryBank:
+                        type: string
+                        enum: [EPC, TID, USER]
+                      offset:
+                        type: integer
+                        description: Bit position
+                      action:
+                        type: string
+                        enum:
+                          - INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL
+                          - INV_A_OR_ASRT_SL
+                          - NOT_INV_B_OR_NOT_DSRT_SL
+                          - INV_A2BB2A_NOT_INV_A_OR_NEG_SL_NOT_ASRT_SL
+                          - INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL
+                          - INV_B_OR_DSRT_SL
+                          - NOT_INV_A_OR_NOT_ASRT_SL
+                          - NOT_INV_A2BB2A_OR_NOT_NEG_SL
+                      target:
+                        type: string
+                        enum: [SESSION_SL, SESSION_0, SESSION_1, SESSION_2, SESSION_3]
+                      length:
+                        type: integer
+                        description: Length in bits
+                tagMetaDataToEnable:
+                  type: object
+                  description: Tag metadata fields to include in dataEVT
+                  properties:
+                    RSSI:
+                      type: boolean
+                    PHASE:
+                      type: boolean
+                    SEENCOUNT:
+                      type: boolean
+                    CHANNEL:
+                      type: boolean
+                    PC:
+                      type: boolean
+                    XPC:
+                      type: boolean
+                      description: Not supported on RFD4090
+                    CRC:
+                      type: boolean
+                      description: Not supported on RFD4090
+                    EPC:
+                      type: boolean
+                    TID:
+                      type: boolean
+                    USER:
+                      type: boolean
+                    MAC:
+                      type: boolean
+                    HOSTNAME:
+                      type: boolean
+
+    GetOperatingModeResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            operatingMode:
+              type: object
+              description: Current operating mode (omitted on error code 3)
+
+    ControlOperationPayload:
+      type: object
+      required: [command, requestId, ctrlOprPayload]
+      properties:
+        command:
+          type: string
+          const: control_operation
+        requestId:
+          type: string
+        ctrlOprPayload:
+          type: object
+          required: [controlType, operation]
+          properties:
+            controlType:
+              type: string
+              enum: [RFID, SCANNER]
+              description: Type of radio to control
+            operation:
+              type: string
+              enum: [START, STOP]
+
+    SetPostFilterPayload:
+      type: object
+      required: [command, requestId, postFilter]
+      properties:
+        command:
+          type: string
+          const: set_post_filter
+        requestId:
+          type: string
+        postFilter:
+          type: object
+          required: [filterType, action, enable]
+          properties:
+            filterType:
+              type: string
+              enum: [PREFIX, SUFFIX, REGEX, RSSI, WHITELIST, BLACKLIST]
+            action:
+              type: string
+              enum: [INCLUDE, EXCLUDE]
+            pattern:
+              type: string
+              description: Required for PREFIX/SUFFIX/REGEX, max 64 chars
+              maxLength: 64
+            rssiThreshold:
+              type: integer
+              description: Required for RSSI filter, range -100 to 0 dBm
+              minimum: -100
+              maximum: 0
+            tagList:
+              type: array
+              description: Required for WHITELIST/BLACKLIST
+              items:
+                type: string
+            enable:
+              type: boolean
+
+    GetPostFilterResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            postFilter:
+              type: object
+              description: Current filter config (omitted if none configured)
+
+    DataEventPayload:
+      type: object
+      required: [event, deviceSerial, timestamp, apiVersion, tagData]
+      properties:
+        event:
+          type: string
+          const: dataEVT
+        deviceSerial:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        apiVersion:
+          type: string
+        tagData:
+          type: array
+          description: One or more tag read records
+          items:
+            type: object
+            required: [epc]
+            properties:
+              epc:
+                type: string
+                description: EPC identifier (hex string)
+              rssi:
+                type: integer
+                description: Signal strength in 1/10 dBm (e.g. -420 = -42.0 dBm)
+              pc:
+                type: string
+                description: Protocol Control word (hex)
+              antenna:
+                type: integer
+                description: Antenna port number
+              readCount:
+                type: integer
+                description: Number of reads in this reporting interval
+              timestamp:
+                type: string
+                format: date-time
+                description: Tag read timestamp
+              phase:
+                type: integer
+                description: Phase angle (if enabled via tagMetaData)
+              channel:
+                type: integer
+                description: Frequency in kHz (if enabled)
+              tid:
+                type: string
+                description: TID bank data (hex, if enabled)
+              userData:
+                type: string
+                description: USER bank data (hex, if enabled)
+              seenCount:
+                type: integer
+                description: Total times tag was seen
+              firstSeenTime:
+                type: string
+                format: date-time
+              lastSeenTime:
+                type: string
+                format: date-time
+
+    HeartbeatEventPayload:
+      type: object
+      required: [event, deviceSerial, timestamp, apiVersion, heartbeat]
+      properties:
+        event:
+          type: string
+          const: heartBeatEVT
+        deviceSerial:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        apiVersion:
+          type: string
+        heartbeat:
+          type: object
+          required: [uptimeSeconds, temperature]
+          properties:
+            uptimeSeconds:
+              type: integer
+              description: Seconds since boot
+            temperature:
+              type: integer
+              description: Device temperature in Celsius
+            batteryStatus:
+              type: object
+              description: Included when enabled via config_events
+              properties:
+                stateOfHealth:
+                  type: string
+                  enum: [GOOD, DEGRADED, REPLACE]
+                chargePercentage:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                chargeStatus:
+                  type: integer
+                  description: 0=not charging, 1=charging, 2=fully charged
+                  enum: [0, 1, 2]
+                voltage:
+                  type: integer
+                  description: Battery voltage in millivolts
+                temperature:
+                  type: integer
+                  description: Battery temperature in Celsius
+            inventoryStatus:
+              type: object
+              description: Included when enabled via config_events
+              properties:
+                radioActivity:
+                  type: string
+                  enum: [ACTIVE, INACTIVE]
+                operationType:
+                  type: string
+                  enum: [INVENTORY, ACCESS, NONE]
+                totalTagsRead:
+                  type: integer
+                readRate:
+                  type: integer
+                  description: Tags per second
+            networkStatus:
+              type: object
+              description: Included when enabled via config_events
+              properties:
+                connectionType:
+                  type: string
+                  enum: [WIFI, ETHERNET, BLUETOOTH]
+                ssid:
+                  type: string
+                signalStrength:
+                  type: integer
+                  description: Signal strength in dBm
+                ipAddress:
+                  type: string
+
+    AlertEventPayload:
+      type: object
+      required: [event, deviceSerial, timestamp, apiVersion, alert]
+      properties:
+        event:
+          type: string
+          const: alerts
+        deviceSerial:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        apiVersion:
+          type: string
+        alert:
+          type: object
+          required: [alertType, severity, message, currentValue, thresholdValue, unit]
+          properties:
+            alertType:
+              type: string
+              enum: [TEMPERATURE_HIGH, BATTERY_LOW, BATTERY_CRITICAL, BATTERY_HEALTH_DEGRADED, RADIO_ERROR]
+            severity:
+              type: string
+              enum: [INFO, WARNING, CRITICAL]
+            message:
+              type: string
+              description: Human-readable alert message
+            currentValue:
+              type: number
+            thresholdValue:
+              type: number
+            unit:
+              type: string
+
+    AlertShortEventPayload:
+      type: object
+      required: [event, ds, ts, v, at, sv, cv, tv]
+      description: "Compact alert format. ds=deviceSerial, ts=timestamp, v=apiVersion, at=alertType, sv=severity, cv=currentValue, tv=thresholdValue"
+      properties:
+        event:
+          type: string
+          const: alert_short
+        ds:
+          type: string
+          description: Device serial
+        ts:
+          type: string
+          format: date-time
+          description: Timestamp
+        v:
+          type: string
+          description: API version
+        at:
+          type: string
+          enum: [TEMPERATURE_HIGH, BATTERY_LOW, BATTERY_CRITICAL, BATTERY_HEALTH_DEGRADED, RADIO_ERROR]
+          description: Alert type
+        sv:
+          type: string
+          enum: [INFO, WARNING, CRITICAL]
+          description: Severity
+        cv:
+          type: number
+          description: Current value
+        tv:
+          type: number
+          description: Threshold value
+
+    ExceptionEventPayload:
+      type: object
+      required: [event, deviceSerial, timestamp, apiVersion, exception]
+      properties:
+        event:
+          type: string
+          const: exceptionEVT
+        deviceSerial:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        apiVersion:
+          type: string
+        exception:
+          type: object
+          required: [exceptionType, errorCode, message, component]
+          properties:
+            exceptionType:
+              type: string
+              enum:
+                - RADIO_COMMUNICATION_ERROR
+                - RADIO_INITIALIZATION_ERROR
+                - BLUETOOTH_DISCONNECTION
+                - NETWORK_ERROR
+                - MQTT_PUBLISH_ERROR
+                - FIRMWARE_ERROR
+                - MEMORY_ERROR
+                - HARDWARE_ERROR
+            errorCode:
+              type: integer
+            message:
+              type: string
+            component:
+              type: string
+              description: Affected subsystem
+              enum: [RFID_RADIO, BLUETOOTH, NETWORK, SYSTEM]
+            stackTrace:
+              type: string
+
+    MqttConnectionEventPayload:
+      type: object
+      required: [event, deviceSerial, timestamp, apiVersion, connection]
+      properties:
+        event:
+          type: string
+          const: mqttConnEVT
+        deviceSerial:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        apiVersion:
+          type: string
+        connection:
+          type: object
+          required: [status, endpointName, endpointType, brokerHost, brokerPort]
+          properties:
+            status:
+              type: string
+              enum: [CONNECTED, DISCONNECTED, RECONNECTING, CONNECTION_FAILED]
+            endpointName:
+              type: string
+            endpointType:
+              type: string
+              enum: [MGMT, CTRL, DATA, MDM]
+            brokerHost:
+              type: string
+            brokerPort:
+              type: integer
+            reason:
+              type: string
+              enum: [CLEAN_CONNECT, BROKER_UNAVAILABLE, KEEPALIVE_TIMEOUT, NETWORK_CHANGE]
+            reconnectAttempt:
+              type: integer
+              description: 0 for initial connection
+
+    BatteryStatus:
+      type: object
+      properties:
+        stateOfHealth:
+          type: string
+          enum: [GOOD, DEGRADED, REPLACE]
+        chargePercentage:
+          type: integer
+          minimum: 0
+          maximum: 100
+        chargeStatus:
+          type: integer
+          enum: [0, 1, 2]
+          description: 0=not charging, 1=charging, 2=fully charged
+        voltage:
+          type: integer
+          description: Millivolts
+        temperature:
+          type: integer
+          description: Celsius
+
+    GetStatusResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            deviceStatus:
+              type: object
+              properties:
+                powerSource:
+                  type: string
+                  enum: [BATTERY, USB, CRADLE]
+                radioActivity:
+                  type: string
+                  enum: [ACTIVE, INACTIVE]
+                radioConnection:
+                  type: string
+                  enum: [CONNECTED, DISCONNECTED]
+                temperature:
+                  type: integer
+                  description: Celsius
+                systemTime:
+                  type: string
+                  format: date-time
+                ntp:
+                  type: object
+                  properties:
+                    server:
+                      type: string
+                    offset:
+                      type: number
+                      description: Seconds
+                    reach:
+                      type: integer
+                terminalConnection:
+                  type: object
+                  properties:
+                    status:
+                      type: string
+                      enum: [CONNECTED, DISCONNECTED]
+                    type:
+                      type: string
+                      enum: [BLUETOOTH, USB, CIO, NONE]
+                batteryStatus:
+                  $ref: "#/components/schemas/BatteryStatus"
+
+    GetVersionResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            deviceVersion:
+              type: object
+              properties:
+                model:
+                  type: string
+                  description: e.g. RFD40, RFD90
+                deviceSerialNo:
+                  type: string
+                sku:
+                  type: string
+                firmwareVersion:
+                  type: string
+                bluetoothVersion:
+                  type: string
+                radioVersion:
+                  type: string
+                osVersion:
+                  type: string
+                bootLoaderVersion:
+                  type: string
+                cloudAgentVersion:
+                  type: string
+
+    GetCurrentRegionResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            regionInfo:
+              type: object
+              properties:
+                country:
+                  type: string
+                regulatoryStandard:
+                  type: string
+                  description: e.g. FCC, ETSI, MIC
+                frequencyHopping:
+                  type: boolean
+                lbtEnabled:
+                  type: boolean
+                minTxPowerSupported:
+                  type: integer
+                  description: 1/10 dBm
+                maxTxPowerSupported:
+                  type: integer
+                  description: 1/10 dBm
+                channelData:
+                  type: array
+                  items:
+                    type: integer
+                  description: Frequencies in kHz
+
+    GetConfigResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            deviceConfig:
+              type: object
+              description: Complete device configuration superset
+              properties:
+                deviceVersion:
+                  type: object
+                deviceStatus:
+                  type: object
+                regionInfo:
+                  type: object
+                ethernetConfig:
+                  type: object
+                wifiConfig:
+                  type: object
+                endpointConfig:
+                  type: object
+                certificates:
+                  type: array
+                  items:
+                    type: object
+                eventConfig:
+                  type: object
+
+    SetConfigPayload:
+      type: object
+      required: [command, requestId, configPayload]
+      properties:
+        command:
+          type: string
+          const: set_config
+        requestId:
+          type: string
+        configPayload:
+          type: object
+          description: One or more configuration domains
+          properties:
+            wifiConfig:
+              type: object
+            endpointConfig:
+              type: object
+            eventConfig:
+              type: object
+            certificates:
+              type: array
+              items:
+                type: object
+
+    SetWifiPayload:
+      type: object
+      required: [command, requestId, wifiConfig]
+      properties:
+        command:
+          type: string
+          const: set_wifi
+        requestId:
+          type: string
+        wifiConfig:
+          type: object
+          required: [operation, ssid, securityType]
+          properties:
+            operation:
+              type: string
+              enum: [ADD, MODIFY]
+            ssid:
+              type: string
+              maxLength: 32
+            securityType:
+              type: string
+              enum: [WPA2_PERSONAL, WPA3_PERSONAL, WPA2_ENTERPRISE, WPA3_ENTERPRISE, OPEN]
+            password:
+              type: string
+              description: Required for Personal security types
+            identity:
+              type: string
+              description: Required for Enterprise security types
+            anonymousIdentity:
+              type: string
+            eapMethod:
+              type: string
+              enum: [PEAP, TLS, TTLS]
+              description: Required for Enterprise security types
+            phase2Method:
+              type: string
+              enum: [MSCHAPV2, GTC, PAP]
+            hidden:
+              type: boolean
+              default: false
+
+    GetWifiResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            wifiConfig:
+              type: object
+              properties:
+                profiles:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      ssid:
+                        type: string
+                      securityType:
+                        type: string
+                        enum: [WPA2_PERSONAL, WPA3_PERSONAL, WPA2_ENTERPRISE, WPA3_ENTERPRISE, OPEN]
+                      eapMethod:
+                        type: string
+                        enum: [PEAP, TLS, TTLS]
+                      connected:
+                        type: boolean
+                      signalStrength:
+                        type: integer
+                        description: dBm (present when connected)
+                      hidden:
+                        type: boolean
+
+    DeleteWifiProfilePayload:
+      type: object
+      required: [command, requestId, wifiConfig]
+      properties:
+        command:
+          type: string
+          const: delete_wifi_profile
+        requestId:
+          type: string
+        wifiConfig:
+          type: object
+          required: [ssid]
+          properties:
+            ssid:
+              type: string
+
+    GetEthResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            ethernetConfig:
+              type: object
+              properties:
+                linkStatus:
+                  type: string
+                  enum: [UP, DOWN]
+                dhcpEnabled:
+                  type: boolean
+                ipAddress:
+                  type: string
+                subnetMask:
+                  type: string
+                gateway:
+                  type: string
+                dns1:
+                  type: string
+                dns2:
+                  type: string
+                macAddress:
+                  type: string
+
+    ConfigEndpointPayload:
+      type: object
+      required: [command, requestId, endpointConfig]
+      properties:
+        command:
+          type: string
+          const: config_endpoint
+        requestId:
+          type: string
+        endpointConfig:
+          type: object
+          required: [operation, name, type]
+          properties:
+            operation:
+              type: string
+              enum: [ADD, MODIFY, DELETE]
+            name:
+              type: string
+              description: User-defined endpoint label
+            type:
+              type: string
+              enum: [MGMT, CTRL, DATA, MDM]
+            host:
+              type: string
+              description: Required for ADD/MODIFY
+            port:
+              type: integer
+              description: Required for ADD/MODIFY
+            tls:
+              type: boolean
+              default: false
+            clientId:
+              type: string
+              description: Defaults to device serial
+            tenantId:
+              type: string
+            username:
+              type: string
+            password:
+              type: string
+            keepAlive:
+              type: integer
+              description: Seconds (default 60)
+              default: 60
+            cleanSession:
+              type: boolean
+              default: true
+            publishTopics:
+              type: array
+              items:
+                type: string
+            subscribeTopics:
+              type: array
+              items:
+                type: string
+
+    GetEndpointConfigResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            endpointConfig:
+              type: object
+              properties:
+                endpoints:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      type:
+                        type: string
+                        enum: [MGMT, CTRL, DATA, MDM]
+                      host:
+                        type: string
+                      port:
+                        type: integer
+                      tls:
+                        type: boolean
+                      tenantId:
+                        type: string
+                      keepAlive:
+                        type: integer
+                      cleanSession:
+                        type: boolean
+                      connectionStatus:
+                        type: string
+                        enum: [CONNECTED, DISCONNECTED, CONNECTING]
+                      publishTopics:
+                        type: array
+                        items:
+                          type: string
+                      subscribeTopics:
+                        type: array
+                        items:
+                          type: string
+
+    InstallCertificatePayload:
+      type: object
+      required: [command, requestId, certificate]
+      properties:
+        command:
+          type: string
+          const: install_certificate
+        requestId:
+          type: string
+        certificate:
+          type: object
+          required: [name, type, certificateData]
+          properties:
+            name:
+              type: string
+            type:
+              type: string
+              enum: [mqtt, wifi, client]
+            certificateData:
+              type: string
+              description: PEM-encoded certificate
+            privateKeyData:
+              type: string
+              description: PEM-encoded private key (required for client certificates)
+            privateKeyPassword:
+              type: string
+
+    DeleteCertificatePayload:
+      type: object
+      required: [command, requestId, certificate]
+      properties:
+        command:
+          type: string
+          const: delete_certificate
+        requestId:
+          type: string
+        certificate:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+
+    GetInstalledCertificateResponsePayload:
+      allOf:
+        - $ref: "#/components/schemas/CommandResponse"
+        - type: object
+          properties:
+            certificates:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                  type:
+                    type: string
+                    enum: [mqtt, wifi, client]
+                  issuer:
+                    type: string
+                    description: Distinguished name
+                  subject:
+                    type: string
+                  validFrom:
+                    type: string
+                    format: date-time
+                  validTo:
+                    type: string
+                    format: date-time
+                  serialNumber:
+                    type: string
+                    description: Hex string
+                  fingerprint:
+                    type: string
+                    description: SHA-256 fingerprint
+
+    ConfigEventsPayload:
+      type: object
+      required: [command, requestId, eventConfig]
+      properties:
+        command:
+          type: string
+          const: config_events
+        requestId:
+          type: string
+        eventConfig:
+          type: object
+          description: Requires reboot to take effect
+          properties:
+            heartbeat:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+                interval:
+                  type: integer
+                  description: Milliseconds (10000-3600000)
+                  minimum: 10000
+                  maximum: 3600000
+                inventoryStatus:
+                  type: boolean
+                  default: false
+                batteryStatus:
+                  type: boolean
+                  default: false
+                networkStatus:
+                  type: boolean
+                  default: false
+            temperature:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+                temperatureThreshold:
+                  type: integer
+                  description: Celsius (0-70)
+                  minimum: 0
+                  maximum: 70
+            battery:
+              type: object
+              required: [enabled]
+              properties:
+                enabled:
+                  type: boolean
+                lowBatteryThreshold:
+                  type: integer
+                  description: Percentage (5-50)
+                  minimum: 5
+                  maximum: 50
+                criticalBatteryThreshold:
+                  type: integer
+                  description: Percentage (1-20, default 10)
+                  minimum: 1
+                  maximum: 20
+                  default: 10
+
+    SetOsPayload:
+      type: object
+      required: [command, requestId, firmwareUpdate]
+      properties:
+        command:
+          type: string
+          const: set_os
+        requestId:
+          type: string
+        firmwareUpdate:
+          type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              description: Firmware download URL (HTTPS recommended)
+            version:
+              type: string
+              description: Version string for logging
+            force:
+              type: boolean
+              default: false

@@ -1,0 +1,97 @@
+---
+sidebar_position: 3
+title: Topic Registry
+description: "Complete MQTT topic inventory for the Zebra IoT Connector API"
+---
+
+# Appendix C: Topic Registry
+
+**Zebra IoT Connector: MQTT API V1.1**
+
+All MQTT topics follow the pattern:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+---
+
+## Topic Pattern
+
+| Segment | Description | Example |
+|---------|-------------|---------|
+| `{tenantId}` | Tenant or organization identifier | `zebra` |
+| `{interface}` | MQTT interface | `MGMT`, `CTRL`, `DATA`, `MDM` |
+| `clients` | Fixed namespace segment | `clients` |
+| `{channel}` | Message direction or type | `cmnd`, `resp`, `event`, `data1event`, `data2event`, `rfid` |
+| `{deviceSerial}` | Unique device serial number | `RFD40-212735201D0053` |
+
+---
+
+## Command Topics (Cloud to Device)
+
+| Interface | Topic | Commands |
+|-----------|-------|---------|
+| MGMT | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` | `get_status`, `get_version`, `get_current_region`, `get_config`, `set_config`, `set_wifi`, `get_wifi`, `delete_wifi_profile`, `get_eth`, `config_endpoint`, `get_endpoint_config`, `install_certificate`, `delete_certificate`, `get_installed_certificate`, `config_events`, `set_os`, `reboot` |
+| CTRL | `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` | `set_operating_mode`, `get_operating_mode`, `control_operation`, `set_post_filter`, `get_post_filter` |
+
+---
+
+## Response Topics (Device to Cloud)
+
+| Interface | Topic | Used By |
+|-----------|-------|---------|
+| MGMT | `{tenantId}/MGMT/clients/resp/{deviceSerial}` | All MGMT command responses |
+| CTRL | `{tenantId}/CTRL/clients/resp/{deviceSerial}` | All CTRL command responses |
+
+---
+
+## Event Topics (Device to Cloud)
+
+| Interface | Topic | Used By |
+|-----------|-------|---------|
+| MGMT | `{tenantId}/MGMT/clients/event/{deviceSerial}` | `heartBeatEVT`, `alerts`, `alert_short`, `exceptionEVT`, `mqttConnEVT` |
+| DATA | `{tenantId}/DATA/clients/data1event/{deviceSerial}` | `dataEVT` (primary tag data stream) |
+| DATA | `{tenantId}/DATA/clients/data2event/{deviceSerial}` | `dataEVT` (secondary tag data stream) |
+
+---
+
+## Wildcard Subscription Patterns
+
+### Single-Device Subscriptions
+
+| Filter | Purpose |
+|--------|---------|
+| `zebra/MGMT/clients/resp/{deviceSerial}` | Responses from one reader (MGMT) |
+| `zebra/CTRL/clients/resp/{deviceSerial}` | Responses from one reader (CTRL) |
+| `zebra/MGMT/clients/event/{deviceSerial}` | Events from one reader |
+| `zebra/DATA/clients/data1event/{deviceSerial}` | Tag data from one reader |
+
+### Fleet-Wide Subscriptions
+
+| Filter | Purpose |
+|--------|---------|
+| `zebra/MGMT/clients/resp/+` | All MGMT responses from all readers |
+| `zebra/CTRL/clients/resp/+` | All CTRL responses from all readers |
+| `zebra/MGMT/clients/event/+` | All events from all readers |
+| `zebra/DATA/clients/data1event/+` | All tag data from all readers |
+| `zebra/DATA/clients/+/+` | All data channels from all readers |
+
+### Multi-Level Wildcards
+
+| Filter | Purpose |
+|--------|---------|
+| `zebra/MGMT/#` | All MGMT traffic (commands, responses, events) |
+| `zebra/DATA/#` | All data traffic |
+| `zebra/#` | All traffic (use with caution on shared brokers) |
+
+---
+
+## QoS Recommendations
+
+| Topic Type | Recommended QoS | Rationale |
+|-----------|-----------------|-----------|
+| Command (`cmnd`) | 1 | Ensure command delivery |
+| Response (`resp`) | 1 | Ensure response delivery |
+| Event (`event`) | 1 | Ensure alert and heartbeat delivery |
+| Tag Data (`data1event`) | 0 or 1 | QoS 0 for high-throughput; QoS 1 when data loss is unacceptable |

@@ -1,0 +1,139 @@
+---
+sidebar_position: 4
+title: MQTT Topic Reference
+description: "MQTT topic hierarchy, channel types, and wildcard subscription patterns"
+---
+
+# MQTT Topic Reference
+
+This reference page covers the MQTT topic hierarchy used by Zebra RFID Connect, the channel types for each interface, and wildcard subscription patterns for fleet-scale operations.
+
+For the message patterns and payload conventions that accompany these topics, see [MQTT Core Concepts](/handheld/mqtt/core-concepts).
+
+---
+
+## The Five-Level Topic Pattern
+
+Every MQTT topic in Zebra RFID Connect follows a single five-level pattern:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+| Level | Segment | Description | Example Values |
+|-------|---------|-------------|----------------|
+| 1 | `{tenantId}` | Tenant or organization identifier. Set when configuring the MQTT endpoint via `config_endpoint`. | `zebra`, `acme-corp`, `wh-east` |
+| 2 | `{interface}` | MQTT interface. Determines which command domain is addressed. Always UPPERCASE. | `MGMT`, `CTRL`, `DATA`, `MDM` |
+| 3 | `clients` | Fixed literal. Namespace segment present in every topic. | `clients` |
+| 4 | `{channel}` | Message direction or data type. Determines what kind of message the topic carries. | `cmnd`, `resp`, `event`, `data1event`, `data2event`, `rfid` |
+| 5 | `{deviceSerial}` | Unique reader serial number. Matches the `deviceSerialNo` field returned by `get_version`. | `RFD40-212735201D0053` |
+
+**Concrete example: sending a command and receiving a response:**
+
+```
+Publish command:    zebra/CTRL/clients/cmnd/RFD40-212735201D0053
+Subscribe response: zebra/CTRL/clients/resp/RFD40-212735201D0053
+```
+
+**Why five levels, and why in this order?** The hierarchy is ordered from broadest scope (tenant) to narrowest (device). This ordering aligns with MQTT wildcard semantics; you can subscribe to all devices in a tenant, or all channels on an interface, or all traffic from a single reader, all using standard `+` and `#` wildcards. If the order were reversed (device first, tenant last), fleet-wide wildcard subscriptions would be impractical.
+
+---
+
+## Channel Types
+
+The `{channel}` segment at level 4 determines the direction and type of message:
+
+| Channel | Direction | Interface(s) | Description |
+|---------|-----------|-------------|-------------|
+| `cmnd` | Cloud → Device | MGMT, CTRL, MDM | **Command channel.** Your application publishes JSON commands. The reader subscribes. |
+| `resp` | Device → Cloud | MGMT, CTRL, MDM | **Response channel.** The reader publishes JSON responses. Your application subscribes. |
+| `event` | Device → Cloud | MGMT | **Event channel.** The reader publishes asynchronous events: `heartBeatEVT`, `alerts`, `alert_short`, `exceptionEVT`, `mqttConnEVT`. |
+| `data1event` | Device → Cloud | DATA | **Primary tag data channel.** The reader publishes `dataEVT` payloads during active inventory. |
+| `data2event` | Device → Cloud | DATA | **Secondary tag data channel.** Same data as `data1event`, published in parallel when a second data endpoint is configured. Allows two independent subscribers. |
+| `rfid` | Device → Cloud | DATA | **Retained data channel.** Publishes with the MQTT retain flag set. Late-subscribing clients receive the most recent payload immediately. |
+
+---
+
+## Topic Examples by Interface
+
+### MGMT: Management Interface
+
+```
+# Send a management command (e.g., get_status, config_endpoint)
+zebra/MGMT/clients/cmnd/RFD40-212735201D0053
+
+# Receive response
+zebra/MGMT/clients/resp/RFD40-212735201D0053
+
+# Receive async events (heartbeat, alerts, exceptions, connection events)
+zebra/MGMT/clients/event/RFD40-212735201D0053
+```
+
+### CTRL: Control Interface
+
+```
+# Send RFID control commands (set_operating_mode, control_operation, set_post_filter)
+zebra/CTRL/clients/cmnd/RFD40-212735201D0053
+
+# Receive response
+zebra/CTRL/clients/resp/RFD40-212735201D0053
+```
+
+### DATA: Tag Data Interface
+
+```
+# Primary tag data stream (dataEVT)
+zebra/DATA/clients/data1event/RFD40-212735201D0053
+
+# Secondary tag data stream (same data, independent subscriber)
+zebra/DATA/clients/data2event/RFD40-212735201D0053
+
+# Retained snapshot (most recent tag data, available immediately to new subscribers)
+zebra/DATA/clients/rfid/RFD40-212735201D0053
+```
+
+### MDM: Mobile Device Management Interface
+
+```
+# Send MDM commands
+zebra/MDM/clients/cmnd/RFD40-212735201D0053
+
+# Receive MDM responses
+zebra/MDM/clients/resp/RFD40-212735201D0053
+```
+
+---
+
+## Wildcard Subscriptions for Fleet Operations
+
+MQTT wildcards allow a single subscription to match multiple topics. Two wildcard characters are available:
+
+- **`+`** (single-level); Matches exactly one topic level.
+- **`#`** (multi-level); Matches zero or more remaining levels. Must be the last character.
+
+**Fleet-wide subscription patterns:**
+
+```
+# All MGMT responses from all readers
+zebra/MGMT/clients/resp/+
+
+# All CTRL responses from all readers
+zebra/CTRL/clients/resp/+
+
+# All events (heartbeat, alerts, exceptions, connection) from all readers
+zebra/MGMT/clients/event/+
+
+# All tag data from all readers (primary channel)
+zebra/DATA/clients/data1event/+
+
+# All data-plane traffic (data1event + data2event + rfid) from all readers
+zebra/DATA/clients/+/+
+
+# Everything on the MGMT interface (commands, responses, events)
+zebra/MGMT/#
+
+# All traffic for a specific reader across all interfaces
++/+/clients/+/RFD40-212735201D0053
+```
+
+> **Security note:** On shared brokers, use the narrowest wildcard subscription practical. A `zebra/#` subscription receives every message in the tenant, including commands published by your own application and by other subscribers. Configure broker-level ACLs to restrict subscribe and publish permissions per interface and per client.

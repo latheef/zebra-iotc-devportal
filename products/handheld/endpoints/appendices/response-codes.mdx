@@ -1,0 +1,53 @@
+---
+sidebar_position: 1
+title: Response Codes
+description: "Complete reference of all response codes returned by the Zebra IoT Connector MQTT API"
+---
+
+# Appendix A: Response Codes
+
+**Zebra IoT Connector: MQTT API V1.1**
+
+Every command response includes a `response.code` integer field. Find your code below for meaning, typical causes, and recommended action.
+
+---
+
+## Response Code Table
+
+| Code | Description | Typical Commands | Cause | Recommended Action |
+|------|-------------|-----------------|-------|--------------------|
+| `0` | Success | All commands | Command executed successfully | None required |
+| `1` | Command payload accepted | `set_config`, `config_endpoint`, `config_events`, `set_os` | Command queued for asynchronous processing | Monitor response topic for final result |
+| `2` | Invalid payload | All commands | Malformed JSON, missing required fields, or invalid field values | Validate the payload against the command's schema |
+| `3` | Unable to retrieve info | All getter commands | Device in transitional state, rebooting, or requested data unavailable | Retry after 2–3 seconds |
+| `6` | Region not configured | `control_operation` | RFID operation attempted without a configured regulatory region | Set the region via 123RFID Desktop |
+| `10` | Config already exists | `config_endpoint`, `set_wifi`, `install_certificate` | ADD operation for an endpoint, Wi-Fi profile, or certificate that already exists | Use MODIFY operation, or DELETE first then ADD |
+| `11` | Config does not exist | `config_endpoint`, `delete_certificate` | MODIFY or DELETE for a config that does not exist | Verify the config name with the corresponding GET command |
+| `12` | Operation already in progress | `control_operation` | START command sent while an operation is already active | STOP the current operation first |
+| `15` | SSID not found | `set_wifi`, `delete_wifi_profile` | Wi-Fi SSID not detected or not in stored profiles | Verify SSID spelling; confirm AP is broadcasting |
+| `17` | SSID missing | `set_wifi` | Wi-Fi configuration payload lacks the `ssid` field | Include the `ssid` field |
+| `18` | Certificate parse error | `install_certificate` | Invalid PEM format or corrupted certificate data | Verify PEM encoding with proper `BEGIN/END` headers |
+| `19` | Download failed | `set_os` | Reader could not connect to or download from the firmware URL | Verify URL accessibility from the reader's network |
+| `20` | Firmware validation failed | `set_os` | Downloaded firmware package integrity check failed | Verify the firmware package is not corrupted |
+| `21` | Insufficient battery | `set_os` | Battery too low for firmware update (typically < 30%) | Charge the reader or connect to USB power |
+| `22` | Operation in progress | `control_operation`, `reboot`, `set_operating_mode` | A conflicting operation prevents execution | Wait for the current operation to complete |
+| `23` | Radio not connected | `control_operation`, `set_operating_mode` | RFID radio is not connected or initialized | Check Bluetooth pairing; verify radio status via `get_status` |
+| `24` | Invalid operating mode | `set_operating_mode` | Operating mode parameter combination is invalid | Review the mode configuration against supported combinations |
+| `28` | Feature not supported | `set_operating_mode` | Requested feature requires a newer firmware version | Update firmware via `set_os` |
+
+---
+
+## Response Code Ranges
+
+| Range | Category | Description |
+|-------|----------|-------------|
+| `0` | Success | Command completed successfully |
+| `1` | Accepted | Command accepted for async processing |
+| `2–5` | Input errors | Payload validation failures |
+| `6–9` | Precondition errors | Device state prerequisites not met |
+| `10–14` | Configuration conflicts | Duplicate or missing configuration |
+| `15–18` | Resource errors | Resource not found or invalid |
+| `19–21` | Firmware errors | Firmware update failures |
+| `22–28` | Operational errors | Runtime conflicts and feature limitations |
+
+> **Note on dual-meaning codes:** Codes `11` and `22` apply to different domains. Code `11` means "inventory in progress" in the Control domain and "config does not exist" in the Management domain. Code `22` means "operation in progress" for reboot/set_os and "advanced configuration not set" for control_operation. The command context determines which interpretation applies.

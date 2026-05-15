@@ -1,0 +1,93 @@
+---
+sidebar_position: 17
+title: "set_os"
+description: "Initiate a firmware update on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# set_os
+
+Initiates a firmware update by providing the URL and parameters for the update package. The device downloads and stages the update; a subsequent `reboot` applies it.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "set_os",
+  "requestId": "20",
+  "firmwareUpdate": {
+    "url": "https://firmware.acme.com/rfd90/update-2.2.0.zip",
+    "checksum": "sha256:a1b2c3d4e5f6...",
+    "autoReboot": false,
+    "forceUpdate": false
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"set_os"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `firmwareUpdate` | object | Yes | Firmware update parameters |
+| `firmwareUpdate.url` | string | Yes | URL of the firmware update package (HTTPS recommended) |
+| `firmwareUpdate.checksum` | string | No | Expected checksum in the format `algorithm:hash` (e.g., `sha256:a1b2c3...`) |
+| `firmwareUpdate.autoReboot` | boolean | No | If `true`, the device reboots automatically after download completes. Default: `false` |
+| `firmwareUpdate.forceUpdate` | boolean | No | If `true`, applies the update even if the version matches the current firmware. Default: `false` |
+
+## Response Payload
+
+```json
+{
+  "command": "set_os",
+  "requestId": "20",
+  "statusCode": 0,
+  "statusMessage": "Success",
+  "downloadStatus": "INITIATED"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success (download initiated) |
+| `statusMessage` | string | Human-readable status |
+| `downloadStatus` | string | `INITIATED`; download has started |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | URL is malformed or a required field is missing |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `5` | DeviceBusy | A firmware update is already in progress |
+| `10` | OperationFailed | Download failed (e.g., network error, URL unreachable, checksum mismatch) |
+
+## Notes
+
+- The response confirms that the download has been initiated, not that the update is complete. Monitor the MGMT event topic for firmware update progress events.
+- If `autoReboot` is `false` (default), you must send a `reboot` command after the download completes to apply the update.
+- The firmware URL must be accessible from the device's network. Ensure firewall rules allow outbound HTTPS from the device.
+- When `checksum` is provided, the device validates the downloaded package before staging. A mismatch results in error code `10`.
+- Firmware updates can take several minutes depending on package size and network speed. Do not send other commands during the update.
+- The device must have sufficient battery charge (typically >30%) to begin a firmware update. Low battery conditions return error code `10`.
+
+> **Warning:** A power loss during firmware application (after reboot) can leave the device in a recovery state. Ensure the device is connected to a power source or has adequate battery charge before initiating a firmware update.
+
+## See Also
+
+- [reboot](reboot): Restart the device to apply the staged update
+- [get_version](get-version): Verify the firmware version after update
+- [get_status](get-status): Check battery level before initiating an update
+- [API Overview](../api-overview): Complete endpoint inventory

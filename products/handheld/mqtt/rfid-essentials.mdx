@@ -1,0 +1,323 @@
+---
+sidebar_position: 2
+title: RFID Essentials for Developers
+description: "UHF RFID basics, tag memory banks, EPC Gen2 protocol, regulatory regions, and key RF parameters"
+---
+
+# RFID Essentials for Developers
+
+You build software. This chapter gives you just enough radio-frequency and protocol knowledge to use the Zebra RFID Connect API effectively; to understand why a parameter exists, what it controls in the physical world, and how to set it correctly for your use case.
+
+We cover the physics at the level of intuition, not equations. Every concept connects directly to an API field, a configuration decision, or a data field you will see in `dataEVT` payloads.
+
+---
+
+## 4.1 How UHF RFID Works
+
+### The Frequency Band
+
+UHF RFID operates in the **860–960 MHz** band: the same part of the electromagnetic spectrum used by some cellular and ISM (Industrial, Scientific, and Medical) radio services. At these frequencies, the wavelength is approximately **33 cm** (~13 inches), which determines antenna design, tag size, and read-range characteristics.
+
+Different countries allocate different slices of this band for RFID use. Section 4.4 covers the regulatory details. For now, the key fact: the radio frequency is not a constant; it shifts depending on where in the world the reader operates.
+
+### The Three-Step Communication Cycle
+
+UHF RFID communication is **half-duplex** and **reader-initiated**. The reader always talks first. Here is the complete cycle:
+
+**Step 1: The reader transmits.** The reader's antenna radiates a continuous-wave (CW) RF signal at the operating frequency. This signal carries energy outward in a directed beam. The signal serves two purposes simultaneously: it **powers** passive tags and it **carries commands** encoded as modulated pulses (using PIE; Pulse Interval Encoding).
+
+**Step 2: The tag backscatters.** A passive UHF RFID tag has no battery. When the reader's RF signal hits the tag antenna, the antenna harvests enough energy to power the tag's integrated circuit (IC). The IC processes the reader's command, then responds by rapidly switching the **impedance** of its antenna: alternating between absorbing and reflecting the incoming signal. This modulated reflection is called **backscatter**. Think of it like a mirror that flickers on and off in a pattern; the flickering *is* the data.
+
+**Step 3: The reader decodes.** The reader's antenna picks up the faint backscattered signal. The reader's RF front-end separates this signal from the much stronger transmitted signal, demodulates it, and decodes the tag's response, typically an EPC identifier and optional metadata.
+
+> **Why this matters to your code:** The backscatter mechanism explains two things you will encounter in practice. First, **read range is asymmetric** : the limiting factor is usually whether the tag receives enough energy to power on (the "forward link"), not whether the reader can hear the response. Second, **signal strength (RSSI) varies with distance, orientation, and environment**, which is why RSSI is reported per-read in `dataEVT` and must be interpreted carefully.
+
+### Read Range, Orientation, and Environmental Factors
+
+The maximum distance at which a reader can successfully communicate with a tag (the **read range**) depends on several interacting variables:
+
+- **Transmit power.** Higher power extends range. The RFD40 supports 0–30 dBm EIRP (RFD40-M: 4–34 dBm). Power is configurable via `set_operating_mode` → `advancedConfigurations.transmitPower`.
+- **Tag size and design.** Larger tag antennas capture more energy. A credit-card-sized label might read at 2–5 meters; a pallet tag at 10+ meters.
+- **Orientation.** Tags read best when the tag antenna is **parallel** to the reader antenna's polarization plane. A tag perpendicular to the field may not read at all. Handheld readers with **circular polarization** are more tolerant of tag orientation than fixed readers with linear-polarized antennas.
+- **Environment.** Metal surfaces reflect RF energy, creating dead zones and multipath interference. Liquids (including the water in human bodies) absorb UHF energy. Dense tag populations increase collision rates. Temperature does not meaningfully affect UHF propagation within the operating range of these readers.
+
+> **Practical rule:** Do not assume a consistent read range. Bench-test results in an open lab will differ from a warehouse aisle stacked with metal shelving and water-based products. Always validate read performance in the deployment environment.
+
+---
+
+## 4.2 Tag Anatomy
+
+An EPC Gen2 UHF RFID tag consists of two physical components; an **antenna** (typically a printed or etched conductor) and an **integrated circuit** (IC or "chip"). The IC contains a small processor, an RF front-end, and **four memory banks**. These memory banks are the data your application reads, writes, and filters against through the Zebra RFID Connect API.
+
+Think of tag memory as a fixed database schema with four tables. Each table has different access policies, different purposes, and different relevance to your application code.
+
+### Memory Bank Overview
+
+| Bank | MemBank ID | Software Analogy | Size | Writability | What It Contains |
+|------|-----------|-----------------|------|-------------|-----------------|
+| **EPC** | `01` | Primary key / identifier | 96–496 bits (96 or 128 typical) | Read/Write | The tag's logical identity; the number your application uses to identify the tagged item |
+| **TID** | `10` | System-generated UUID | 32–96 bits | Read-only (factory-set) | Manufacturer ID, chip model, and a unique serial number. Immutable. Cannot be cloned. |
+| **User** | `11` | Application data table | 0–64 Kbits | Read/Write | Optional storage for application-specific data (batch codes, dates, custom fields). Not present on all tag ICs. |
+| **Reserved** | `00` | Credentials store | 64 bits (two 32-bit passwords) | Read/Write (lockable) | Access password + Kill password. Controls write-protection and permanent tag deactivation. |
+
+### EPC Memory Bank: The License Plate
+
+The **EPC (Electronic Product Code)** bank is the tag's primary identifier; the value your application receives in every `dataEVT` payload. It is the equivalent of a license plate: a structured, human-assigned identifier that maps to a specific item, asset, or case.
+
+**Key facts:**
+
+- Default length is **96 bits** (12 bytes, 24 hex characters), though 128-bit EPCs are increasingly common.
+- EPCs are **not guaranteed unique from the factory**. Tags often ship with repeating or zeroed EPC values. For unique identification, you must either **encode unique EPCs** at commissioning or rely on the TID bank.
+- The EPC bank also contains a **StoredCRC** (16 bits) and a **Protocol Control (PC)** word (16 bits) before the EPC data itself. When you use `accessOperations` to read or write the EPC bank, the `offset` parameter accounts for these header words.
+- You read the EPC bank via `set_operating_mode` → `tagMetaDataToEnable.EPC: true` (included in every inventory by default) and access it directly via `accessOperations` with `memoryBank: "EPC"`.
+
+### TID Memory Bank: The Birth Certificate
+
+The **TID (Tag Identifier)** bank is factory-programmed and **permanently locked**. It contains:
+
+- A **class identifier** indicating the tag complies with EPC Gen2 (`E2` hex).
+- A **Mask Designer ID (MDID)**: a 9-bit code identifying the chip manufacturer (e.g., Impinj, NXP, Alien).
+- A **tag model number** (12 bits); identifying the specific IC model.
+- An optional **unique serial number**, making the full TID globally unique.
+
+**Why TID matters to developers:** Unlike EPCs, the TID **cannot be cloned or overwritten**. If your application needs to verify tag authenticity or detect counterfeits, read the TID. Enable TID reporting with `tagMetaDataToEnable.TID: true`, or read TID directly via `accessOperations` with `memoryBank: "TID"`.
+
+### User Memory Bank: Application Data
+
+The **User memory bank** is an optional read/write storage area for application-specific data. Use it to store information that needs to travel *with* the tag; serial numbers, inspection dates, maintenance records, or routing instructions.
+
+**Capacity depends entirely on the tag IC.** Budget inlay tags have zero User memory. Industrial tags may offer 128 bits to 64 Kbits. Check the tag's datasheet before designing a solution that depends on User memory.
+
+Write to User memory via `accessOperations` with `operationType: "WRITE"` and `memoryBank: "USER"`. Set the `offset` (in 16-bit words) and `data` (hex-encoded).
+
+### Reserved Memory Bank: Access and Kill Passwords
+
+The **Reserved bank** holds two 32-bit passwords:
+
+| Password | Offset | Purpose |
+|----------|--------|---------|
+| **Kill password** | `00h–1Fh` | Permanently and irreversibly deactivates the tag. Once killed, the tag never responds again. |
+| **Access password** | `20h–3Fh` | Required to transition a tag to the "Secured" state, which enables write-protection (locking) operations. |
+
+Both passwords default to `00000000` (all zeros). A zero kill password means the tag **cannot be killed**; the spec requires a non-zero password for the kill command to execute.
+
+> **Security note:** If your application writes sensitive data to tags, set a non-zero access password and lock the relevant memory banks. Without this, any reader can overwrite the tag's EPC or User data.
+
+---
+
+## 4.3 EPC Gen2 Protocol: What Developers Need to Know
+
+The **EPC Gen2** standard (formally ISO 18000-6C) defines how readers and tags communicate at the air interface. You do not need to understand the full protocol: but three mechanisms directly affect how you configure the `set_operating_mode` command: **Sessions and Inventoried Flags**, **Select Commands**, and the **Q Algorithm**.
+
+### Sessions and Inventoried Flags: The Tag State Machine
+
+Every Gen2 tag maintains **four independent 1-bit state machines**, called **sessions** (S0, S1, S2, S3). Each session has an **inventoried flag** that is either **A** or **B**.
+
+Think of it this way: each tag has four sticky notes attached to it, labeled S0 through S3. Each sticky note reads either "A" or "B." When a reader begins an inventory round, it announces: *"I am reading Session X, and I want all tags currently in State A."* Every tag whose Session X sticky note says "A" responds. After a tag is successfully read, the reader flips that tag's sticky note from A to B. On the next inventory round targeting the same session, that tag will not respond; it has already been counted.
+
+**This is the mechanism that prevents counting the same tag twice in a single inventory cycle.**
+
+The sessions differ in how long the flag stays flipped:
+
+| Session | Flag Persistence (Powered) | Flag Persistence (Unpowered) | Resets To | Best For |
+|---------|---------------------------|------------------------------|-----------|----------|
+| **S0** | Indefinite | Resets to A immediately | A | Continuous monitoring; tags re-enter every round |
+| **S1** | 500 ms – 5 s (auto-reverts) | 500 ms – 5 s | A | Fast re-scan; tags become readable again within seconds |
+| **S2** | Indefinite (while powered) | > 2 seconds | Last state | Multi-reader coordination; two readers using S2 and S3 avoid double-counting |
+| **S3** | Indefinite (while powered) | > 2 seconds | Last state | Multi-reader coordination; same as S2, independent flag |
+
+**Mapping to the API:** You configure the session via `set_operating_mode` → `query.session`. Values: `"SESSION_0"`, `"SESSION_1"`, `"SESSION_2"`, `"SESSION_3"`. You set the initial target state via `query.inventoryState`: `"STATE_A"` or `"STATE_B"`.
+
+**Choosing the right session:**
+
+- **Cycle count (read every unique tag once)?** Use **S1**. The flag auto-reverts after a few seconds, so tags missed on the first pass become readable again quickly. Set `tagPopulation` to your expected count for optimal anti-collision performance.
+- **Continuous conveyor scan (detect new arrivals)?** Use **S2**. Tags stay in State B indefinitely while powered. Only new tags arriving in the field respond. This is equivalent to a "read once" mode.
+- **Multiple readers overlapping?** Give each reader a different session (S2/S3) so they maintain independent flag states. Tags counted by Reader A (via S2) still respond to Reader B (via S3).
+- **Simple, quick reads?** Use **S0**. Tags respond every round, no deduplication at the RF layer. Useful for locating a specific tag (point and scan) or when your application handles deduplication.
+
+### Select Commands and Pre-Filters: The WHERE Clause
+
+Before starting an inventory round, the reader can issue **Select** commands that pre-filter which tags will participate. This is the closest analog to a SQL `WHERE` clause: the reader broadcasts a bit pattern and a memory bank location, and only tags whose memory matches the pattern are flagged for inventory.
+
+**How it works:**
+
+1. The reader sends a Select command specifying: a **memory bank** (EPC, TID, User, or Reserved), a **bit offset**, a **bit length**, and a **mask** (the bit pattern to match against).
+2. Tags compare the mask to their memory at the specified location.
+3. Matching tags have their **SL flag** or **session inventoried flag** set according to the Select command's **action** parameter.
+4. The subsequent inventory Query targets only tags with the matching flag state.
+
+**Select supports set operations.** Multiple Select commands can be chained to implement **union**, **intersection**, and **negation**, just like composing `WHERE` clauses with `AND`, `OR`, and `NOT`.
+
+**Mapping to the API:** You configure select pre-filters via `set_operating_mode` → `select[]`. Each filter object specifies:
+
+| Field | Purpose | Example |
+|-------|---------|---------|
+| `memoryBank` | Which bank to match against | `"EPC"` |
+| `offset` | Bit position where comparison starts | `32` (skip CRC + PC, match EPC data) |
+| `length` | Number of bits to compare | `96` |
+| `tagPattern` | Hex-encoded bit mask | `"FFFFEEEE3435363742426666"` |
+| `target` | Which flag to modify | `"SESSION_1"` or `"SESSION_SL"` |
+| `action` | What to do with matching/non-matching tags | `"INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL"` |
+
+**Example use case:** A warehouse has tags from multiple tenants sharing the same facility. Before inventory, issue a Select matching your company's EPC prefix. Only your tags participate. Other tenants' tags are invisible to your scan.
+
+### Q Algorithm and Anti-Collision: Adaptive Load Balancing
+
+When a reader interrogates a population of tags, multiple tags may attempt to respond simultaneously; a **collision**. The Gen2 protocol solves this with a **slotted ALOHA** anti-collision algorithm controlled by a single parameter: **Q**.
+
+**The software analogy:** Q works like TCP congestion control. The reader estimates the "traffic volume" (tag population) and adjusts a window size to minimize collisions without wasting empty time slots.
+
+**How it works:**
+
+1. The reader sends a Query command with a **Q value** (integer, 0–15).
+2. Each participating tag generates a random number between **0** and **2^Q − 1** and loads it into an internal slot counter.
+3. Tags with slot counter = 0 respond immediately.
+4. The reader sends **QueryRep** commands, which decrement every tag's slot counter by one. When a tag's counter reaches 0, it responds.
+5. If the reader detects a **collision** (multiple tags responded in the same slot), it can send **QueryAdjust** to increase Q: creating more slots and spreading tags out. If it detects **empty slots** (no tags responded), it can decrease Q to reduce wasted time.
+
+**The result:** With a well-tuned Q, the reader singulates (individually identifies) hundreds of tags per second with minimal collisions.
+
+### Tag Population Estimation
+
+You do not need to calculate Q manually. Instead, you tell the reader approximately how many tags to expect using `set_operating_mode` → `query.tagPopulation`. The reader firmware uses this hint to select an initial Q value and adjust dynamically during the inventory round.
+
+**Guidelines:**
+
+| Expected Tags | Recommended `tagPopulation` | Rationale |
+|--------------|---------------------------|-----------|
+| 1–10 | `10` | Low Q. Few slots. Fast singulation. |
+| 10–100 | `30`–`100` | Moderate Q. Balances speed and collision avoidance. |
+| 100–1,000 | `500` | Higher Q. More slots prevent collision cascades. |
+| 1,000+ | `1000` | Maximum anti-collision capacity. Inventory rounds take longer but capture more unique tags. |
+
+> **Key insight:** An under-estimated `tagPopulation` causes excessive collisions, reducing throughput and increasing inventory time. An over-estimated value wastes time on empty slots. When in doubt, **overestimate slightly**; empty slots are cheaper than collisions.
+
+---
+
+## 4.4 Regulatory Regions
+
+RFID readers are radio transmitters. Every country regulates which frequencies a transmitter can use, how much power it can emit, and how it must share the spectrum with other devices. **The reader will not start an RF operation until a valid regulatory region is configured.** Attempting to call `control_operation` START without a region returns response code `6`; "Region is not configured."
+
+### Why Region Matters to Your Code
+
+The regulatory region is not just a compliance checkbox; it changes the operational parameters your application can use:
+
+- **Available frequencies** differ by region (see table below). Your `dataEVT` payloads include a `channel` field reporting the frequency of each tag read. These values will differ between a reader in the US (902–928 MHz) and one in Europe (865–868 MHz).
+- **Maximum transmit power** varies. The `maxTxPowerSupported` value from `get_current_region` defines the ceiling for `advancedConfigurations.transmitPower`. Setting power above the region limit returns an error.
+- **Spectrum access method** varies. Some regions use frequency hopping; others use Listen Before Talk. Your application does not control this directly, but it affects RF behavior and scan timing.
+
+### Region Comparison
+
+| Region | Governing Body | Frequency Band | Spectrum Method | Max EIRP | Channel Count |
+|--------|---------------|----------------|-----------------|----------|---------------|
+| **FCC** (Americas) | Federal Communications Commission | 902–928 MHz | **Frequency hopping**; reader hops across channels, max 0.4 s per channel | 30 dBm (1 W) EIRP | 50 channels |
+| **ETSI** (Europe) | European Telecommunications Standards Institute | 865–868 MHz | **Listen Before Talk (LBT)**; reader listens for a clear channel before transmitting | 29.2 dBm (0.83 W) ERP | 4 channels |
+| **MIC** (Japan) | Ministry of Internal Affairs and Communications | 916–921 MHz | LBT | 30 dBm EIRP | Varies |
+| **SRRC** (China) | State Radio Regulation Committee | 920–925 MHz | Frequency hopping | 30 dBm EIRP | Varies |
+| **KCC** (South Korea) | Korea Communications Commission | 917–923.5 MHz | Frequency hopping | 30 dBm EIRP | Varies |
+
+### Frequency Hopping vs. Listen Before Talk
+
+**Frequency hopping** (FCC regions): The reader automatically cycles through its available channels, dwelling on each for no more than **0.4 seconds** before jumping to the next. This spreads energy across the band and prevents interference between co-located readers. The reader handles this autonomously; your application does not control the hopping pattern.
+
+**Listen Before Talk** (ETSI regions): Before transmitting on a channel, the reader listens for existing traffic. If the channel is occupied, the reader waits or selects a different channel. LBT adds slight latency to scan startup and can reduce throughput in environments with many RF devices competing for the same 4 channels.
+
+> **Practical impact:** FCC regions have 50 channels across 26 MHz of bandwidth. ETSI regions have 4 channels across 3 MHz. Dense deployments with multiple readers perform better under FCC rules because the frequency hopping pattern has more room to spread. In ETSI environments, stagger reader scan times or reduce the number of co-located readers to avoid channel contention.
+
+### Setting the Region
+
+The regulatory region is configured using **123RFID Desktop**; Zebra's companion configuration tool, not through the MQTT API. The MQTT API provides read-only access via `get_current_region`, which returns the configured country, regulatory standard, frequency hopping and LBT status, power limits, and available channels.
+
+**Deployment workflow:**
+
+1. Connect the reader to 123RFID Desktop.
+2. Set the country/region to match the deployment location.
+3. The reader stores the region in non-volatile memory; it persists across reboots.
+4. Your application calls `get_current_region` to verify the region before starting operations.
+5. Use the returned `minTxPowerSupported` and `maxTxPowerSupported` fields to constrain transmit power settings in your application logic.
+
+---
+
+## 4.5 Key RF Parameters and What They Control
+
+This section maps the RF parameters you configure through `set_operating_mode` to their physical effects. Each parameter trades off between read range, throughput, power consumption, and noise immunity.
+
+### Transmit Power
+
+**What it is:** The RF power level the reader antenna radiates, measured in **dBm** (decibels relative to one milliwatt). The API field `advancedConfigurations.transmitPower` accepts values in **tenths of a dBm**, so `300` means 30.0 dBm.
+
+**What it controls:** Transmit power is the single largest factor in read range. Each 3 dB increase approximately **doubles** the radiated power. Each 6 dB increase approximately **doubles** the read range (because the round-trip path loss follows an inverse-fourth-power law for backscatter systems).
+
+| Model | Power Range | API Value Range | Notes |
+|-------|------------|-----------------|-------|
+| RFD40 / RFD90 | 0–30 dBm EIRP | `0`–`300` | Standard handhelds |
+| RFD40-M | 4–34 dBm EIRP | `40`–`340` | High-power model for extended range |
+
+**Guidance:**
+
+- **Start low, increase as needed.** Higher power reads tags at greater distance but also reads tags you may not want; items in adjacent aisles, on neighboring pallets, or through walls.
+- **Match power to your use case.** A point-of-sale scan (one tag, inches away) needs minimal power. A dock-door portal (hundreds of tags at 3–5 meters) needs near-maximum.
+- **Respect regional limits.** The `maxTxPowerSupported` from `get_current_region` is a hard ceiling. The reader firmware rejects values above it.
+- **Power affects battery life.** On handheld readers, higher transmit power drains the battery faster. The `OPTIMAL_BATTERY` profile in `set_operating_mode` automatically reduces power to extend runtime.
+
+### Link Profiles: Modulation and Data Rate Tradeoffs
+
+A **link profile** defines the modulation scheme and data rate used for communication between the reader and tags. It controls how the reader's RF signal is encoded and how the tag's backscatter response is modulated.
+
+**The tradeoff is speed vs. robustness:**
+
+| Profile | Modulation | Tag→Reader Data Rate | Range | Noise Immunity | Best For |
+|---------|-----------|---------------------|-------|----------------|----------|
+| **FM0** | FM0 baseband | Highest (~640 kbps) | Shorter | Lower | Clean RF environments, maximum throughput, short range |
+| **M2_240K** | Miller-2 subcarrier | ~240 kbps | Moderate | Moderate | General-purpose; good balance of speed and reliability |
+| **M4_256K** | Miller-4 subcarrier | ~256 kbps | Longer | Higher | Dense tag populations, noisy RF environments, longer range |
+| **M8** | Miller-8 subcarrier | Lowest (~80 kbps) | Longest | Highest | Maximum range, maximum noise rejection, lowest throughput |
+
+**How Miller modulation works (simplified):** Higher Miller values (M2, M4, M8) encode each data symbol across more RF subcarrier cycles. This adds redundancy; the reader can reconstruct the data even if part of the backscattered signal is corrupted by noise or multipath reflections. The cost is lower data throughput per tag.
+
+**Mapping to the API:** Set via `set_operating_mode` → `advancedConfigurations.linkProfile`. Only applies when `profiles` is set to `"ADVANCED"`. Predefined profiles (e.g., `BALANCED_PERFORMANCE`, `CYCLE_COUNT`) select a link profile automatically.
+
+**Guidance:**
+
+- Start with **M2_240K** (or use the `BALANCED_PERFORMANCE` profile). It works well in most environments.
+- Switch to **M4_256K** if you experience frequent read failures in noisy or reflective environments (warehouses with metal racking, manufacturing floors with heavy equipment).
+- Use **FM0** only when range is irrelevant and you need maximum read speed (encoding stations with tags inches from the reader).
+
+### RSSI, Phase Angle, and Tag Localization
+
+Three metadata values in `dataEVT` payloads provide information about the spatial relationship between reader and tag. Enable them via `set_operating_mode` → `tagMetaDataToEnable`.
+
+#### RSSI (Received Signal Strength Indicator)
+
+**What it is:** The power level of the backscattered signal received from the tag, measured in **dBm**. A stronger signal (closer to 0 dBm) generally indicates a closer or better-oriented tag.
+
+**What it tells you (and what it does not):**
+
+- RSSI is a **relative proximity indicator**, not a distance measurement. A strong RSSI means the tag is likely close, well-oriented, and in clear line-of-sight. A weak RSSI could mean the tag is far away, poorly oriented, partially occluded, or affected by multipath interference.
+- RSSI values **are not comparable across different tag types**. A large pallet tag at 5 meters may return the same RSSI as a tiny label tag at 1 meter.
+- RSSI is most useful for **relative comparisons**; finding the strongest signal among multiple reads of the same tag (tag locating), detecting when a tag enters or exits a read zone (threshold-based presence detection), or filtering out weak/distant reads.
+
+**API field:** Reported per tag in `dataEVT` when `tagMetaDataToEnable.RSSI` is `true`.
+
+#### Phase Angle
+
+**What it is:** The phase difference (in degrees) between the transmitted signal and the received backscatter. It reflects the **round-trip distance** between reader and tag modulo the wavelength.
+
+**What it tells you:**
+
+- Phase changes **monotonically with distance** over short ranges, making it useful for **high-resolution relative positioning** when combined with RSSI.
+- Phase wraps every half-wavelength (~16.5 cm at 915 MHz), so it cannot provide absolute distance alone.
+- Phase is most useful in **multi-read, multi-frequency** algorithms that combine phase data from multiple channel frequencies to estimate distance more accurately.
+
+**API field:** Reported per tag in `dataEVT` when `tagMetaDataToEnable.PHASE` is `true`.
+
+#### Using RSSI and Phase Together
+
+For **tag localization** (finding a specific tag), the most effective approach is:
+
+1. Enable both `RSSI` and `PHASE` in `tagMetaDataToEnable`.
+2. Use a Select pre-filter to isolate the target tag by EPC.
+3. As the operator moves the handheld reader, monitor RSSI for gross direction (warmer/colder) and phase for fine-grained distance changes.
+4. Present the data as a visual or audio signal that strengthens as the reader approaches the tag.
+
+> **Implementation note:** RSSI and phase are physical measurements with inherent noise. Apply smoothing (rolling average over the last N reads) before using them to drive UI indicators. Raw per-read values will fluctuate even when the reader and tag are stationary.

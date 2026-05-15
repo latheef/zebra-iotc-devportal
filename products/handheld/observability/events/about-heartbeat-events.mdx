@@ -1,0 +1,110 @@
+---
+sidebar_position: 4
+title: "About Heartbeat Events"
+description: "Understanding heartBeatEVT events for device health monitoring on the RFD40/RFD90."
+---
+
+# About Heartbeat Events
+
+Heartbeat events (`heartBeatEVT`) are periodic status snapshots published by the RFD40/RFD90 reader sled. They provide a consistent stream of device health data that forms the foundation of fleet monitoring and proactive maintenance.
+
+## What Heartbeats Contain
+
+Each `heartBeatEVT` is a point-in-time snapshot of the device's key health metrics:
+
+### Battery Status
+
+- **`battery_level`**: Current charge percentage (0–100)
+- **`battery_charging`**: Whether the device is docked and charging
+
+Battery level reported in heartbeats is your primary signal for scheduling device swaps and managing charging rotations across a fleet.
+
+### Device Temperature
+
+- **`temperature_c`**: Internal device temperature in Celsius
+
+Elevated temperatures can indicate heavy RF usage, direct sunlight exposure, or hardware stress. Sustained high temperatures may throttle performance or shorten device lifespan.
+
+### Connection Quality
+
+- **`wifi_rssi`**: Wi-Fi signal strength in dBm
+- **`bt_connected`**: Bluetooth link status to the paired mobile computer
+
+These fields help identify devices operating in poor coverage areas. A consistently low `wifi_rssi` may explain intermittent data delivery or high latency.
+
+### Operating State
+
+- **`operating_state`**: Current reader state; `IDLE`, `READING`, or `ERROR`
+
+This tells you whether the device is actively scanning, waiting, or in a fault condition without needing to query the device explicitly.
+
+### Device Identity
+
+- **`firmware_version`**: Running firmware version
+- **`uptime_seconds`**: Time since last reboot
+
+Firmware version tracking across heartbeats helps you verify fleet-wide updates. Uptime anomalies (unexpected resets) can indicate stability issues.
+
+## Heartbeat Interval
+
+The default interval is **60 seconds**. This is configurable via `config_events`:
+
+| Interval | Trade-off |
+|---|---|
+| 15 seconds | Near-real-time visibility. Higher battery drain and MQTT traffic. |
+| 30 seconds | Good balance for active monitoring. |
+| 60 seconds | Standard; suitable for most deployments. |
+| 300 seconds | Battery-conservative. Delayed visibility into issues. |
+
+Shorter intervals give faster detection of problems (battery drops, disconnections) but cost battery life. For a fleet of 500 devices at 15-second intervals, your broker handles ~2,000 heartbeat messages per minute.
+
+## Building Fleet Health Dashboards
+
+Heartbeats are designed for aggregation. A fleet health dashboard typically:
+
+1. **Subscribes** to `{tenantId}/DATA/clients/heartbeat/+` to receive heartbeats from all devices
+2. **Stores** each heartbeat in a time-series database (InfluxDB, Azure Data Explorer, TimescaleDB)
+3. **Visualizes** metrics across the fleet:
+   - Device online/offline count
+   - Battery distribution histogram
+   - Temperature heatmap
+   - Signal quality trends
+
+### Key Metrics to Track
+
+| Metric | Dashboard Widget | Alert When |
+|---|---|---|
+| Battery level | Fleet histogram | Below 20% |
+| Temperature | Max/avg gauge | Above 45°C |
+| Wi-Fi RSSI | Signal quality map | Below -75 dBm |
+| Operating state | Status pie chart | ERROR count > 0 |
+| Uptime | Reboot counter | Unexpected resets |
+
+## Heartbeat vs. On-Demand Status
+
+Heartbeats are complementary to the `get_status` command:
+
+| | Heartbeat | get_status |
+|---|---|---|
+| Trigger | Automatic, periodic | On-demand, per request |
+| Latency | Up to one interval of delay | Immediate response |
+| Volume | Continuous stream | Single response |
+| Use case | Fleet monitoring | Point-in-time diagnostics |
+
+Use heartbeats for ongoing monitoring and `get_status` for targeted troubleshooting.
+
+## Missing Heartbeats
+
+If a device stops sending heartbeats, it is likely offline or experiencing connectivity issues. Set up a **heartbeat timeout** in your monitoring system:
+
+- If no heartbeat is received within **2× the configured interval**, mark the device as `STALE`
+- If no heartbeat is received within **5× the interval**, mark the device as `OFFLINE`
+
+> **Note**: MQTT Last Will and Testament (LWT) messages may also indicate disconnection, but heartbeat timeouts provide an application-level safety net.
+
+## Related Topics
+
+- [Event Types Reference](./event-types-reference.mdx): heartBeatEVT payload schema
+- [How to Configure Event Reporting](./configure-event-reporting.mdx): setting the heartbeat interval
+- [How to Check Device Status & Health](../monitoring/check-device-health.mdx): on-demand status checks
+- [How to Build a Fleet Health Dashboard](../monitoring/fleet-health-dashboard.mdx): aggregation patterns

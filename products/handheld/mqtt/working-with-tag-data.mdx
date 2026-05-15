@@ -1,0 +1,478 @@
+---
+sidebar_position: 5
+title: Working with Tag Data
+description: "dataEVT payload structure, deduplication, signal analysis, and production ingestion pipelines"
+---
+
+# Working with Tag Data
+
+Chapter 8 configured what the reader does during an inventory; power, modulation, filters, triggers. This chapter addresses what happens *after* the reader singulates a tag and publishes the result: the `dataEVT` payload arrives on your MQTT subscriber, and your system must ingest, interpret, and survive it.
+
+The gap between "I can receive tag data" and "I can run a production system on tag data" is larger than most developers expect. A single RFD40 reader can produce **hundreds of tag reads per second** during active inventory. Each tag in the field is read repeatedly, not once, but every inventory cycle, multiple times per second. A 500-tag warehouse zone with one reader generates a sustained stream of 1,000–5,000 messages per second. A fleet of 20 readers multiplies that by 20.
+
+Raw RFID data is a high-velocity, high-redundancy firehose. This chapter teaches you how to understand its structure (9.1), eliminate redundancy without losing information (9.2), interpret signal data correctly (9.3), build an ingestion pipeline that survives production volumes (9.4), and subscribe to the right data streams (9.5).
+
+---
+
+## 9.1 Understanding dataEVT Payloads
+
+Every tag read during an active inventory produces a `dataEVT` event, published on the DATA interface:
+
+**Subscribe to:**
+
+```
+<TENANT_ID>/DATA/clients/data1event/<DEVICE_SERIAL>
+```
+
+The payload contains an envelope with reader identification and a `tagData` array with one or more tag read records. Here is a fully populated example with all optional fields enabled:
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-08T14:30:16.456Z",
+  "apiVersion": "V1.1",
+  "tagData": [
+    {
+      "epc": "E2801170000002059E42A82B",
+      "rssi": -380,
+      "pc": "3000",
+      "antenna": 1,
+      "readCount": 12,
+      "timestamp": "2026-04-08T14:30:16.400Z",
+      "phase": 127,
+      "channel": 903250,
+      "seenCount": 87,
+      "firstSeenTime": "2026-04-08T14:28:00.000Z",
+      "lastSeenTime": "2026-04-08T14:30:16.400Z",
+      "tid": "E2801104200050824612188F",
+      "userData": "48656C6C6F"
+    },
+    {
+      "epc": "300833B2DDD9014000000000",
+      "rssi": -620,
+      "pc": "3400",
+      "antenna": 1,
+      "readCount": 1,
+      "timestamp": "2026-04-08T14:30:16.455Z"
+    }
+  ]
+}
+```
+
+Notice the second tag in `tagData`; it has only the core fields. Fields like `seenCount`, `firstSeenTime`, `lastSeenTime`, `tid`, and `userData` are conditional. Their presence depends on the operating mode configuration and what the reader has observed.
+
+### Envelope Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `event` | string | Always `"dataEVT"` |
+| `deviceSerial` | string | Serial number of the reader that produced this event. Use this to identify the source in multi-reader deployments. |
+| `timestamp` | string | ISO 8601 timestamp of the event publication when the reader assembled and sent this payload. |
+| `apiVersion` | string | API version (`"V1.1"`). |
+| `tagData` | array | One or more tag read objects. A single event may batch multiple tags. |
+
+### Tag Data Fields
+
+| Field | Type | Always Present | Description |
+|-------|------|---------------|-------------|
+| `epc` | string | Yes | The tag's Electronic Product Code in hexadecimal. This is the primary identifier; the "license plate" (Section 4.2). |
+| `rssi` | integer | Yes | Received signal strength in **tenths of dBm**. `-380` = -38.0 dBm. See Section 9.3 for interpretation. |
+| `pc` | string | Yes | Protocol Control word in hex. Encodes the EPC length and tag capabilities. |
+| `antenna` | integer | Yes | Antenna port number that read the tag. Always `1` for handheld readers (single antenna). |
+| `readCount` | integer | Yes | Number of times this tag was read in the current reporting interval. A `readCount` of `12` means the reader singulated this tag 12 times since the last `dataEVT` for this tag. |
+| `timestamp` | string | Yes | ISO 8601 timestamp of the individual tag read (may differ from the envelope timestamp by milliseconds). |
+| `phase` | integer | Conditional | Phase angle of the tag's backscattered signal. Enabled via `tagMetaDataToEnable.PHASE: true` (Section 8.1). Used for motion detection and localization. |
+| `channel` | integer | Conditional | RF channel frequency in kHz (e.g., `903250` = 903.25 MHz). Enabled via `tagMetaDataToEnable.CHANNEL: true`. Useful for debugging frequency-hopping behavior. |
+| `seenCount` | integer | Conditional | Cumulative count of how many times this tag has been seen across the entire inventory session (since the last `control_operation` START). Differs from `readCount`, which resets each reporting interval. |
+| `firstSeenTime` | string | Conditional | ISO 8601 timestamp of the first time this tag was seen in the current inventory session. |
+| `lastSeenTime` | string | Conditional | ISO 8601 timestamp of the most recent read of this tag. Together with `firstSeenTime`, this defines the time window over which `seenCount` was accumulated. |
+| `tid` | string | Conditional | Tag Identifier memory bank data in hex. Appears only when a TID read is configured via `accessOperations` and `tagMetaDataToEnable.TID: true` (Section 8.4). |
+| `userData` | string | Conditional | User memory bank data in hex. Appears only when a User memory read is configured via `accessOperations` and `tagMetaDataToEnable.USER: true` (Section 8.4). |
+
+### readCount vs. seenCount
+
+These two counters are frequently confused. The distinction matters for deduplication:
+
+| Counter | Scope | Resets When | Use For |
+|---------|-------|-------------|---------|
+| `readCount` | Current reporting interval (one `dataEVT` message) | Every `dataEVT` publish cycle | Measuring instantaneous read rate. A `readCount` of 1 suggests the tag is at the edge of the field or was just singulated. A `readCount` of 20+ suggests the tag is close and stable. |
+| `seenCount` | Entire inventory session | `control_operation` START | Measuring total exposure time. A `seenCount` of 500 means the tag has been in the field for a sustained period. A `seenCount` of 1 means this is the first time it appeared. |
+
+### Enabling Optional Fields
+
+Fields like `phase`, `channel`, `seenCount`, `tid`, and `userData` are controlled by `tagMetaDataToEnable` in `set_operating_mode`. By default, only `EPC`, `RSSI`, and `SEENCOUNT` are enabled. To include additional fields in `dataEVT`:
+
+```json
+{
+  "command": "set_operating_mode",
+  "requestId": "meta-enable",
+  "operatingMode": {
+    "operatingModes": {
+      "tagMetaDataToEnable": {
+        "RSSI": true,
+        "PHASE": true,
+        "SEENCOUNT": true,
+        "CHANNEL": true,
+        "PC": true,
+        "EPC": true,
+        "TID": true,
+        "USER": true,
+        "MAC": true,
+        "HOSTNAME": true
+      }
+    }
+  }
+}
+```
+
+> Enable only the fields your application actually consumes. Each additional field increases the payload size of every `dataEVT` message. Enabling TID and User memory also requires corresponding `accessOperations` READ configurations (Section 8.4); the metadata flag tells the reader to *include* the data in the event, but the access operation is what *reads* it from the tag.
+
+---
+
+## 9.2 Deduplication Strategies
+
+RFID tag reads are inherently redundant. Unlike a barcode scanner, which reads once per deliberate scan, an RFID reader continuously singulates every tag in its field of view, multiple times per second, for the entire duration of the inventory session. A tag that sits stationary on a shelf for 30 seconds generates hundreds of read events. This is not a bug. It is how UHF RFID works; the Gen2 protocol is designed for continuous re-interrogation (Section 4.3).
+
+Your application must decide what to do with this redundancy. The answer depends on what you are building.
+
+### When Duplicates Are Valuable
+
+Not all duplicates should be discarded. Some applications depend on repeated reads:
+
+- **RSSI trend analysis**: Tracking how a tag's signal strength changes over time requires multiple reads of the same EPC. Deduplicating to a single read per tag destroys this signal.
+- **Motion detection**: A tag present in consecutive inventory cycles is stationary. A tag that suddenly appears or disappears is moving. Detecting presence/absence transitions requires the full read stream.
+- **Dwell-time measurement**: How long was this item in the read zone? `firstSeenTime` to `lastSeenTime` gives the window, but only if you retain time-series data.
+- **Read-rate confidence**: A tag read 50 times in one cycle is more confidently present than one read once. `readCount` and `seenCount` provide this signal.
+
+### When Duplicates Are Waste
+
+Many applications need only the *set* of unique tags present; inventory counts, cycle audits, shipment verification. For these, every read after the first is redundant network traffic, storage cost, and processing overhead.
+
+### Where to Deduplicate
+
+Deduplication can happen at two points in the pipeline, each with different tradeoffs:
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Reader     │     │ MQTT Broker  │     │ Application  │
+│              │     │              │     │              │
+│  Post-Filter ├────►│  Message     ├────►│  Dedup Logic │
+│  (edge)      │     │  Routing     │     │  (cloud)     │
+└──────────────┘     └──────────────┘     └──────────────┘
+     ▲                                          ▲
+     │                                          │
+  Saves network                           Preserves raw
+  bandwidth and                           data for analytics
+  broker load                             and time-series
+```
+
+#### Edge Deduplication (On the Reader)
+
+Use **post-filters** (Section 8.5) to suppress redundant data before it reaches the broker. The reader's CPU discards reads that do not match the filter criteria; they never become MQTT messages.
+
+**Tools available:**
+
+| Filter Type | Dedup Effect |
+|-------------|--------------|
+| RSSI threshold | Suppress distant/weak reads; eliminates stray reads from the edge of the field |
+| Whitelist | Pass only known EPCs; ignore everything else |
+| Blacklist | Suppress known infrastructure tags (pallets, totes, reference tags) |
+| Prefix | Scope to your company's EPC range; ignore other tenants' tags |
+
+**Tradeoff:** Edge deduplication is irreversible. Data discarded on the reader is gone; you cannot retroactively analyze it. If you later need RSSI trends from suppressed tags, the data does not exist.
+
+#### Cloud Deduplication (In Your Application)
+
+Receive the full raw stream and deduplicate in your application layer. This preserves all data for analytics while presenting a clean, unique-tag-only view to downstream consumers.
+
+**Common approaches:**
+
+**Sliding window dedup:** Maintain a map of `epc → lastSeenTimestamp`. When a `dataEVT` arrives, check each tag's EPC against the map. If the EPC was seen within the last *N* seconds, suppress it. If not, pass it through and update the timestamp. The window size (*N*) depends on your environment: 5 seconds for fast-moving conveyors, 30 seconds for stationary shelf inventory.
+
+**Session-based dedup:** Use `firstSeenTime` as the dedup key. Within a single inventory session (between START and STOP), each unique EPC appears once in your output, with `firstSeenTime` as the detection time and `lastSeenTime` as the confirmation time.
+
+**readCount aggregation:** Instead of deduplicating, aggregate. Accumulate `readCount` per EPC over a time window. At the end of the window, emit one record per EPC with the sum of reads, the min/max RSSI, and the first/last timestamps. This compresses the stream without losing signal.
+
+**Tradeoff:** Cloud deduplication requires your application to ingest and process the full raw stream. This demands more broker throughput, more network bandwidth, and a subscriber that can handle peak data rates (Section 9.4).
+
+### Decision Framework
+
+| Scenario | Dedup At | Rationale |
+|----------|----------|-----------|
+| Simple inventory count (how many unique items?) | **Edge**; RSSI threshold + prefix filter | Minimize traffic. You only need the set of EPCs. |
+| Shipment verification (are all expected items present?) | **Cloud**; whitelist check against manifest | Receive all reads, match against expected EPC list in application. |
+| Asset tracking with dwell time | **Cloud**; retain full time-series | Need `firstSeenTime`/`lastSeenTime` per tag over extended periods. |
+| Dock door portal (high-speed line scan) | **Both**; edge prefix filter to scope population, cloud session dedup for unique counts | Reduce RF and network load via pre-filter, then deduplicate remaining stream in application. |
+| Analytics / ML training data | **Cloud only**; raw stream to data lake | Never discard data destined for analytics. Future models may need features you cannot predict. |
+
+> **⚠ WARNING:** Do not deduplicate in the MQTT broker itself (e.g., via broker plugins or retained messages). Broker-level deduplication adds unpredictable latency, complicates debugging, and creates a single point of failure for data correctness. Keep the broker as a dumb pipe. Deduplicate at the edge (reader) or in your application; nowhere in between.
+
+---
+
+## 9.3 RSSI Interpretation and Distance Estimation
+
+The `rssi` field in `dataEVT` reports the received signal strength of the tag's backscattered response, measured in **tenths of dBm**. A value of `-380` means -38.0 dBm. Stronger (less negative) values indicate more signal energy received by the reader.
+
+Developers building their first RFID integration almost universally make the same mistake: they treat RSSI as a distance measurement. "Tag A has RSSI -35 dBm and tag B has RSSI -55 dBm, therefore tag A is closer." In a laboratory with a single tag on a foam pedestal in an anechoic chamber, this would be correct. In every real-world deployment, it is unreliable.
+
+### Why RSSI ≠ Distance
+
+Three physical phenomena break the RSSI-to-distance mapping:
+
+**Multipath fading.** The reader's RF signal does not travel in a single straight line to the tag. It reflects off floors, ceilings, walls, metal shelving, conveyor structures, and every conductive surface in the environment. These reflected copies of the signal arrive at the tag at slightly different times and phases. When they arrive **in phase**, they add constructively: the tag receives more energy and backscatters a stronger signal. When they arrive **out of phase**, they cancel destructively; the tag receives less energy and may not respond at all. This creates a standing-wave pattern of strong and weak spots throughout the read zone. A tag at 3 meters may report stronger RSSI than a tag at 1 meter simply because it sits in a constructive interference zone.
+
+> In a metal-heavy warehouse, multipath fading can cause RSSI to vary by **20 dB or more** at the same physical distance. That is a 100× difference in received power; entirely caused by the tag's position relative to reflective surfaces, not by its distance from the reader.
+
+**Tag orientation and polarization.** A UHF RFID tag antenna is designed for maximum energy harvest when its polarization aligns with the reader antenna's polarization. When the tag is rotated (tilted, flipped, or perpendicular to the reader's field), the effective aperture shrinks and the backscattered signal weakens. A well-aligned tag at 5 meters can report stronger RSSI than a misaligned tag at 1 meter. Handheld readers with circular polarization mitigate this somewhat (Section 4.1), but do not eliminate it.
+
+**Environmental absorption.** Water absorbs UHF energy. Human bodies are approximately 60% water. A tag inside a case of bottled water reports dramatically weaker RSSI than the same tag in open air at the same distance. Cardboard, plastic, and paper have minimal effect. Metal blocks the signal entirely. The same tag at the same distance in two different environments will report different RSSI values.
+
+### What RSSI Can Tell You
+
+RSSI is not useless; it is imprecise. Used correctly, it provides three types of actionable information:
+
+**Proximity zones (coarse).** Define signal-strength zones rather than distances. These zones must be calibrated per deployment environment; the thresholds that work in your lab will not work in your warehouse.
+
+| Zone | Typical RSSI Range | Interpretation | Calibration |
+|------|-------------------|----------------|-------------|
+| **Near** | > -40 dBm (e.g., -350 = -35.0) | Tag is very close to the reader, within arm's reach | Walk a tag to 0.5 m and record RSSI range |
+| **Medium** | -40 to -60 dBm | Tag is in the general read area, within a few meters | Walk a tag to 2–3 m, recording at multiple orientations |
+| **Far** | < -60 dBm (e.g., -650 = -65.0) | Tag is at the edge of the read zone or partially obstructed | Walk a tag to the maximum expected distance |
+
+> The ranges above are **starting points, not universal constants.** In a clean open-air environment, -40 dBm might correspond to 2 meters. In a metal-dense warehouse aisle, -40 dBm might correspond to 0.5 meters. Always calibrate in the actual deployment environment.
+
+**Trend analysis (over time).** While a single RSSI reading is unreliable as a distance indicator, the *trend* of consecutive readings for the same tag is meaningful:
+
+- **RSSI increasing** (becoming less negative) across successive reads → tag is approaching the reader.
+- **RSSI decreasing** (becoming more negative) across successive reads → tag is receding from the reader.
+- **RSSI stable** (fluctuating within ±5 dB) → tag is stationary relative to the reader.
+
+Trend analysis requires multiple reads of the same EPC over time, which means you must preserve the time-series data (do not deduplicate to a single read per tag if you need this signal).
+
+**Comparative ranking (among concurrent reads).** When multiple tags are read in the same inventory cycle, the tag with the strongest RSSI is *most likely* the nearest, though not guaranteed. This is useful for "nearest tag" selection in point-of-sale or item-lookup workflows. Sort `tagData` entries by RSSI descending; the top entry is your best candidate.
+
+### When to Look Beyond RSSI
+
+For applications that require reliable positioning (asset localization, zone transition detection, shelf-level identification), RSSI alone is insufficient. Consider:
+
+- **Phase angle** (`phase` field in `dataEVT`). The phase of the backscattered signal provides sub-wavelength distance information that is more granular than RSSI. Phase data from multiple frequency channels (enabled by frequency hopping in FCC regions) can be combined for improved ranging. Enable via `tagMetaDataToEnable.PHASE: true`.
+- **Spatial diversity.** Multiple readers (or a reader moving through space) reading the same tag from different positions provide independent RSSI/phase measurements. Combining these measurements through trilateration or fingerprinting algorithms yields location estimates that no single reader can achieve.
+
+> **Bottom line:** Use RSSI for coarse proximity, trend detection, and comparative ranking. Do not build business logic that depends on absolute RSSI-to-distance mapping. If you need precise localization, invest in phase-based ranging, spatial diversity, or dedicated RTLS (Real-Time Location Systems).
+
+---
+
+## 9.4 High-Throughput Data Handling
+
+The Quick Start (Chapter 6) connected one reader and read a handful of tags. That produces a gentle trickle of `dataEVT` messages. Production is different.
+
+### The Math
+
+A single reader in a 500-tag zone, using `CYCLE_COUNT` profile with `SESSION_1`, produces approximately:
+
+| Parameter | Value |
+|-----------|-------|
+| Tags in field | 500 |
+| Inventory cycles per second | 2–5 (depends on link profile and tag population) |
+| Reads per cycle per tag | 1 (SESSION_1 dedup at RF layer) |
+| `dataEVT` messages per second (per reader) | 200–500 (batched across multiple events) |
+| Payload size per event (3 tags, core fields) | ~500 bytes |
+| Sustained throughput per reader | **100–250 KB/s** |
+
+A 20-reader fleet: **2–5 MB/s** of sustained MQTT traffic. A 100-reader fleet: **10–25 MB/s**. These numbers assume core fields only. Enabling TID, User memory, phase, and channel increases payload size by 2–3×.
+
+This is not hypothetical. This is a Tuesday in a distribution center.
+
+### QoS 0 for Tag Data Streams
+
+Section 3.4 introduced QoS levels and recommended QoS 0 for high-throughput tag data. Here is the architectural reasoning in full.
+
+**QoS 1 requires the broker to:**
+
+1. Receive the PUBLISH message from the reader.
+2. Store the message in memory (or on disk, depending on broker configuration).
+3. Deliver the message to all matching subscribers.
+4. Wait for a PUBACK from each subscriber.
+5. Only then release the message from storage.
+
+Under sustained tag-data throughput (thousands of messages per second), step 2 creates a **memory accumulation problem**. If a subscriber is slow (processing takes 50 ms per message, but messages arrive every 1 ms), the broker's message queue grows unboundedly. Broker memory consumption increases until:
+
+- The broker's in-flight message limit is reached and it starts dropping messages.
+- The broker's memory threshold is reached and it throttles or disconnects publishers.
+- The broker runs out of memory and crashes.
+
+> **⚠ WARNING:** Using QoS 1 for tag data in production is the most common cause of MQTT broker instability in RFID deployments. The failure mode is insidious: it works perfectly in development (low tag counts, one reader, fast subscriber), then fails catastrophically when deployed at scale (high tag counts, many readers, subscriber with real processing workloads). By the time the broker crashes, the in-flight message queue has consumed all available memory.
+
+**QoS 0 eliminates this failure mode.** The broker receives the message, routes it to subscribers immediately, and forgets it. No storage, no ACK tracking, no queue accumulation. If a subscriber is disconnected, the messages are lost, which is acceptable for tag data because the same tags will be read again on the next inventory cycle.
+
+**When QoS 1 is justified for tag data:** Single-pass conveyor systems where each tag passes the reader exactly once at speed. If the tag is missed, it is gone. In this scenario, QoS 1 is worth the broker overhead, but you must size the broker accordingly and ensure subscribers can keep pace.
+
+### Client-Side Buffering and Batching
+
+Even with QoS 0, a subscriber that processes each `dataEVT` synchronously (parse JSON, query database, update state, repeat) will fall behind when message rates exceed a few hundred per second. The subscriber's TCP receive buffer fills, the MQTT client begins dropping messages, and data is silently lost.
+
+**Pattern: Ingest-then-process pipeline.**
+
+Separate message ingestion from message processing using an in-memory buffer or local queue:
+
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│ MQTT Client  │     │ Ring Buffer / │     │ Processing   │
+│              │     │ Local Queue   │     │ Workers      │
+│ on_message() ├────►│              ├────►│              │
+│ (fast: enqueue)    │ (in-memory)  │     │ (dedup, DB,  │
+│              │     │              │     │  analytics)  │
+└──────────────┘     └──────────────┘     └──────────────┘
+     ▲                                          │
+     │                                          │
+  Completes in                             Can batch,
+  microseconds                             aggregate, and
+                                           write in bulk
+```
+
+**Implementation guidelines:**
+
+1. **The MQTT `on_message` callback must be non-blocking.** Parse the JSON (or don't; enqueue the raw bytes), append to a ring buffer or concurrent queue, and return immediately. No database calls. No HTTP requests. No synchronous processing.
+2. **Processing workers drain the buffer in batches.** Pull 50–100 messages at a time, deduplicate in memory, then write to the database in a single bulk operation. Batch database inserts are 10–100× faster than individual inserts.
+3. **Size the buffer for peak burst.** A 10-second burst at 1,000 messages/second = 10,000 messages. At ~500 bytes each, that is 5 MB of buffer memory. Allocate accordingly.
+4. **Monitor buffer depth.** If the buffer is consistently growing (producers faster than consumers), you have a processing bottleneck. Scale processing workers horizontally or optimize the processing path; do not increase the buffer indefinitely.
+
+> **⚠ WARNING:** Do not call database write operations inside the MQTT `on_message` callback. A single slow database query under load will back-pressure the MQTT client, causing the TCP receive buffer to fill and the broker to queue messages (if QoS 1) or the client library to drop messages (if QoS 0). This is the second most common cause of data loss in RFID integrations.
+
+### Broker Sizing
+
+Your MQTT broker must handle the aggregate message rate from your entire reader fleet, plus overhead for commands, responses, and events.
+
+**Sizing worksheet:**
+
+| Parameter | How to Estimate | Example |
+|-----------|----------------|---------|
+| Readers | Count of deployed readers (current + planned growth) | 50 |
+| Tags per reader | Average tags in each reader's field of view | 200 |
+| Events per second per reader | Tags × cycles/second (typically 2–5) ÷ batch size | 100–500 |
+| Payload size | ~500 bytes (core fields) to ~1.5 KB (all fields enabled) | 800 bytes avg |
+| Aggregate msg/sec | Readers × events/sec | 5,000–25,000 |
+| Aggregate bandwidth | Aggregate msg/sec × payload size | 4–20 MB/s |
+| Command/response overhead | ~10 msg/sec per reader (commands, heartbeats, alerts) | 500 msg/sec total |
+
+**Broker configuration priorities:**
+
+| Configuration | Why It Matters |
+|---------------|----------------|
+| **Max in-flight messages** | For QoS 1 topics (commands, events), this limits the broker's per-client message queue. Set it high enough for command bursts but not so high that a stuck subscriber accumulates gigabytes. Typical: 1,000–5,000. |
+| **Message size limit** | `dataEVT` payloads with large tag batches can reach 10–50 KB. Set the broker's max message size to at least 64 KB. |
+| **Connection limit** | Each reader maintains one persistent connection. Your application maintains one connection. Size for readers + application instances + monitoring tools + 20% headroom. |
+| **Listener thread count** | Brokers like Mosquitto are single-threaded by default. For fleets over 20 readers, use a multi-threaded broker (HiveMQ, EMQX) or multiple Mosquitto instances behind a load balancer. |
+| **Persistence (disk-backed queues)** | Disable for `data1event`/`data2event` topics. Disk I/O is orders of magnitude slower than memory and will bottleneck under sustained tag data. Enable only for command/response topics. |
+
+**Broker recommendations by fleet size:**
+
+| Fleet Size | Recommended Broker | Notes |
+|-----------|-------------------|-------|
+| 1–5 readers (development) | Mosquitto | Single-threaded. Sufficient for development and small pilots. |
+| 5–20 readers | HiveMQ CE, EMQX | Multi-threaded, clustering support. Monitor memory consumption. |
+| 20–100 readers | HiveMQ Platform, EMQX Enterprise, AWS IoT Core | Clustering, horizontal scaling, managed backpressure. |
+| 100+ readers | Managed IoT platform (AWS IoT Core, Azure IoT Hub, HiveMQ Cloud) | Autoscaling, built-in monitoring, SLA-backed availability. |
+
+> **⚠ WARNING:** Mosquitto is an excellent development broker. It is **not** designed for high-throughput production RFID workloads with more than a handful of readers. Its single-threaded architecture means that one slow subscriber blocks message delivery to all subscribers on the same listener. If you are deploying to production with more than 5 readers, evaluate a multi-threaded broker early, not after the first outage.
+
+---
+
+## 9.5 Tag Data Schemas (data1event vs. data2event)
+
+The DATA interface provides two topic channels for tag data:
+
+| Channel | Topic | Role |
+|---------|-------|------|
+| **Primary** | `<TENANT_ID>/DATA/clients/data1event/<DEVICE_SERIAL>` | Default tag data stream. Subscribe here for standard operation. |
+| **Secondary** | `<TENANT_ID>/DATA/clients/data2event/<DEVICE_SERIAL>` | Secondary stream used when the reader is configured for dual-stream output. |
+
+### Schema Comparison
+
+Both channels carry **the same `dataEVT` payload schema**. There is no structural difference: the same envelope fields, the same `tagData` array, the same conditional fields. The distinction is purely at the **topic routing level**, not at the data schema level.
+
+**Primary stream (`data1event`):**
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-08T14:30:16.456Z",
+  "apiVersion": "V1.1",
+  "tagData": [
+    {
+      "epc": "E2801170000002059E42A82B",
+      "rssi": -380,
+      "pc": "3000",
+      "antenna": 1,
+      "readCount": 12,
+      "timestamp": "2026-04-08T14:30:16.400Z",
+      "seenCount": 87,
+      "firstSeenTime": "2026-04-08T14:28:00.000Z",
+      "lastSeenTime": "2026-04-08T14:30:16.400Z"
+    }
+  ]
+}
+```
+
+**Secondary stream (`data2event`):**
+
+```json
+{
+  "event": "dataEVT",
+  "deviceSerial": "RFD40-212735201D0053",
+  "timestamp": "2026-04-08T14:30:16.460Z",
+  "apiVersion": "V1.1",
+  "tagData": [
+    {
+      "epc": "300833B2DDD9014000000000",
+      "rssi": -510,
+      "pc": "3400",
+      "antenna": 1,
+      "readCount": 3,
+      "timestamp": "2026-04-08T14:30:16.430Z",
+      "seenCount": 15,
+      "firstSeenTime": "2026-04-08T14:29:30.000Z",
+      "lastSeenTime": "2026-04-08T14:30:16.430Z"
+    }
+  ]
+}
+```
+
+The payloads are identical in structure. The only difference is the topic they arrive on.
+
+### Why Two Streams?
+
+The dual-stream architecture enables **stream separation** at the routing level without application-level parsing:
+
+- **Partitioned data pipelines.** Subscribe `data1event` to a real-time processing pipeline (low latency, dedup, operational alerts) and `data2event` to a data lake (raw archival, analytics, ML training). The same tag data reaches both consumers without application-level fan-out.
+- **Load distribution.** In high-throughput environments, separate subscriber applications can each handle one stream, distributing the processing load across two consumers without shared state.
+- **Independent QoS per stream.** Configure `data1event` with QoS 0 for high-throughput operational use and `data2event` with QoS 1 for critical audit trails, if the dual-stream mode is configured on separate DATA endpoints via `config_endpoint`.
+
+### When to Subscribe
+
+| Scenario | Subscribe To | Why |
+|----------|-------------|-----|
+| **Standard operation** | `data1event` only | Default stream. Covers all tag data for most applications. |
+| **Dual-pipeline architecture** | Both `data1event` and `data2event` | Separate consumers for real-time and archival processing. |
+| **Debugging / development** | `<TENANT_ID>/DATA/clients/+/<DEVICE_SERIAL>` | Wildcard captures both streams from one reader. |
+| **Fleet-wide monitoring** | `<TENANT_ID>/DATA/clients/data1event/+` | Wildcard captures the primary stream from all readers. |
+
+### Fleet-Wide Wildcard Subscriptions
+
+For multi-reader deployments, subscribe to all readers at once using the `+` wildcard:
+
+```
+<TENANT_ID>/DATA/clients/data1event/+
+```
+
+This matches `data1event` from every reader under your tenant. Each `dataEVT` payload includes the `deviceSerial` field, so your application can identify the source reader per message.
+
+For all data traffic (both streams, all readers):
+
+```
+<TENANT_ID>/DATA/clients/+/+
+```
+
+> Use fleet-wide wildcards with caution. A subscription to `data1event/+` across 50 active readers generates the aggregate throughput described in Section 9.4. Ensure your subscriber and broker are sized for the full fleet volume, not just the reader you happen to be testing with.

@@ -1,0 +1,627 @@
+---
+sidebar_position: 3
+title: Securing the Connection
+---
+
+# Securing the Connection
+
+Chapter 6 connected your reader to a broker over unencrypted MQTT on port 1883; fast for a first tag read, unacceptable for production. This chapter walks you through the two security layers required for a production deployment: **TLS for MQTT** (encrypting data in transit) and **Wi-Fi enterprise authentication** (controlling which devices can join your network).
+
+These are separate layers that protect different things:
+
+| Layer | What It Secures | Protocol | Configured Via | Certificate Type |
+|-------|----------------|----------|---------------|-----------------|
+| **Application** (Sections 7.1–7.3) | Data between the reader and the MQTT broker; commands, responses, tag data, credentials | MQTT over TLS (port 8883) | `install_certificate` + `config_endpoint` | `mqtt` (CA cert), `client` (mTLS) |
+| **Network** (Section 7.4) | The reader's admission to your Wi-Fi network, which devices are allowed to transmit | 802.1X EAP (WPA2/WPA3 Enterprise) | `install_certificate` + `set_wifi` | `wifi` (EAP-TLS cert) |
+
+**Both layers are required in production.** Configuring TLS for MQTT does not secure Wi-Fi access. Configuring enterprise Wi-Fi does not encrypt MQTT payloads. They use separate certificate chains, separate configuration commands, and protect against different threats.
+
+> Think of it as building security and a security guard. TLS is the lock on the door; it ensures nobody can read or tamper with the data flowing between the reader and broker. Wi-Fi 802.1X is the guard at the gate; it ensures only authorized devices can enter the network in the first place.
+
+---
+
+## 7.1 TLS Overview for MQTT
+
+TLS (Transport Layer Security) wraps the MQTT TCP connection in an encrypted tunnel. Without it, every MQTT payload, including Wi-Fi credentials sent via `set_wifi`, private keys sent via `install_certificate`, and tag data in `dataEVT`; crosses the network as plaintext readable by any observer.
+
+> **⚠ WARNING:** Port 1883 (unencrypted MQTT) transmits all payloads in cleartext: including credentials, private keys, and business-critical tag data. Use port 1883 **only** on isolated development networks with no exposure to untrusted parties. Production deployments must use port 8883 with TLS.
+
+### Server Authentication (CA Certificate)
+
+In the most common TLS configuration, the reader verifies the broker's identity during the TLS handshake:
+
+1. The reader connects to the broker on port **8883**.
+2. The broker presents its **server certificate**.
+3. The reader checks whether the server certificate was signed by a **Certificate Authority (CA)** that the reader trusts.
+4. If the CA is trusted, the handshake completes and an encrypted session is established.
+5. If the CA is not trusted, the handshake fails and the reader does not connect.
+
+**What you install on the reader:** The **root CA certificate** (or intermediate CA certificate) that signed the broker's server certificate. This is installed via `install_certificate` with type `"mqtt"`.
+
+- **Cloud brokers** (AWS IoT Core, Azure IoT Hub, HiveMQ Cloud): Download the platform's root CA certificate from their documentation. These are publicly trusted CAs; Amazon Root CA 1, DigiCert Global Root G2, etc.
+- **Self-hosted brokers** (Mosquitto, HiveMQ, EMQX): If you generated a self-signed CA for your broker, install that CA certificate on the reader.
+
+### Mutual TLS (Client Certificate)
+
+Some brokers require the **reader** to also prove its identity: not just the other way around. This is **mutual TLS (mTLS)**, and it works by adding a second verification step:
+
+1. After the reader verifies the broker's certificate (server authentication), the broker asks the reader for *its* certificate.
+2. The reader presents its **client certificate**.
+3. The broker checks whether the client certificate was signed by a CA it trusts.
+4. If valid, the connection is established. If not, the broker rejects the connection.
+
+**What you install on the reader:** A **client certificate** and its corresponding **private key**, via `install_certificate` with type `"client"`.
+
+**When mTLS is required:**
+
+- **AWS IoT Core**: mTLS is the default (and recommended) authentication method. Each device gets a unique X.509 certificate.
+- **Azure IoT Hub**: Supports X.509 certificate authentication as an alternative to SAS tokens.
+- **Enterprise self-hosted brokers**: Many organizations enforce mTLS as part of zero-trust policy.
+
+**When mTLS is optional:**
+
+- **Mosquitto, HiveMQ, EMQX**: Can be configured for server-only TLS with username/password authentication. mTLS is an additional layer.
+
+### Certificate Formats
+
+The `install_certificate` command accepts **PEM-encoded** certificates only.
+
+| Format | File Extension | Structure | Supported |
+|--------|---------------|-----------|-----------|
+| **PEM** | `.pem`, `.crt`, `.cer` | Base64-encoded text with `-----BEGIN CERTIFICATE-----` / `-----END CERTIFICATE-----` markers | **Yes** |
+| **DER** | `.der`, `.cer` | Binary (raw ASN.1) | **No**; convert to PEM first |
+| **PKCS#12 / PFX** | `.p12`, `.pfx` | Binary bundle containing cert + key | **No**; extract cert and key to PEM first |
+
+**Converting DER to PEM:**
+
+```bash
+openssl x509 -inform DER -in broker-ca.der -out broker-ca.pem
+```
+
+**Extracting certificate and key from PKCS#12:**
+
+```bash
+# Extract the certificate
+openssl pkcs12 -in reader.p12 -clcerts -nokeys -out reader-cert.pem
+
+# Extract the private key
+openssl pkcs12 -in reader.p12 -nocerts -nodes -out reader-key.pem
+```
+
+**Private key formats:**
+
+| Header | Format | Notes |
+|--------|--------|-------|
+| `-----BEGIN RSA PRIVATE KEY-----` | PKCS#1 (unencrypted) | Directly usable. No `privateKeyPassword` needed. |
+| `-----BEGIN ENCRYPTED PRIVATE KEY-----` | PKCS#8 (encrypted) | Requires `privateKeyPassword` in the `install_certificate` payload. |
+| `-----BEGIN PRIVATE KEY-----` | PKCS#8 (unencrypted) | Directly usable. No `privateKeyPassword` needed. |
+
+> **⚠ WARNING:** Never disable certificate validation in production, even if skipping validation makes development faster. An MQTT connection without certificate validation is vulnerable to man-in-the-middle attacks. Any device on the network path could intercept, read, or modify commands and tag data.
+
+---
+
+## 7.2 Installing Certificates on the Reader
+
+Install certificates **before** configuring TLS endpoints (Section 7.3). The reader validates the broker's certificate during the TLS handshake, if the CA certificate is not installed first, the handshake fails silently and the reader cannot connect.
+
+All certificate commands use the MGMT interface:
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Subscribe to (for responses):**
+
+```
+<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>
+```
+
+### Install a CA Certificate (Server-Only TLS)
+
+This is the minimum certificate installation for TLS. The reader uses this CA certificate to verify the broker's server certificate.
+
+**Payload:**
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-ca-001",
+  "certificate": {
+    "name": "mqtt-broker-ca",
+    "type": "mqtt",
+    "certificateData": "-----BEGIN CERTIFICATE-----\nMIIDxTCCAq2gAwIBAgIJAK...<base64 encoded>...==\n-----END CERTIFICATE-----"
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-ca-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+Replace the `certificateData` value with the full PEM content of your broker's CA certificate. Include the `BEGIN` and `END` markers. Use `\n` to represent line breaks within the JSON string.
+
+### Install a Client Certificate and Private Key (Mutual TLS)
+
+For brokers that require mTLS (e.g., AWS IoT Core), install the reader's client certificate along with its private key.
+
+**Payload:**
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-client-001",
+  "certificate": {
+    "name": "reader-client-cert",
+    "type": "client",
+    "certificateData": "-----BEGIN CERTIFICATE-----\nMIIEpDCCA4ygAwIBAgIR...<base64 encoded>...==\n-----END CERTIFICATE-----",
+    "privateKeyData": "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA...<base64 encoded>...==\n-----END RSA PRIVATE KEY-----"
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-client-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+If the private key is encrypted (PKCS#8 encrypted format), add the `privateKeyPassword` field:
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-client-002",
+  "certificate": {
+    "name": "reader-client-cert",
+    "type": "client",
+    "certificateData": "-----BEGIN CERTIFICATE-----\n...\n-----END CERTIFICATE-----",
+    "privateKeyData": "-----BEGIN ENCRYPTED PRIVATE KEY-----\n...\n-----END ENCRYPTED PRIVATE KEY-----",
+    "privateKeyPassword": "<KEY_PASSWORD>"
+  }
+}
+```
+
+> **⚠ WARNING:** The `privateKeyData` and `privateKeyPassword` fields are transmitted inside the MQTT payload. If you send this command over an unencrypted connection (port 1883), the private key is exposed in cleartext on the network. **Always send `install_certificate` commands over a TLS-encrypted connection or via USB through 123RFID Desktop.** See the bootstrapping note below.
+
+### The Bootstrapping Problem
+
+There is a chicken-and-egg dependency: you need TLS to securely send certificates, but you need certificates to enable TLS. Two approaches resolve this:
+
+**Option A: USB provisioning (recommended for initial setup).** Use 123RFID Desktop over a USB connection to install certificates on new readers. USB is a local, physical connection, no network exposure. After certificates are installed, configure TLS endpoints via MQTT.
+
+**Option B: Staged TLS bootstrapping.** On a physically isolated development network (no untrusted parties), briefly use port 1883 to install the CA certificate and client certificate. Then immediately configure the TLS endpoint on port 8883 and verify the connection. Once TLS is active, the unencrypted endpoint is no longer used.
+
+> Option A is the production-grade approach. Option B is acceptable for development labs where the network is trusted and temporary.
+
+### Install a Wi-Fi EAP-TLS Certificate
+
+If your production Wi-Fi network uses EAP-TLS authentication (Section 7.4), install the Wi-Fi client certificate separately from the MQTT certificates. This certificate authenticates the reader to the **Wi-Fi access point**, not to the MQTT broker.
+
+**Payload:**
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-wifi-001",
+  "certificate": {
+    "name": "wifi-client-cert",
+    "type": "wifi",
+    "certificateData": "-----BEGIN CERTIFICATE-----\nMIIDjTCCAnWgAwIBAgIU...<base64 encoded>...==\n-----END CERTIFICATE-----",
+    "privateKeyData": "-----BEGIN ENCRYPTED PRIVATE KEY-----\nMIIFHDBOBgkqhki...<base64 encoded>...==\n-----END ENCRYPTED PRIVATE KEY-----",
+    "privateKeyPassword": "<KEY_PASSWORD>"
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-wifi-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+### Response Codes
+
+| Code | Description | Cause | Action |
+|------|-------------|-------|--------|
+| `0` | Success | Certificate installed | Proceed to endpoint configuration |
+| `2` | Invalid payload | Malformed JSON or missing fields | Validate JSON structure and required fields |
+| `10` | Config already exists | A certificate with this name already exists | Delete the existing certificate or choose a different name |
+| `18` | Certificate parse error | Invalid PEM encoding or corrupted data | Verify PEM markers, base64 encoding, and certificate validity |
+
+---
+
+## 7.3 Configuring TLS Endpoints
+
+With certificates installed, reconfigure your MQTT endpoints to use TLS. If you followed the [Quick Start](/handheld/quick-start), your endpoints are currently pointing at port 1883 with `tls: false`. This section upgrades them to port 8883 with `tls: true`.
+
+> **Order matters.** Install certificates (Section 7.2) → then configure TLS endpoints (this section). If you reverse the order, the reader will attempt a TLS handshake without a trusted CA certificate and the connection will fail.
+
+### Modify an Existing Endpoint to Enable TLS
+
+If you already have endpoints configured, use the `MODIFY` operation to upgrade them to TLS:
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload (upgrade MGMT to TLS):**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-tls-mgmt",
+  "endpointConfig": {
+    "operation": "MODIFY",
+    "name": "Dev-MGMT",
+    "type": "MGMT",
+    "host": "<BROKER_HOST>",
+    "port": 8883,
+    "tls": true
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-tls-mgmt",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+Repeat for the CTRL and DATA endpoints:
+
+**Payload (upgrade CTRL to TLS):**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-tls-ctrl",
+  "endpointConfig": {
+    "operation": "MODIFY",
+    "name": "Dev-CTRL",
+    "type": "CTRL",
+    "host": "<BROKER_HOST>",
+    "port": 8883,
+    "tls": true
+  }
+}
+```
+
+**Payload (upgrade DATA to TLS):**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-tls-data",
+  "endpointConfig": {
+    "operation": "MODIFY",
+    "name": "Dev-DATA",
+    "type": "DATA",
+    "host": "<BROKER_HOST>",
+    "port": 8883,
+    "tls": true
+  }
+}
+```
+
+> **⚠ WARNING:** Modifying the MGMT endpoint causes the reader to disconnect and reconnect. The reader will briefly go offline while it re-establishes the connection to the broker over TLS. If the CA certificate is missing or the broker's server certificate is not trusted, the reader will not reconnect, and you will need to use 123RFID Desktop over USB to diagnose and fix the configuration.
+
+### Add a New TLS Endpoint (Fresh Setup)
+
+If you are setting up endpoints for the first time in a production environment, use the `ADD` operation with TLS enabled from the start:
+
+**Payload:**
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-prod-mgmt",
+  "endpointConfig": {
+    "operation": "ADD",
+    "name": "Prod-MGMT",
+    "type": "MGMT",
+    "host": "<BROKER_HOST>",
+    "port": 8883,
+    "tls": true,
+    "tenantId": "<TENANT_ID>",
+    "keepAlive": 60,
+    "cleanSession": true,
+    "publishTopics": [
+      "<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>",
+      "<TENANT_ID>/MGMT/clients/event/<DEVICE_SERIAL>"
+    ],
+    "subscribeTopics": [
+      "<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>"
+    ]
+  }
+}
+```
+
+### TLS with Username/Password Authentication
+
+Some brokers combine TLS encryption with MQTT-level username/password authentication. Add the `username` and `password` fields:
+
+```json
+{
+  "command": "config_endpoint",
+  "requestId": "ep-auth-mgmt",
+  "endpointConfig": {
+    "operation": "ADD",
+    "name": "Prod-MGMT-Auth",
+    "type": "MGMT",
+    "host": "<BROKER_HOST>",
+    "port": 8883,
+    "tls": true,
+    "username": "<MQTT_USERNAME>",
+    "password": "<MQTT_PASSWORD>",
+    "tenantId": "<TENANT_ID>",
+    "publishTopics": [
+      "<TENANT_ID>/MGMT/clients/resp/<DEVICE_SERIAL>",
+      "<TENANT_ID>/MGMT/clients/event/<DEVICE_SERIAL>"
+    ],
+    "subscribeTopics": [
+      "<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>"
+    ]
+  }
+}
+```
+
+> **⚠ WARNING:** Never hardcode MQTT credentials (username, password) or private keys in application source code, configuration files committed to version control, or CI/CD pipelines. Use a secrets manager (AWS Secrets Manager, Azure Key Vault, HashiCorp Vault) and inject credentials at deployment time.
+
+### Verifying the TLS Connection
+
+After configuring TLS endpoints, verify the reader is connected by sending `get_status`:
+
+```json
+{
+  "command": "get_status",
+  "requestId": "tls-verify-001"
+}
+```
+
+If you receive a response with `response.code: 0` and `radioConnection: "CONNECTED"`, the TLS connection is established and working. If you receive no response within 10 seconds, the TLS handshake likely failed; check the certificate chain, broker hostname, and port.
+
+---
+
+## 7.4 Wi-Fi Enterprise Authentication (EAP-TLS, PEAP)
+
+Sections 7.1–7.3 secured the MQTT data channel between the reader and the broker. This section secures the **network admission layer**, controlling which devices are allowed to join your Wi-Fi network in the first place.
+
+Enterprise Wi-Fi (WPA2/WPA3 Enterprise) uses the **802.1X** standard with **EAP (Extensible Authentication Protocol)** to authenticate each device before granting network access. The reader supports three EAP methods:
+
+| EAP Method | Authentication | What's Required on the Reader | Security Level |
+|-----------|---------------|------------------------------|---------------|
+| **EAP-TLS** | Certificate-based (mutual) | Client certificate + private key (installed via `install_certificate` type `"wifi"`) + `identity` | Highest, no passwords, no credential theft risk |
+| **PEAP** | Username/password inside TLS tunnel | `identity` + `password` + optional `phase2Method` | High; credentials protected by outer TLS tunnel |
+| **EAP-TTLS** | Username/password inside TLS tunnel | `identity` + `password` + optional `anonymousIdentity` + `phase2Method` | High; similar to PEAP with additional privacy via anonymous outer identity |
+
+### EAP-TLS Configuration
+
+EAP-TLS is the most secure option; it authenticates the reader using a certificate instead of a password. No credentials are transmitted over the air.
+
+**Step 1: Install the Wi-Fi client certificate** (if not already done in Section 7.2):
+
+```json
+{
+  "command": "install_certificate",
+  "requestId": "cert-wifi-eaptls",
+  "certificate": {
+    "name": "wifi-eaptls-cert",
+    "type": "wifi",
+    "certificateData": "-----BEGIN CERTIFICATE-----\n...<Wi-Fi client certificate>...\n-----END CERTIFICATE-----",
+    "privateKeyData": "-----BEGIN RSA PRIVATE KEY-----\n...<corresponding private key>...\n-----END RSA PRIVATE KEY-----"
+  }
+}
+```
+
+**Step 2: Configure the Wi-Fi profile:**
+
+**Publish to:**
+
+```
+<TENANT_ID>/MGMT/clients/cmnd/<DEVICE_SERIAL>
+```
+
+**Payload:**
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-eaptls-001",
+  "wifiConfig": {
+    "operation": "ADD",
+    "ssid": "<WIFI_SSID>",
+    "securityType": "WPA2_ENTERPRISE",
+    "identity": "<READER_IDENTITY>",
+    "eapMethod": "TLS"
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-eaptls-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+The `identity` field is the reader's identity string as registered in your RADIUS server, typically in the format `reader-serial@yourdomain.com` or a CN matching the certificate's Subject.
+
+### PEAP Configuration
+
+PEAP authenticates the reader using a username and password, protected by a TLS tunnel. No client certificate is required.
+
+**Payload:**
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-peap-001",
+  "wifiConfig": {
+    "operation": "ADD",
+    "ssid": "<WIFI_SSID>",
+    "securityType": "WPA2_ENTERPRISE",
+    "identity": "<READER_IDENTITY>",
+    "password": "<WIFI_PASSWORD>",
+    "eapMethod": "PEAP",
+    "phase2Method": "MSCHAPV2"
+  }
+}
+```
+
+**Expected Response:**
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "wifi-peap-001",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
+}
+```
+
+`phase2Method` specifies the inner authentication protocol. `"MSCHAPV2"` is the most common choice. Alternatives: `"GTC"`, `"PAP"`.
+
+### Certificate Independence
+
+The Wi-Fi EAP-TLS certificate and the MQTT TLS certificate are **completely independent**:
+
+| Certificate | `install_certificate` Type | Authenticates To | Used By |
+|------------|--------------------------|-----------------|---------|
+| MQTT CA cert | `mqtt` | MQTT broker | IoT Connector agent (MQTT client) |
+| MQTT client cert | `client` | MQTT broker (mTLS) | IoT Connector agent (MQTT client) |
+| Wi-Fi client cert | `wifi` | Wi-Fi access point / RADIUS | Wi-Fi radio (802.1X supplicant) |
+
+They are issued by different CAs, have different lifetimes, and serve different purposes. Installing a Wi-Fi certificate does not affect MQTT connectivity. Installing an MQTT certificate does not affect Wi-Fi authentication.
+
+---
+
+## 7.5 Credential Rotation Strategies
+
+Certificates expire. When they do, the reader loses connectivity; silently. There is no alarm, no error event, no retry that succeeds. The TLS handshake simply fails, the MQTT connection drops, and `heartBeatEVT` and `dataEVT` messages stop arriving. From your application's perspective, the reader vanishes.
+
+> **⚠ WARNING:** Certificate expiration is the most common cause of fleet-wide connectivity outages in production RFID deployments. A single overlooked expiry date can take hundreds of readers offline simultaneously. Plan rotation as a first-class operational process, not an afterthought.
+
+### Overlap Windows
+
+Never replace a certificate on the day it expires. Deploy the new certificate **while the old one is still valid**, creating an overlap window where either certificate works.
+
+**Recommended timeline:**
+
+| Window | Action |
+|--------|--------|
+| **90 days before expiry** | Generate new certificates. Begin internal review and approval. |
+| **60 days before expiry** | Start staged rollout to a pilot group (5–10% of fleet). Monitor for TLS handshake failures. |
+| **30 days before expiry** | Complete rollout to full fleet. All readers should have the new certificate. |
+| **14 days before expiry** | Final audit. Identify and remediate any readers that failed to receive the new certificate. |
+| **Expiry date** | Old certificate expires. Zero impact, all readers are already using the new certificate. |
+
+The overlap window width depends on your fleet size and operational cadence. Larger fleets need wider windows to accommodate staged rollouts, offline readers, and remediation time.
+
+### Fleet Orchestration
+
+Rolling certificates across thousands of readers requires a staged approach to limit the blast radius of any misconfiguration.
+
+**Stage 1: Pilot group (5–10%).** Select a representative subset of readers across different sites, network configurations, and reader models (RFD40 and RFD90). Install the new certificate via `install_certificate`. Monitor for 48–72 hours. Verify that:
+
+- `heartBeatEVT` continues arriving at the expected interval.
+- `get_status` returns `radioConnection: "CONNECTED"`.
+- `control_operation` START succeeds and `dataEVT` payloads arrive.
+
+**Stage 2: Expanded rollout (25–50%).** If the pilot group is healthy, expand to a larger cohort. Continue monitoring.
+
+**Stage 3: Full fleet.** Roll to the remaining readers. Maintain the old certificate until the overlap window closes.
+
+**Rollback plan:** If the new certificate causes failures in the pilot group, the old certificate is still valid. Revert the affected readers by reinstalling the old certificate. Diagnose the issue (wrong CA chain? expired intermediate cert? key mismatch?) before retrying.
+
+### Monitoring and Alerting
+
+Build monitoring around three signals:
+
+| Signal | What It Indicates | How to Detect |
+|--------|------------------|--------------|
+| **Certificate expiry date** | Time remaining before a certificate becomes invalid | Maintain a registry of installed certificate names, types, and expiry dates per reader. Alert at 90, 60, and 30 days. |
+| **Missing heartbeats** | Reader may have lost connectivity (possibly due to TLS failure) | Subscribe to `heartBeatEVT` for each reader. If no heartbeat arrives within 2× the configured interval (default: 120 seconds), flag the reader for investigation. |
+| **TLS handshake failures** | Reader cannot establish a TLS connection to the broker | Monitor broker-side logs for TLS handshake errors, certificate validation failures, and rejected client certificates. |
+
+> **Build the registry early.** When you install a certificate, record the reader serial, certificate name, certificate type, and the certificate's `notAfter` (expiry) date in your fleet database. Parse the expiry from the PEM file before installation:
+>
+> ```bash
+> openssl x509 -in cert.pem -noout -enddate
+> ```
+
+### MDM Integration
+
+For fleets managed by **SOTI Connect** or a compatible MDM platform, certificate distribution can be automated:
+
+- **Policy-based deployment:** Define a certificate policy in SOTI that automatically pushes new certificates to readers matching specific criteria (device group, site, model, firmware version).
+- **Compliance monitoring:** SOTI reports device compliance status. Readers that fail to install the new certificate are flagged as non-compliant and can be quarantined from the network.
+- **Staged rollout support:** SOTI's device group hierarchy supports phased deployments. Assign certificate policies to groups in sequence; pilot first, then remaining groups on a schedule.
+- **Offline reader handling:** SOTI queues policy actions for offline readers. When a reader reconnects, the pending certificate install is applied automatically.
+
+For deployments without an MDM platform, automate certificate rotation through your MQTT application:
+
+1. Maintain a list of readers and their current certificate status in a database.
+2. For each reader due for rotation, publish an `install_certificate` command with the new certificate.
+3. Verify the response (`code: 0`).
+4. After installation, optionally modify the endpoint to force a reconnection and validate the new TLS handshake.
+5. Log the result and update the database.
+
+### Rotating Wi-Fi Certificates
+
+Wi-Fi EAP-TLS certificates follow the same rotation lifecycle, but with an additional constraint: **if the Wi-Fi certificate expires, the reader loses network access entirely**, not just MQTT connectivity. You cannot push a new Wi-Fi certificate over MQTT to a reader that has already been rejected by the access point.
+
+**Mitigation strategies:**
+
+- **Rotate Wi-Fi certificates earlier**: use a wider overlap window than MQTT certificates (90+ days).
+- **Maintain a fallback SSID** with WPA2 Personal security that the reader can connect to for certificate recovery. This SSID should have limited network access (only reachable to the MQTT broker for management commands).
+- **USB recovery**: If a reader's Wi-Fi certificate expires and no fallback SSID exists, connect the reader to a PC via USB and use 123RFID Desktop to install the new certificate.
+
+> Plan for the worst case: a reader that is offline, unreachable by MQTT, and in a remote location. USB access via a charging cradle at that location, or a fallback Wi-Fi network, is your last line of defense against a stranded device.

@@ -1,0 +1,219 @@
+---
+sidebar_position: 2
+title: "Event Types Reference"
+description: "Complete reference for all six event types published by the RFD40/RFD90 via MQTT, including payload schemas and examples."
+---
+
+# Event Types Reference
+
+This reference documents the complete payload schema, topic pattern, QoS level, and example payloads for each of the six event types published by the RFD40/RFD90 reader sled.
+
+## dataEVT
+
+**Topic:** `{tenantId}/DATA/clients/data1event/{deviceSerial}` (or `data2event`)
+**QoS:** 0
+**Trigger:** Tag read during an active RFID operation
+
+See [dataEVT Payload Schema](../../rfid-operations/tag-data/dataevt-payload.mdx) for the complete field reference and mode-specific examples.
+
+```json
+{
+  "event_type": "dataEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:23:45.123Z",
+  "sequence_id": 1042,
+  "epc": "3034257BF400B7800004E3A1",
+  "epc_length": 96,
+  "rssi": -42.5,
+  "channel_index": 3,
+  "antenna_id": 0,
+  "seen_count": 1,
+  "first_seen": "2026-05-14T10:23:45.123Z",
+  "last_seen": "2026-05-14T10:23:45.123Z",
+  "operating_mode": "INVENTORY_RSSI"
+}
+```
+
+---
+
+## heartBeatEVT
+
+**Topic:** `{tenantId}/DATA/clients/heartbeat/{deviceSerial}`
+**QoS:** 1
+**Trigger:** Periodic timer at the configured interval (default: 60 seconds)
+
+| Field | Type | Description |
+|---|---|---|
+| `event_type` | string | Always `"heartBeatEVT"` |
+| `device_serial` | string | Device serial number |
+| `timestamp` | string | ISO 8601 UTC timestamp |
+| `battery_level` | integer | Battery percentage (0–100) |
+| `battery_charging` | boolean | Whether the battery is currently charging |
+| `temperature_c` | number | Device temperature in Celsius |
+| `wifi_rssi` | number | Wi-Fi signal strength in dBm |
+| `bt_connected` | boolean | Bluetooth connection to mobile computer |
+| `operating_state` | string | `IDLE`, `READING`, `ERROR` |
+| `firmware_version` | string | Current firmware version |
+| `uptime_seconds` | integer | Seconds since last device boot |
+
+```json
+{
+  "event_type": "heartBeatEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:24:00.000Z",
+  "battery_level": 78,
+  "battery_charging": false,
+  "temperature_c": 32.5,
+  "wifi_rssi": -55,
+  "bt_connected": true,
+  "operating_state": "IDLE",
+  "firmware_version": "3.2.1.045",
+  "uptime_seconds": 43200
+}
+```
+
+---
+
+## alerts
+
+**Topic:** `{tenantId}/DATA/clients/alerts/{deviceSerial}`
+**QoS:** 1
+**Trigger:** Monitored metric crosses a configured threshold
+
+| Field | Type | Description |
+|---|---|---|
+| `event_type` | string | Always `"alerts"` |
+| `device_serial` | string | Device serial number |
+| `timestamp` | string | ISO 8601 UTC timestamp |
+| `alert_type` | string | Alert category (see table below) |
+| `severity` | string | `WARNING`, `CRITICAL` |
+| `message` | string | Human-readable alert description |
+| `metric_name` | string | Name of the metric that triggered the alert |
+| `metric_value` | number | Current value of the metric |
+| `threshold` | number | Threshold value that was breached |
+| `device_state` | object | Snapshot of device state at alert time |
+
+| Alert Type | Trigger |
+|---|---|
+| `BATTERY_LOW` | Battery below warning threshold |
+| `BATTERY_CRITICAL` | Battery below critical threshold |
+| `TEMPERATURE_HIGH` | Device temperature above limit |
+| `CONNECTION_DEGRADED` | Wi-Fi or Bluetooth signal below threshold |
+| `OPERATION_FAILED` | RFID operation ended with an error |
+
+```json
+{
+  "event_type": "alerts",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:25:30.456Z",
+  "alert_type": "BATTERY_LOW",
+  "severity": "WARNING",
+  "message": "Battery level at 15%, below warning threshold of 20%",
+  "metric_name": "battery_level",
+  "metric_value": 15,
+  "threshold": 20,
+  "device_state": {
+    "battery_level": 15,
+    "battery_charging": false,
+    "operating_state": "IDLE",
+    "temperature_c": 30.2
+  }
+}
+```
+
+---
+
+## alert_short
+
+**Topic:** `{tenantId}/DATA/clients/alert_short/{deviceSerial}`
+**QoS:** 1
+**Trigger:** Same as `alerts`, compact payload for bandwidth-constrained environments
+
+| Field | Type | Description |
+|---|---|---|
+| `event_type` | string | Always `"alert_short"` |
+| `device_serial` | string | Device serial number |
+| `timestamp` | string | ISO 8601 UTC timestamp |
+| `alert_type` | string | Alert category code |
+| `severity` | string | `WARNING`, `CRITICAL` |
+| `value` | number | Current metric value |
+
+```json
+{
+  "event_type": "alert_short",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:25:30.456Z",
+  "alert_type": "BATTERY_LOW",
+  "severity": "WARNING",
+  "value": 15
+}
+```
+
+---
+
+## exceptionEVT
+
+**Topic:** `{tenantId}/DATA/clients/exceptions/{deviceSerial}`
+**QoS:** 1
+**Trigger:** Error condition on the device
+
+| Field | Type | Description |
+|---|---|---|
+| `event_type` | string | Always `"exceptionEVT"` |
+| `device_serial` | string | Device serial number |
+| `timestamp` | string | ISO 8601 UTC timestamp |
+| `exception_code` | string | Machine-readable error code |
+| `severity` | string | `INFO`, `WARNING`, `ERROR`, `FATAL` |
+| `message` | string | Human-readable error description |
+| `context` | object | Additional context about the error |
+
+```json
+{
+  "event_type": "exceptionEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:26:00.789Z",
+  "exception_code": "RF_HARDWARE_FAULT",
+  "severity": "ERROR",
+  "message": "RF module failed to initialize antenna",
+  "context": {
+    "antenna_id": 0,
+    "last_operation": "SIMPLE_INVENTORY",
+    "retry_count": 3
+  }
+}
+```
+
+---
+
+## mqttConnEVT
+
+**Topic:** `{tenantId}/DATA/clients/connection/{deviceSerial}`
+**QoS:** 1
+**Trigger:** MQTT connection state change
+
+| Field | Type | Description |
+|---|---|---|
+| `event_type` | string | Always `"mqttConnEVT"` |
+| `device_serial` | string | Device serial number |
+| `timestamp` | string | ISO 8601 UTC timestamp |
+| `connection_state` | string | `CONNECTED`, `DISCONNECTED`, `RECONNECTING` |
+| `broker_url` | string | MQTT broker URL |
+| `disconnect_reason` | string | Reason for disconnection (if applicable) |
+| `session_id` | string | MQTT session identifier |
+
+```json
+{
+  "event_type": "mqttConnEVT",
+  "device_serial": "RFD401234567890",
+  "timestamp": "2026-05-14T10:20:00.000Z",
+  "connection_state": "CONNECTED",
+  "broker_url": "mqtts://broker.example.com:8883",
+  "disconnect_reason": null,
+  "session_id": "sess-abc123"
+}
+```
+
+## Related Topics
+
+- [About the Event Model](./about-event-model.mdx): event type overview
+- [How to Configure Event Reporting](./configure-event-reporting.mdx): enable/disable events

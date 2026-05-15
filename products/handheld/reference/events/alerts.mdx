@@ -1,0 +1,154 @@
+---
+sidebar_position: 2
+title: "alerts"
+description: "Alert event reference for Zebra RFD40/RFD90 handheld RFID readers."
+---
+
+# alerts
+
+Threshold-based alert events published when device conditions cross configured thresholds. Covers battery, temperature, power source, network, and firmware alert conditions.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Event** | `{tenantId}/MGMT/clients/event/{deviceSerial}` |
+
+## Direction
+
+Reader → Application
+
+## Payload
+
+### Battery Low Alert
+
+```json
+{
+  "event": "alerts",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T14:22:05.000Z",
+  "alertType": "BATTERY_LOW",
+  "severity": "WARNING",
+  "details": {
+    "batteryLevel": 18,
+    "threshold": 20,
+    "powerSource": "BATTERY"
+  }
+}
+```
+
+### Battery Critical Alert
+
+```json
+{
+  "event": "alerts",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T15:10:30.000Z",
+  "alertType": "BATTERY_CRITICAL",
+  "severity": "CRITICAL",
+  "details": {
+    "batteryLevel": 4,
+    "threshold": 5,
+    "powerSource": "BATTERY"
+  }
+}
+```
+
+### Temperature High Alert
+
+```json
+{
+  "event": "alerts",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T12:45:00.000Z",
+  "alertType": "TEMPERATURE_HIGH",
+  "severity": "WARNING",
+  "details": {
+    "temperature": 52.3,
+    "threshold": 50
+  }
+}
+```
+
+### Network Disconnect Alert
+
+```json
+{
+  "event": "alerts",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T11:05:12.000Z",
+  "alertType": "NETWORK_DISCONNECT",
+  "severity": "WARNING",
+  "details": {
+    "interface": "WIFI",
+    "lastConnectedEssid": "Warehouse-IoT"
+  }
+}
+```
+
+### Power Source Change Alert
+
+```json
+{
+  "event": "alerts",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T09:30:00.000Z",
+  "alertType": "POWER_SOURCE_CHANGE",
+  "severity": "INFO",
+  "details": {
+    "previousSource": "CRADLE",
+    "currentSource": "BATTERY"
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `event` | string | Always `"alerts"` |
+| `deviceSerial` | string | Serial number of the reporting device |
+| `timestamp` | string | Alert timestamp in ISO 8601 format |
+| `alertType` | string | Type of alert (see table below) |
+| `severity` | string | `INFO`, `WARNING`, or `CRITICAL` |
+| `details` | object | Alert-specific data (varies by `alertType`) |
+
+### Alert Types
+
+| Alert Type | Severity | Trigger Condition |
+|---|---|---|
+| `BATTERY_LOW` | WARNING | Battery drops below `batteryLow.thresholdPercent` |
+| `BATTERY_CRITICAL` | CRITICAL | Battery drops below `batteryCritical.thresholdPercent` |
+| `TEMPERATURE_HIGH` | WARNING | Internal temperature exceeds `temperatureHigh.thresholdCelsius` |
+| `NETWORK_DISCONNECT` | WARNING | Active network interface disconnects |
+| `POWER_SOURCE_CHANGE` | INFO | Device switches between battery, cradle, or USB power |
+
+### Details Fields by Alert Type
+
+| Alert Type | Field | Type | Description |
+|---|---|---|---|
+| `BATTERY_LOW` | `batteryLevel` | integer | Current battery percentage |
+| `BATTERY_LOW` | `threshold` | integer | Configured threshold |
+| `BATTERY_LOW` | `powerSource` | string | Current power source |
+| `BATTERY_CRITICAL` | `batteryLevel` | integer | Current battery percentage |
+| `BATTERY_CRITICAL` | `threshold` | integer | Configured threshold |
+| `BATTERY_CRITICAL` | `powerSource` | string | Current power source |
+| `TEMPERATURE_HIGH` | `temperature` | number | Current temperature in Celsius |
+| `TEMPERATURE_HIGH` | `threshold` | integer | Configured threshold |
+| `NETWORK_DISCONNECT` | `interface` | string | Disconnected interface (`WIFI`, `ETHERNET`) |
+| `NETWORK_DISCONNECT` | `lastConnectedEssid` | string | SSID of the last connected Wi-Fi network |
+| `POWER_SOURCE_CHANGE` | `previousSource` | string | Previous power source |
+| `POWER_SOURCE_CHANGE` | `currentSource` | string | New power source |
+
+## Notes
+
+- Alerts are enabled and configured via `config_events`. Each alert type can be independently enabled or disabled.
+- Battery alerts are triggered only once when the threshold is crossed. They re-arm when the battery level rises above the threshold (hysteresis).
+- `NETWORK_DISCONNECT` alerts are published only if the device still has MQTT connectivity (e.g., switched from Wi-Fi to Ethernet, or reconnected before the alert was generated).
+- Alert thresholds persist across reboots.
+
+## See Also
+
+- [config_events](../mgmt/config-events): Configure alert thresholds and enable/disable
+- [heartBeatEVT](heartbeatevt): Periodic device health reports
+- [alert_short](alert-short): Compact MDM-optimized alert format
+- [get_status](../mgmt/get-status): On-demand device status query
+- [API Overview](../api-overview): Complete endpoint inventory

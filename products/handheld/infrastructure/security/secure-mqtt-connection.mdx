@@ -1,0 +1,202 @@
+---
+sidebar_position: 4
+title: How to Secure the MQTT Connection with TLS
+description: "End-to-end guide for configuring TLS-encrypted MQTT connections on handheld RFID readers"
+---
+
+# How to Secure the MQTT Connection with TLS
+
+This guide walks through securing the MQTT connection from reader to broker using TLS encryption. It covers both the Zebra-hosted broker (where certificates are pre-provisioned) and customer-managed brokers (where you supply your own certificates).
+
+By the end, every byte between the reader and broker will be encrypted, the reader will validate the broker's identity, and optionally the broker will validate the reader's identity (mutual TLS).
+
+**Publish commands to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+---
+
+## Prerequisites
+
+Before starting, ensure you have:
+
+- The MQTT broker's CA certificate (PEM or PKCS12 format)
+- For mutual TLS: a client certificate and private key for the reader
+- Network connectivity between the reader and broker on port **8883**
+- Reader firmware ≥ 2.0 (TLS support)
+
+---
+
+## Step 1: Obtain the CA Certificate
+
+### Zebra-Hosted Broker
+
+If you are using Zebra's hosted MQTT broker, the CA certificate is available from Zebra's support portal. Download the PEM file and proceed to Step 2.
+
+### Customer-Managed Broker
+
+Export the CA certificate that signed your broker's TLS server certificate. If your broker uses a certificate chain (root CA → intermediate CA → server cert), you need the root CA certificate, and optionally the intermediate CA if it is not bundled in the broker's server certificate response.
+
+---
+
+## Step 2: Install the CA Certificate on the Reader
+
+Base64-encode the CA certificate file and send the `install_certificate` command:
+
+```json
+{
+  "requestId": "req-tls-001",
+  "command": "install_certificate",
+  "payload": {
+    "certificateId": "mqtt-broker-ca",
+    "type": "CA",
+    "format": "PEM",
+    "certificateData": "LS0tLS1CRUdJTiBDRVJUSUZJQ0FURS0tLS0tCk1JSURxVENDQ..."
+  }
+}
+```
+
+**Verify installation:**
+
+```json
+{
+  "requestId": "req-tls-002",
+  "command": "get_installed_certificate"
+}
+```
+
+Confirm the certificate appears in the response with the correct `certificateId`, `subject`, and `validTo` date.
+
+---
+
+## Step 3: (Optional) Install a Client Certificate for Mutual TLS
+
+If your broker requires client certificate authentication, install the reader's client certificate:
+
+```json
+{
+  "requestId": "req-tls-003",
+  "command": "install_certificate",
+  "payload": {
+    "certificateId": "reader-mtls-cert",
+    "type": "CLIENT",
+    "format": "PKCS12",
+    "certificateData": "MIIKYAIBAzCCCiYGCSqGSIb3DQEHAaCCChcEggoTMIIKDz...",
+    "passphrase": "client-cert-passphrase"
+  }
+}
+```
+
+---
+
+## Step 4: Configure the MQTT Endpoint for TLS
+
+Update the endpoint configuration to enable TLS and reference the installed certificates:
+
+### Server-Side TLS Only (Broker Validates Reader via Password)
+
+```json
+{
+  "requestId": "req-tls-004",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "host": "broker.example.com",
+    "port": 8883,
+    "tlsEnabled": true,
+    "caCertificateId": "mqtt-broker-ca",
+    "username": "RFD40-12345678",
+    "password": "device-mqtt-password"
+  }
+}
+```
+
+### Mutual TLS (Both Sides Authenticate via Certificates)
+
+```json
+{
+  "requestId": "req-tls-005",
+  "command": "config_endpoint",
+  "payload": {
+    "endpointType": "DATA",
+    "host": "broker.example.com",
+    "port": 8883,
+    "tlsEnabled": true,
+    "caCertificateId": "mqtt-broker-ca",
+    "clientCertificateId": "reader-mtls-cert"
+  }
+}
+```
+
+> **No username/password needed with mTLS.** When client certificate authentication is configured, the broker identifies the reader by its certificate CN. Username and password fields can be omitted.
+
+---
+
+## Step 5: Verify the Encrypted Connection
+
+After configuring the endpoint, the reader will disconnect from the current broker session and reconnect using TLS. Verify the connection:
+
+```json
+{
+  "requestId": "req-tls-006",
+  "command": "get_status"
+}
+```
+
+**Expected response fields:**
+
+| Field | Expected Value |
+|-------|---------------|
+| `mqttConnectionStatus` | `CONNECTED` |
+| `tlsVersion` | `TLS 1.2` or `TLS 1.3` |
+| `lastDisconnectReason` | (absent or empty) |
+
+If `mqttConnectionStatus` is `DISCONNECTED` or `ERROR`, check the `lastDisconnectReason` field:
+
+| Reason | Cause | Resolution |
+|--------|-------|------------|
+| `TLS_HANDSHAKE_FAILED` | CA certificate does not match broker's server certificate | Verify you installed the correct CA cert |
+| `CERTIFICATE_EXPIRED` | CA or client certificate has expired | Install a valid certificate |
+| `CERTIFICATE_REVOKED` | Client certificate has been revoked on the broker | Issue a new client certificate |
+| `AUTH_REJECTED` | Broker rejected client cert (CN not in ACL) or wrong password | Check broker's authentication configuration |
+
+---
+
+## Zebra-Hosted Broker vs. Customer Broker
+
+| Aspect | Zebra-Hosted | Customer-Managed |
+|--------|-------------|------------------|
+| CA certificate source | Zebra support portal | Your organization's PKI |
+| Server certificate rotation | Managed by Zebra | Your responsibility |
+| Client certificate provisioning | Zebra's device provisioning service | Your PKI + `install_certificate` command |
+| Broker port | 8883 (TLS only) | Configurable (8883 recommended) |
+| Supported TLS versions | 1.2, 1.3 | Depends on broker configuration |
+
+---
+
+## Security Validation Checklist
+
+After completing TLS setup, verify:
+
+- [ ] Reader connects on port 8883 (not 1883)
+- [ ] `get_status` shows `tlsVersion` as TLS 1.2 or 1.3
+- [ ] Commands and responses flow normally (test with `get_status`, `get_wifi`)
+- [ ] If using mTLS, broker logs show successful client certificate validation
+- [ ] Plaintext port 1883 is disabled on the broker (if you control it)
+
+---
+
+## Next Steps
+
+- [Manage TLS/SSL Certificates](./manage-certificates): certificate management reference
+- [Rotate Certificates at Scale](./rotate-certificates): plan for certificate renewal
+- [About the Security Model](./about-security-model): understand the full security architecture
+- [Configure MQTT Endpoints](../endpoints/configure-endpoints): endpoint configuration reference

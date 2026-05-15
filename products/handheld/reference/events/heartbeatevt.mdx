@@ -1,0 +1,72 @@
+---
+sidebar_position: 1
+title: "heartBeatEVT"
+description: "Periodic heartbeat event reference for Zebra RFD40/RFD90 handheld RFID readers."
+---
+
+# heartBeatEVT
+
+Periodic health heartbeat event published by the device at a configurable interval. Reports device status, battery level, temperature, radio activity, and uptime.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Event** | `{tenantId}/MGMT/clients/event/{deviceSerial}` |
+
+## Direction
+
+Reader → Application
+
+## Payload
+
+```json
+{
+  "event": "heartBeatEVT",
+  "deviceSerial": "24042AR50033",
+  "timestamp": "2026-05-14T10:35:00.000Z",
+  "deviceStatus": "ONLINE",
+  "batteryLevel": 82,
+  "stateOfHealth": "GOOD",
+  "temperature": 34.5,
+  "radioActivity": "IDLE",
+  "powerSource": "BATTERY",
+  "uptime": 86400,
+  "networkInterface": "WIFI",
+  "signalStrength": -48,
+  "firmwareVersion": "2.1.0.0"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `event` | string | Always `"heartBeatEVT"` |
+| `deviceSerial` | string | Serial number of the reporting device |
+| `timestamp` | string | Event timestamp in ISO 8601 format |
+| `deviceStatus` | string | Device state: `ONLINE`, `IDLE`, `BUSY` |
+| `batteryLevel` | integer | Battery charge percentage (0–100) |
+| `stateOfHealth` | string | Battery health: `GOOD`, `DEGRADED`, `REPLACE` |
+| `temperature` | number | Internal device temperature in Celsius |
+| `radioActivity` | string | RFID radio state: `IDLE`, `READING`, `WRITING`, `LOCATING` |
+| `powerSource` | string | Current power source: `BATTERY`, `CRADLE`, `USB` |
+| `uptime` | integer | Seconds since last boot |
+| `networkInterface` | string | Active network interface: `WIFI`, `ETHERNET` |
+| `signalStrength` | integer | Wi-Fi RSSI in dBm (0 if on Ethernet) |
+| `firmwareVersion` | string | Current firmware version |
+
+## Notes
+
+- Heartbeat events are enabled and configured via `config_events`. The default interval is 300 seconds (5 minutes).
+- The valid interval range is 60–3600 seconds.
+- Heartbeats are published regardless of RFID operation state, providing continuous device monitoring.
+- If the device loses MQTT connectivity, heartbeat events are not queued. The absence of heartbeats is itself an indicator of connectivity loss.
+- Fleet management systems should monitor heartbeat events and raise alerts when a device misses multiple consecutive heartbeats.
+- `uptime` resets to `0` after each reboot.
+
+## See Also
+
+- [config_events](../mgmt/config-events): Configure heartbeat interval and enable/disable
+- [get_status](../mgmt/get-status): On-demand device status query
+- [alerts](alerts): Threshold-based alert events
+- [mqttConnEVT](mqttconnevt): Connection state change events
+- [API Overview](../api-overview): Complete endpoint inventory

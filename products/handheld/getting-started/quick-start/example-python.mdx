@@ -1,0 +1,202 @@
+---
+sidebar_position: 8
+title: "Quick Start: Python Example"
+description: "Complete runnable Python program using paho-mqtt to connect, discover, read RFID tags, and stop: all via the Zebra IoT Connector MQTT API."
+---
+
+# Quick Start: Python Example
+
+📗 **TUTORIAL**: A complete, runnable Python program that performs the entire quick start flow: connect to the IOTC broker, discover the reader, start an RFID inventory, print tag data for 10 seconds, and stop.
+
+## Prerequisites
+
+- Python 3.8 or later
+- `paho-mqtt` library
+
+Install the MQTT client library:
+
+```bash
+pip install paho-mqtt
+```
+
+## Complete Program
+
+```python
+"""
+Zebra IoT Connector; Quick Start Example (Python)
+Connects to the IOTC MQTT broker, discovers the reader,
+starts a simple inventory, prints tags for 10 seconds, and stops.
+"""
+
+import json
+import time
+import threading
+import paho.mqtt.client as mqtt
+
+# ──────────────────────────────────────────────
+# Configuration: replace with your actual values
+# ──────────────────────────────────────────────
+BROKER_HOST = "mqtt.iotconnector.zebra.com"
+BROKER_PORT = 8883
+MQTT_USERNAME = "tenant-user@abc123def456"
+MQTT_PASSWORD = "your-mqtt-password"
+TENANT_ID = "abc123def456"
+DEVICE_SERIAL = "RFD40-1234567890"
+
+# ──────────────────────────────────────────────
+# Topic construction
+# ──────────────────────────────────────────────
+MGMT_CMD = f"{TENANT_ID}/MGMT/clients/cmnd/{DEVICE_SERIAL}"
+MGMT_RESP = f"{TENANT_ID}/MGMT/clients/resp/{DEVICE_SERIAL}"
+CTRL_CMD = f"{TENANT_ID}/CTRL/clients/cmnd/{DEVICE_SERIAL}"
+CTRL_RESP = f"{TENANT_ID}/CTRL/clients/resp/{DEVICE_SERIAL}"
+DATA_EVT = f"{TENANT_ID}/DATA/clients/data1event/{DEVICE_SERIAL}"
+
+tag_count = 0
+
+
+def on_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print("[connected] Successfully connected to IOTC broker")
+        client.subscribe(MGMT_RESP)
+        client.subscribe(CTRL_RESP)
+        client.subscribe(DATA_EVT)
+        print("[subscribed] Listening on MGMT, CTRL, and DATA topics")
+    else:
+        print(f"[error] Connection failed with code {rc}")
+
+
+def on_message(client, userdata, msg):
+    global tag_count
+    try:
+        payload = json.loads(msg.payload.decode())
+    except json.JSONDecodeError:
+        print(f"[raw] {msg.topic}: {msg.payload.decode()}")
+        return
+
+    if msg.topic == MGMT_RESP:
+        cmd = payload.get("command", "unknown")
+        status = payload.get("status", "unknown")
+        print(f"[mgmt] {cmd}: {status}")
+        if cmd == "get_version" and status == "OK":
+            info = payload.get("payload", {})
+            print(f"  Model: {info.get('model')}")
+            print(f"  Serial: {info.get('serialNumber')}")
+            print(f"  Firmware: {info.get('firmwareVersion')}")
+
+    elif msg.topic == CTRL_RESP:
+        cmd = payload.get("command", "unknown")
+        status = payload.get("status", "unknown")
+        state = payload.get("payload", {}).get("operationState", "")
+        print(f"[ctrl] {cmd}: {status} (state: {state})")
+
+    elif msg.topic == DATA_EVT:
+        tags = payload.get("payload", {}).get("tags", [])
+        for tag in tags:
+            tag_count += 1
+            epc = tag.get("epc", "unknown")
+            rssi = tag.get("rssi", "N/A")
+            print(f"[tag #{tag_count}] EPC: {epc}  RSSI: {rssi} dBm")
+
+
+def publish_command(client, topic, command, request_id, payload=None):
+    msg = {"command": command, "requestId": request_id}
+    if payload:
+        msg["payload"] = payload
+    client.publish(topic, json.dumps(msg))
+    print(f"[publish] {command} (requestId: {request_id})")
+
+
+def main():
+    global tag_count
+
+    # Create MQTT client
+    client = mqtt.Client(protocol=mqtt.MQTTv311)
+    client.username_pw_set(MQTT_USERNAME, MQTT_PASSWORD)
+    client.tls_set()
+    client.on_connect = on_connect
+    client.on_message = on_message
+
+    # Connect
+    print(f"Connecting to {BROKER_HOST}:{BROKER_PORT}...")
+    client.connect(BROKER_HOST, BROKER_PORT, keepalive=60)
+    client.loop_start()
+    time.sleep(2)
+
+    # Step 1: Discover reader
+    publish_command(client, MGMT_CMD, "get_version", "1")
+    time.sleep(2)
+
+    # Step 2: Set operating mode
+    publish_command(client, CTRL_CMD, "set_operating_mode", "2",
+                    {"mode": "SIMPLE_INVENTORY"})
+    time.sleep(2)
+
+    # Step 3: Start inventory
+    publish_command(client, CTRL_CMD, "control_operation", "3",
+                    {"action": "START"})
+
+    # Step 4: Read tags for 10 seconds
+    print("\n--- Reading tags for 10 seconds ---\n")
+    time.sleep(10)
+
+    # Step 5: Stop inventory
+    print(f"\n--- Stopping inventory ({tag_count} tags read) ---\n")
+    publish_command(client, CTRL_CMD, "control_operation", "4",
+                    {"action": "STOP"})
+    time.sleep(2)
+
+    # Disconnect
+    client.loop_stop()
+    client.disconnect()
+    print(f"[done] Total tags read: {tag_count}")
+
+
+if __name__ == "__main__":
+    main()
+```
+
+## Running the Program
+
+1. Save the code as `iotc_quickstart.py`.
+2. Update the configuration variables at the top of the file with your actual IOTC credentials.
+3. Run:
+
+```bash
+python iotc_quickstart.py
+```
+
+## Expected Output
+
+```
+Connecting to mqtt.iotconnector.zebra.com:8883...
+[connected] Successfully connected to IOTC broker
+[subscribed] Listening on MGMT, CTRL, and DATA topics
+[publish] get_version (requestId: 1)
+[mgmt] get_version: OK
+  Model: RFD40
+  Serial: RFD40-1234567890
+  Firmware: 3.10.27
+[publish] set_operating_mode (requestId: 2)
+[ctrl] set_operating_mode: OK (state: )
+[publish] control_operation (requestId: 3)
+[ctrl] control_operation: OK (state: RUNNING)
+
+--- Reading tags for 10 seconds ---
+
+[tag #1] EPC: E2801160600002071131F3A5  RSSI: -45 dBm
+[tag #2] EPC: 3034257BF400B78000000041  RSSI: -52 dBm
+[tag #3] EPC: E2801160600002071131F3A5  RSSI: -44 dBm
+...
+
+--- Stopping inventory (12 tags read) ---
+
+[publish] control_operation (requestId: 4)
+[ctrl] control_operation: OK (state: IDLE)
+[done] Total tags read: 12
+```
+
+## Next Steps
+
+- [Node.js Example](./example-nodejs.mdx): Same flow in JavaScript
+- [C# (.NET) Example](./example-csharp.mdx): Same flow in C#

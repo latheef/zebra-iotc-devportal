@@ -1,0 +1,144 @@
+---
+sidebar_position: 1
+title: About Network Architecture for Handheld Readers
+description: "Network topology, connectivity paths, and deployment patterns for RFD40/RFD90 handheld RFID readers"
+---
+
+# About Network Architecture for Handheld Readers
+
+Handheld RFID readers do not connect to the MQTT broker directly. The network path from reader to cloud involves multiple hops, each with its own reliability characteristics and failure modes. Understanding this path is essential for diagnosing connectivity issues, planning deployments, and choosing between direct and relayed network configurations.
+
+This chapter explains the physical and logical network topology; how data flows from an RFID tag through the reader, across local and wide-area networks, to the MQTT broker where your application receives it.
+
+---
+
+## 6.1 The Network Path
+
+Every message between the reader and the MQTT broker traverses this path:
+
+```
+RFID Tag → RF Air Interface → Reader (RFD40/RFD90)
+  → Bluetooth (BLE/Classic) → Host Device (Android/iOS)
+    → Wi-Fi / Cellular / Ethernet → Local Network
+      → Internet → MQTT Broker
+        → Subscriber (Your Application)
+```
+
+Each segment has different characteristics:
+
+| Segment | Protocol | Typical Latency | Failure Mode |
+|---------|----------|----------------|--------------|
+| Tag → Reader | UHF RFID (RAIN) | < 10 ms | Tag out of range, interference, detuning |
+| Reader → Host | Bluetooth 5.x | 10–50 ms | Pairing lost, range exceeded, interference |
+| Host → Network | Wi-Fi / Cellular | 5–200 ms | SSID disassociation, signal loss, roaming |
+| Network → Broker | TCP/TLS | 20–500 ms | Firewall block, DNS failure, certificate expiry |
+
+The total end-to-end latency from tag read to application delivery is typically **50–300 ms** under normal conditions. Bluetooth and last-mile network quality dominate the variability.
+
+---
+
+## 6.2 Direct vs. Relayed Connectivity
+
+The RFD40 and RFD90 support two connectivity models. The choice depends on your deployment environment and whether the reader operates paired with a mobile computer.
+
+### Relayed Mode (via Host Device)
+
+In relayed mode, the reader connects to a Zebra mobile computer (such as the TC52, TC72, or ET40) over Bluetooth. The host device runs the Zebra RFID Connect application, which maintains the MQTT connection to the broker over the host's Wi-Fi or cellular radio.
+
+**Advantages:**
+- Leverages the host device's enterprise Wi-Fi configuration (802.1X, certificates)
+- Cellular fallback when Wi-Fi is unavailable
+- Single point of network management per worker
+- Host device handles MQTT session persistence and reconnection
+
+**Disadvantages:**
+- Bluetooth hop adds latency and a potential point of failure
+- Reader functionality depends on host device battery and connectivity
+- Bluetooth range limits reader-to-host distance (~10 m practical)
+
+### Direct Mode (Reader's Own Wi-Fi)
+
+The RFD40 has an integrated Wi-Fi radio. In direct mode, the reader connects to the Wi-Fi network independently, without a host device. The MQTT client runs on the reader itself.
+
+**Advantages:**
+- Eliminates the Bluetooth hop; lower latency, fewer failure points
+- Reader operates independently, no host device required
+- Simpler deployment for fixed-position scanning (e.g., mounted on a dock door frame)
+
+**Disadvantages:**
+- Wi-Fi configuration must be managed per reader (see [Configure Wi-Fi Profiles](./configure-wifi))
+- No cellular fallback
+- Limited to Wi-Fi coverage area
+- Certificate and credential management is per-device
+
+> **RFD90 note:** The RFD90 does not have an integrated Wi-Fi radio. It always operates in relayed mode through a paired host device.
+
+---
+
+## 6.3 Deployment Topology Patterns
+
+### Warehouse / Distribution Center
+
+In a warehouse environment, workers carry paired reader + mobile computer devices. The facility provides enterprise Wi-Fi with multiple access points for continuous coverage across aisles, receiving docks, and staging areas.
+
+```
+[RFD40/RFD90] --BT--> [TC52/TC72] --Wi-Fi--> [AP] --LAN--> [Firewall] --WAN--> [MQTT Broker]
+                                                   ↑
+                                              [AP] [AP] [AP]  (roaming coverage)
+```
+
+**Key considerations:**
+- Wi-Fi roaming between access points must be fast (< 150 ms) to avoid MQTT disconnects
+- Use WPA2-Enterprise or WPA3-Enterprise with RADIUS authentication
+- Ensure MQTT ports (8883 for TLS) are open through the corporate firewall
+- Plan for 50–200 concurrent MQTT connections per facility
+
+### Retail Store
+
+Retail deployments typically involve intermittent scanning; cycle counts, receiving, and customer lookup. Workers may roam between the sales floor, stockroom, and back-of-house.
+
+```
+[RFD40] --BT--> [TC21/ET40] --Wi-Fi--> [AP] --LAN--> [Router] --WAN--> [MQTT Broker]
+```
+
+**Key considerations:**
+- Fewer access points, but coverage gaps are common (stockrooms, fitting rooms)
+- MQTT keep-alive intervals should be generous (60–120 seconds) to tolerate brief disconnections
+- Consider `cleanSession: false` to preserve subscriptions across reconnections
+
+### Field / Outdoor
+
+Field deployments (agricultural asset tracking, construction site inventory, utility pole inspection) rely on cellular connectivity through the host device.
+
+```
+[RFD40/RFD90] --BT--> [TC53/TC78] --Cellular (4G/5G)--> [Carrier] --Internet--> [MQTT Broker]
+```
+
+**Key considerations:**
+- Cellular latency is higher and more variable (50–500 ms)
+- Data costs may be significant for high-volume tag reads; use post-filters to reduce payload size
+- MQTT QoS 1 is recommended to handle transient connectivity drops
+- Consider local buffering on the host device for offline operation
+
+---
+
+## 6.4 Network Requirements Summary
+
+| Requirement | Value |
+|-------------|-------|
+| MQTT broker port (plaintext) | 1883 (not recommended for production) |
+| MQTT broker port (TLS) | 8883 |
+| Minimum bandwidth per reader | ~50 Kbps sustained (varies with tag volume) |
+| DNS resolution | Required; broker hostname must resolve |
+| NAT traversal | Supported; MQTT uses outbound TCP connections |
+| IPv6 | Supported by reader firmware ≥ 3.x |
+
+For firewall and port configuration details, see [Troubleshoot Network Issues](./troubleshoot-network).
+
+---
+
+## Next Steps
+
+- [Configure Wi-Fi Profiles](./configure-wifi): set up the reader's direct Wi-Fi connection
+- [Check Ethernet Status](./check-ethernet): verify connectivity when the reader is docked
+- [Troubleshoot Network Issues](./troubleshoot-network): diagnose and resolve connectivity problems

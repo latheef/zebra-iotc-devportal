@@ -1,0 +1,145 @@
+---
+sidebar_position: 3
+title: "How to Monitor Connection Quality"
+description: "Guide to monitoring Wi-Fi, Bluetooth, and MQTT connection quality on the RFD40/RFD90."
+---
+
+# How to Monitor Connection Quality
+
+Reliable connectivity is essential for the RFD40/RFD90 to deliver tag data and receive commands. This guide covers monitoring Wi-Fi signal strength, Bluetooth link status, and MQTT connection stability using heartbeat and connection events.
+
+## Connection Data Sources
+
+| Metric | Source Event | Field |
+|---|---|---|
+| Wi-Fi signal strength | `heartBeatEVT` | `wifi_rssi` |
+| Bluetooth link | `heartBeatEVT` | `bt_connected` |
+| MQTT state | `mqttConnEVT` | `connection_state` |
+| Signal degradation | `alerts` | `CONNECTION_DEGRADED` |
+
+## Wi-Fi Signal Monitoring
+
+The `wifi_rssi` field in heartbeat events reports the Wi-Fi signal strength in dBm. This is the most important connectivity metric for MQTT reliability.
+
+### RSSI Quality Bands
+
+| RSSI Range | Quality | Impact on MQTT |
+|---|---|---|
+| -30 to -50 dBm | Excellent | Full-speed, reliable delivery |
+| -50 to -60 dBm | Good | Reliable delivery, minimal retransmissions |
+| -60 to -70 dBm | Fair | Occasional retransmissions, slight latency |
+| -70 to -80 dBm | Poor | Frequent retransmissions, noticeable latency, possible message loss at QoS 0 |
+| Below -80 dBm | Critical | Frequent disconnections, unreliable data delivery |
+
+### Tracking Wi-Fi Trends
+
+Monitor RSSI over time to identify problem areas and patterns:
+
+```javascript
+function analyzeWifiTrend(heartbeats) {
+  const rssiValues = heartbeats.map(h => h.wifi_rssi);
+
+  return {
+    current: rssiValues[rssiValues.length - 1],
+    average: rssiValues.reduce((a, b) => a + b, 0) / rssiValues.length,
+    min: Math.min(...rssiValues),
+    max: Math.max(...rssiValues),
+    trend: rssiValues[rssiValues.length - 1] - rssiValues[0] > 0 ? 'improving' : 'degrading'
+  };
+}
+```
+
+Devices that consistently report poor RSSI may be operating in areas with insufficient Wi-Fi coverage. Consider:
+- Adding access points in those zones
+- Adjusting AP channel assignments to reduce interference
+- Relocating the device's operating area
+
+## Bluetooth Link Monitoring
+
+The `bt_connected` field indicates whether the reader sled is paired and connected to its host mobile computer (e.g., TC52, TC72).
+
+A `false` value means:
+- The reader is not paired with a mobile computer
+- The Bluetooth link was lost (out of range, interference, or host device issue)
+- The reader is operating in standalone mode (if supported)
+
+### Bluetooth Loss Recovery
+
+When Bluetooth disconnects:
+
+1. The reader typically attempts automatic reconnection
+2. If reconnection fails, RFID operations initiated via Bluetooth may stop
+3. MQTT connectivity is unaffected (uses Wi-Fi independently)
+4. MQTT-initiated operations continue regardless of Bluetooth state
+
+> **Note**: In a typical deployment, the mobile computer (TC52/TC72) is the user interface while the reader sled (RFD40/RFD90) handles RF scanning. A Bluetooth link loss means the operator loses the UI, but the MQTT data pipeline remains active.
+
+## MQTT Connection Stability
+
+Use `mqttConnEVT` to track connection state transitions. Key patterns to monitor:
+
+### Reconnection Frequency
+
+Count `RECONNECTING` → `CONNECTED` cycles per device over a time window. More than 2–3 reconnections per hour indicates instability.
+
+```javascript
+const reconnections = new Map(); // deviceSerial -> count in last hour
+
+function trackReconnections(connEvent) {
+  if (connEvent.connection_state === 'CONNECTED') {
+    const serial = connEvent.device_serial;
+    const count = (reconnections.get(serial) || 0) + 1;
+    reconnections.set(serial, count);
+
+    if (count > 3) {
+      flagUnstableDevice(serial, count);
+    }
+  }
+}
+```
+
+### Disconnection Causes
+
+Aggregate `disconnect_reason` values across the fleet:
+
+| If Most Disconnections Are | Likely Cause |
+|---|---|
+| `NETWORK_LOSS` | Wi-Fi coverage gaps |
+| `BROKER_UNAVAILABLE` | Broker capacity or availability issue |
+| `KEEPALIVE_TIMEOUT` | Network latency or congestion |
+| `SESSION_EXPIRED` | Broker session configuration too aggressive |
+
+## Using Heartbeats and Connection Events Together
+
+Heartbeats confirm ongoing connectivity; connection events capture transitions.
+
+| Scenario | Heartbeat | mqttConnEVT |
+|---|---|---|
+| Device online, stable | Regular heartbeats arriving | Last event: CONNECTED |
+| Device offline | Heartbeats stopped | Last event: DISCONNECTED |
+| Intermittent connectivity | Heartbeats arrive erratically | Multiple RECONNECTING/CONNECTED cycles |
+| Strong signal, stable | `wifi_rssi` consistently above -60 | No recent DISCONNECTED events |
+
+## Setting Up Connection Alerts
+
+Configure `CONNECTION_DEGRADED` alerts to fire when signal quality drops:
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-075",
+  "payload": {
+    "action": "SET",
+    "alerts_enabled": true
+  }
+}
+```
+
+The firmware monitors Wi-Fi RSSI and triggers a `CONNECTION_DEGRADED` alert when the signal falls below an internal threshold.
+
+## Related Topics
+
+- [About MQTT Connection Events](../events/about-mqtt-connection-events.mdx): connection event details
+- [About Heartbeat Events](../events/about-heartbeat-events.mdx): periodic health data
+- [How to Check Device Status & Health](./check-device-health.mdx): on-demand status checks
+- [How to Build a Fleet Health Dashboard](./fleet-health-dashboard.mdx): aggregating connectivity data

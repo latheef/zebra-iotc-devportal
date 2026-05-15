@@ -1,0 +1,176 @@
+---
+sidebar_position: 5
+title: "How to Start and Stop RFID Operations"
+description: "Guide to starting and stopping RFID scan operations on the RFD40/RFD90 via MQTT control commands."
+---
+
+# How to Start and Stop RFID Operations
+
+This guide covers controlling RFID read operations on the RFD40/RFD90 via MQTT. You use the `control_operation` command to start, stop, and manage the lifecycle of RFID scan sessions.
+
+## Prerequisites
+
+- Device connected and online
+- Operating mode configured (see [How to Configure the Operating Mode](./configure-operating-mode.mdx))
+- MQTT client subscribed to:
+  - Control response topic: `{tenantId}/CTRL/clients/resp/{deviceSerial}`
+  - Data event topic(s): `{tenantId}/DATA/clients/data1event/{deviceSerial}` and/or `data2event`
+
+## Starting an RFID Operation
+
+**Publish to:**
+```
+{tenantId}/CTRL/clients/cmnd/{deviceSerial}
+```
+
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-020",
+  "payload": {
+    "action": "START"
+  }
+}
+```
+
+**Success response:**
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-020",
+  "status": "OK",
+  "payload": {
+    "state": "READING",
+    "mode": "SIMPLE_INVENTORY"
+  }
+}
+```
+
+Once started, the reader begins scanning and publishes `dataEVT` messages on the configured data channel topic(s) for each tag detected.
+
+## Stopping an RFID Operation
+
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-021",
+  "payload": {
+    "action": "STOP"
+  }
+}
+```
+
+**Success response:**
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-021",
+  "status": "OK",
+  "payload": {
+    "state": "IDLE",
+    "tags_read": 247,
+    "duration_ms": 5320
+  }
+}
+```
+
+The response includes a summary of the completed operation: total tags read and duration.
+
+## Operation State Transitions
+
+The reader moves through defined states during an RFID operation:
+
+| State | Description |
+|---|---|
+| `IDLE` | No operation running. Ready to start. |
+| `READING` | Actively scanning for tags. `dataEVT` messages are being published. |
+| `STOPPING` | Stop command received. Completing final reads and flushing buffers. |
+| `ERROR` | Operation failed. Check the error details in the response. |
+
+Valid transitions:
+
+- `IDLE` → `READING` (via START)
+- `READING` → `STOPPING` → `IDLE` (via STOP)
+- `READING` → `ERROR` → `IDLE` (on failure, auto-recovers to IDLE)
+
+## Checking Operation State
+
+Query the current state without changing it:
+
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-022",
+  "payload": {
+    "action": "STATUS"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-022",
+  "status": "OK",
+  "payload": {
+    "state": "READING",
+    "mode": "INVENTORY_RSSI",
+    "elapsed_ms": 12340,
+    "tags_read": 583
+  }
+}
+```
+
+## Error Handling
+
+### Starting When Already Reading
+
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-023",
+  "status": "ERROR",
+  "error": {
+    "code": "ALREADY_ACTIVE",
+    "message": "An RFID operation is already running. Stop it before starting a new one."
+  }
+}
+```
+
+### Stopping When Already Idle
+
+```json
+{
+  "command": "control_operation",
+  "command_id": "cmd-024",
+  "status": "ERROR",
+  "error": {
+    "code": "NOT_ACTIVE",
+    "message": "No RFID operation is currently running."
+  }
+}
+```
+
+### Common Error Codes
+
+| Error Code | Cause | Resolution |
+|---|---|---|
+| `ALREADY_ACTIVE` | START sent while already reading | Stop the current operation first |
+| `NOT_ACTIVE` | STOP sent while idle | No action needed |
+| `MODE_NOT_SET` | No operating mode configured | Configure via `set_operating_mode` |
+| `HARDWARE_ERROR` | RF hardware failure | Check device status, may need restart |
+
+## Best Practices
+
+1. **Always stop before reconfiguring**: changing the operating mode or post-filter while reading causes an error
+2. **Monitor the data channel**: subscribe to data topics before starting so you do not miss initial reads
+3. **Use command IDs**: unique `command_id` values let you correlate responses with requests in async workflows
+4. **Handle reconnection**: if the MQTT connection drops during a read, the device may continue scanning. Reconnect and send a STOP if needed
+5. **Check state on startup**: when your application starts, query the operation state to determine if a previous session left the reader active
+
+## Related Topics
+
+- [About Trigger-Based Operations](./about-trigger-operations.mdx): physical trigger button integration
+- [About RFID Operating Modes](./about-operating-modes.mdx): mode selection
+- [dataEVT Payload Schema](../tag-data/dataevt-payload.mdx): understanding tag data output

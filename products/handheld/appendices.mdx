@@ -1,0 +1,656 @@
+---
+sidebar_position: 16
+title: Appendices
+description: "Response codes, enum values, topic registry, RFID glossary, and changelog"
+---
+
+# Appendices
+
+**Zebra RFID Connect: Developer Documentation**
+**IoT Connector (IOTC) V1.1 for Handheld RFID Readers**
+
+---
+
+## In This Chapter
+
+| Section | Title | Purpose |
+|---------|-------|---------|
+| [17.1](#171-response-codes-master-reference) | Response Codes Master Reference | Lookup meaning and recommended action for any numeric response code |
+| [17.2](#172-enum-values-reference) | Enum Values Reference | Lookup all valid values for any enumerated parameter |
+| [17.3](#173-topic-registry) | Topic Registry | Lookup any MQTT topic string by interface and direction |
+| [17.4](#174-rfid-glossary) | RFID Glossary | Lookup definitions for RFID and MQTT terms in a Zebra RFID Connect context |
+| [17.5](#175-supported-readers-and-firmware-matrix) | Supported Readers and Firmware Matrix | Lookup hardware compatibility and firmware requirements |
+| [17.6](#176-changelog) | Changelog | Lookup changes between API versions |
+
+---
+
+## 17.1 Response Codes Master Reference
+
+Every command response from Zebra RFID Connect includes a `response.code` integer and a `response.description` string. The table below lists all response codes, their meanings, the commands or domains where each code may appear, and the recommended developer action. Response codes `11` and `22` have different meanings depending on the domain.
+
+| Code | Name | Domain | Description | Recommended Action |
+|-----:|------|--------|-------------|--------------------|
+| `0` | Success | All | The command completed successfully. | None required. |
+| `1` | Accepted | Management | The command was accepted and will be processed asynchronously (e.g., firmware update initiated). | Subscribe to the corresponding event topic to monitor progress. |
+| `2` | Invalid payload | All | Malformed JSON, missing required fields, or a field value that does not match the expected type. | Validate the JSON payload against the command schema. Check for typos, missing commas, or incorrect data types. |
+| `3` | Unable to retrieve | Management | The requested configuration or status could not be read from the device. | Retry after a brief delay. If persistent, reboot the reader with `reboot`. |
+| `4` | Firmware update in progress | Management | A firmware update is currently running. The device cannot accept configuration changes until the update completes. | Wait for the `firmwareUpdateEVT` event with a terminal status before retrying. |
+| `6` | Region not configured | Control | The reader's regulatory region has not been set. RFID operations require a valid region. | Set the region using the Zebra reader configuration utility or 123RFID Desktop before issuing RFID commands. |
+| `10` | Configuration already exists | Management | An endpoint or configuration with the specified identifier already exists (returned on `ADD` operations). | Use `MODIFY` instead of `ADD`, or delete the existing configuration first. |
+| `11` | Inventory in progress | Control | An RFID inventory or barcode scan is currently active. The command cannot be executed while an operation is running. | Send `control_operation` with `operation: "STOP"` before retrying. |
+| `11` | Configuration does not exist | Management | No endpoint or configuration matches the specified identifier (returned on `MODIFY`/`DELETE` operations). | Verify the configuration name with the corresponding `get_*` command. |
+| `12` | No operation in progress | Control | A `STOP` command was sent but no RFID or scan operation is currently running. | No action required. This is informational; the reader is already idle. |
+| `15` | SSID not found | Management | The specified Wi-Fi network SSID was not detected by the reader's radio scan. | Verify the SSID is correct and the access point is within range. Retry after ensuring the AP is broadcasting. |
+| `17` | SSID missing | Management | The `ssid` field is absent from a `set_wifi` command payload. | Add the required `ssid` field to the payload. |
+| `18` | Certificate parse error | Management | The uploaded certificate or private key could not be parsed. The file may be corrupted, in an unsupported format, or the PEM encoding is invalid. | Verify the certificate is PEM-encoded and includes both `BEGIN` and `END` markers. Check for truncation or encoding issues. |
+| `19` | Download failed | Management | A file download (firmware image or certificate) failed due to a network error, unreachable URL, or HTTP error. | Verify the download URL is accessible from the reader's network. Check firewall rules and DNS resolution. |
+| `20` | Firmware validation failed | Management | The downloaded firmware image failed integrity validation. The file may be corrupted or not intended for this reader model. | Re-download the firmware package and verify its checksum against the Zebra support site. Confirm the firmware file matches the target reader model. |
+| `21` | Insufficient battery | Management | The reader's battery level is too low to perform the requested operation (e.g., firmware update requires ≥30% battery). | Connect the reader to a power source or charge the battery before retrying. |
+| `22` | Operation in progress | Management | A blocking operation (reboot, OS update) is currently executing. | Wait for the operation to complete before sending new commands. |
+| `22` | Advanced config not set | Control | An RFID command references ADVANCED operating mode parameters, but `set_operating_mode` has not been called with `profileName: "ADVANCED"`. | Send `set_operating_mode` with `profileName: "ADVANCED"` and the required RF parameters before retrying. |
+| `23` | Invalid enum value | All | A field that expects an enumerated value received an unrecognized string. | Check the field value against the Enum Values Reference (§17.2). Enum values are case-sensitive. |
+| `24` | Maximum pre-filters exceeded | Control | The number of pre-filter entries in the `select` array exceeds the reader's maximum (typically 8). | Reduce the number of pre-filter entries. Combine criteria where possible or use post-filters for additional filtering. |
+| `28` | Pattern too long | Control | A post-filter `pattern` string exceeds the 64-character maximum. | Shorten the pattern. For complex matching, consider splitting into multiple filters or refactoring the regex. |
+
+> **Tip**: The `response.description` string returned by the device is human-readable and may include additional context not shown in this table. Always log it for troubleshooting.
+
+---
+
+## 17.2 Enum Values Reference
+
+This section documents every enumerated value accepted by the Zebra RFID Connect API. All enum values are **case-sensitive strings** unless otherwise noted. Values are grouped by functional domain.
+
+### 17.2.1 Operating Mode: profileName
+
+Used in: `set_operating_mode`
+
+| Value | Description | Default |
+|-------|-------------|:-------:|
+| `BALANCED_PERFORMANCE` | General-purpose profile balancing read rate, range, and battery life. Suitable for most warehouse and retail use cases. | ✓ |
+| `FAST_READ` | Maximizes read rate and range. Higher power consumption. Optimized for high-speed conveyor or dock-door applications. | |
+| `CYCLE_COUNT` | Optimized for counting unique tags in a defined area. Reduces duplicate reads. | |
+| `DENSE_READERS` | Mitigates reader-to-reader interference in environments with multiple overlapping readers. Uses spectral management techniques. | |
+| `OPTIMAL_BATTERY` | Minimizes power consumption at the cost of read rate and range. Designed for extended handheld shifts without charging. | |
+| `ADVANCED` | Unlocks manual control of all RF parameters (link profile, session, transmit power, Q algorithm, etc.). Requires explicit RF parameter configuration. | |
+
+### 17.2.2 RF Parameters: Link Profile
+
+Used in: `set_operating_mode` (when `profileName` is `ADVANCED`)
+
+| Value | Encoding | Data Rate | Best For |
+|-------|----------|-----------|----------|
+| `FM0_320K` | FM0 | 320 kbps | Maximum throughput, low-interference environments |
+| `M2_320K` | Miller 2 | 320 kbps | Balanced throughput and noise immunity |
+| `M4_256K` | Miller 4 | 256 kbps | Good noise immunity, moderate throughput |
+| `M4_320K` | Miller 4 | 320 kbps | Higher throughput with Miller 4 encoding |
+| `M8_240K` | Miller 8 | 240 kbps | Maximum noise immunity, dense-reader or high-RF-noise environments |
+
+> **Note**: Link profile naming follows the convention `{encoding}_{dataRate}`. Higher Miller values provide better noise immunity but reduce data throughput.
+
+### 17.2.3 RF Parameters: Session
+
+Used in: `set_operating_mode` (when `profileName` is `ADVANCED`)
+
+| Value | Persistence | Description |
+|-------|-------------|-------------|
+| `SESSION_0` | Non-persistent | Tag state resets immediately after leaving the RF field. Best for single-reader environments where tags are scanned once. |
+| `SESSION_1` | Semi-persistent | Tag state persists for 500 ms–5 s. Suitable for moderate-speed item tracking. |
+| `SESSION_2` | Persistent | Tag state persists for ≥2 s. Ideal for conveyor or portal applications where tags move through multiple read zones. |
+| `SESSION_3` | Persistent | Tag state persists for ≥2 s. Used for specialized multi-reader coordination. |
+
+### 17.2.4 RF Parameters: Inventory State
+
+Used in: `set_operating_mode` (when `profileName` is `ADVANCED`)
+
+| Value | Description |
+|-------|-------------|
+| `STATE_A` | Query tags in inventory state A only |
+| `STATE_B` | Query tags in inventory state B only |
+| `STATE_AB` | Query tags in both states A and B |
+
+### 17.2.5 RF Parameters: SL Flag
+
+Used in: `set_operating_mode` (when `profileName` is `ADVANCED`)
+
+| Value | Description |
+|-------|-------------|
+| `ALL` | Query all tags regardless of SL flag state |
+| `ASSERTED` | Query only tags with SL flag asserted (set by a prior Select command) |
+| `DEASSERTED` | Query only tags with SL flag deasserted |
+
+### 17.2.6 Pre-Filter: Select Action
+
+Used in: `set_operating_mode` → `select` array → `action`
+
+These map to the eight EPC Gen2 Select actions defined in the EPC UHF Gen2 standard.
+
+| Value | Gen2 Matching Behavior | Gen2 Non-Matching Behavior |
+|-------|------------------------|---------------------------|
+| `INV_A_NOT_INV_B_OR_ASRT_SL_NOT_DSRT_SL` | Set to State A / Assert SL | Set to State B / Deassert SL |
+| `INV_A_NOT_INV_B_OR_ASRT_SL_NOT_NOTHING` | Set to State A / Assert SL | No change |
+| `INV_NOT_A_NOT_INV_B_OR_NOT_DSRT_SL_NOT_NOTHING` | No change | Set to State B / Deassert SL |
+| `INV_NOT_A_NOT_INV_B_NEGATE_SL` | Negate session flag | Negate SL flag |
+| `INV_B_NOT_INV_A_OR_DSRT_SL_NOT_ASRT_SL` | Set to State B / Deassert SL | Set to State A / Assert SL |
+| `INV_B_NOT_INV_A_OR_DSRT_SL_NOT_NOTHING` | Set to State B / Deassert SL | No change |
+| `INV_NOT_B_NOT_INV_A_OR_NOT_ASRT_SL_NOT_NOTHING` | No change | Set to State A / Assert SL |
+| `INV_NOT_B_NOT_INV_A_NEGATE_SL` | Negate session flag | Negate SL flag |
+
+### 17.2.7 Pre-Filter: Memory Bank (Select)
+
+Used in: `set_operating_mode` → `select` array → `memoryBank`
+
+| Value | Description |
+|-------|-------------|
+| `EPC` | EPC memory bank (96-bit or extended EPC) |
+| `TID` | Tag Identification memory bank (manufacturer ID and model) |
+| `USER` | User memory bank (application-defined data) |
+| `RESERVED` | Reserved memory bank (access and kill passwords) |
+
+### 17.2.8 Access Operations: Operation Type
+
+Used in: `set_access_operation` → `operationType`
+
+| Value | Description |
+|-------|-------------|
+| `READ` | Read data from a specified memory bank and offset |
+| `WRITE` | Write data to a specified memory bank and offset |
+| `LOCK` | Change lock state of one or more memory banks |
+| `KILL` | Permanently disable a tag (requires kill password) |
+
+### 17.2.9 Access Operations: Lock Action
+
+Used in: `set_access_operation` → `lockData` → `action`
+
+| Value | Description |
+|-------|-------------|
+| `READ_AND_WRITE` | Unlock the memory bank for both read and write access |
+| `PERMANENT_LOCK` | Permanently lock the memory bank. This action is **irreversible**. |
+| `PERMANENT_UNLOCK` | Permanently unlock the memory bank. This action is **irreversible**. |
+| `UNLOCK` | Unlock the memory bank (reversible) |
+
+### 17.2.10 Access Operations: Lock Memory Bank
+
+Used in: `set_access_operation` → `lockData` → `memoryBank`
+
+| Value | Description |
+|-------|-------------|
+| `EPC` | Lock/unlock the EPC memory bank |
+| `TID` | Lock/unlock the TID memory bank |
+| `USER` | Lock/unlock the User memory bank |
+| `ACCESS_PWD` | Lock/unlock the access password |
+| `KILL_PWD` | Lock/unlock the kill password |
+| `ALL` | Apply the lock action to all memory banks simultaneously |
+
+### 17.2.11 Tag Metadata: tagMetaDataToEnable
+
+Used in: `set_operating_mode` → `tagMetaDataToEnable` array
+
+| Value | Type Returned | Description |
+|-------|---------------|-------------|
+| `RSSI` | integer | Received Signal Strength Indicator in dBm |
+| `PHASE` | integer | Phase angle of the tag response signal |
+| `SEENCOUNT` | integer | Number of times the tag was read during the inventory round |
+| `CHANNEL` | integer | RF channel index used for the tag read |
+| `PC` | string | Protocol Control bits (hex) |
+| `XPC` | string | Extended Protocol Control bits (hex), if supported by the tag |
+| `CRC` | string | Tag CRC value (hex) |
+| `EPC` | string | Electronic Product Code (hex) |
+| `TID` | string | Tag Identification data (hex) |
+| `USER` | string | User memory bank data (hex) |
+| `MAC` | string | MAC address of the reader's Wi-Fi interface |
+| `HOSTNAME` | string | Reader hostname |
+
+### 17.2.12 Post-Filter: Filter Type
+
+Used in: `set_post_filter` → `filterType`
+
+| Value | Required Fields | Description |
+|-------|-----------------|-------------|
+| `PREFIX` | `pattern` | Match tags whose EPC begins with the specified hex pattern |
+| `SUFFIX` | `pattern` | Match tags whose EPC ends with the specified hex pattern |
+| `REGEX` | `pattern` | Match tags whose EPC matches the specified regular expression |
+| `RSSI` | `rssiThreshold` | Filter tags by signal strength. Tags below the threshold are suppressed. |
+| `WHITELIST` | `tagList` | Pass only tags whose EPC appears in the tag list |
+| `BLACKLIST` | `tagList` | Suppress tags whose EPC appears in the tag list |
+
+### 17.2.13 Post-Filter: Action
+
+Used in: `set_post_filter` → `action`
+
+| Value | Description |
+|-------|-------------|
+| `INCLUDE` | Pass matching tags through; suppress non-matching tags |
+| `EXCLUDE` | Suppress matching tags; pass non-matching tags through |
+
+### 17.2.14 Wi-Fi: Security Type
+
+Used in: `set_wifi` → `securityType`
+
+| Value | Description |
+|-------|-------------|
+| `WPA2_PERSONAL` | WPA2 with a pre-shared key (PSK). Most common enterprise-lite deployment. |
+| `WPA3_PERSONAL` | WPA3 with Simultaneous Authentication of Equals (SAE). Stronger than WPA2-PSK. |
+| `WPA2_ENTERPRISE` | WPA2 with 802.1X / EAP authentication. Requires RADIUS server. |
+| `WPA3_ENTERPRISE` | WPA3 with 802.1X / EAP authentication. Strongest wireless security. |
+| `OPEN` | No encryption or authentication. **Not recommended for production.** |
+
+### 17.2.15 Wi-Fi: Operation
+
+Used in: `set_wifi` → `operation`
+
+| Value | Description |
+|-------|-------------|
+| `ADD` | Add a new Wi-Fi network profile |
+| `MODIFY` | Update an existing Wi-Fi network profile |
+
+### 17.2.16 Wi-Fi: EAP Method
+
+Used in: `set_wifi` → `eapMethod` (when `securityType` is `WPA2_ENTERPRISE` or `WPA3_ENTERPRISE`)
+
+| Value | Description |
+|-------|-------------|
+| `PEAP` | Protected Extensible Authentication Protocol. Tunneled authentication using server certificate only. |
+| `TLS` | Transport Layer Security. Mutual authentication using client and server certificates. |
+| `TTLS` | Tunneled Transport Layer Security. Similar to PEAP with additional inner method flexibility. |
+
+### 17.2.17 Wi-Fi: Phase 2 Method
+
+Used in: `set_wifi` → `phase2Method` (when `eapMethod` is `PEAP` or `TTLS`)
+
+| Value | Description |
+|-------|-------------|
+| `MSCHAPV2` | Microsoft Challenge Handshake Authentication Protocol v2. Most widely deployed. |
+| `GTC` | Generic Token Card. Supports one-time passwords and token-based authentication. |
+| `PAP` | Password Authentication Protocol. Sends credentials in cleartext inside the TLS tunnel. |
+
+### 17.2.18 Certificates: Certificate Type
+
+Used in: `set_certificate` → `certType`
+
+| Value | Description |
+|-------|-------------|
+| `mqtt` | TLS certificate for MQTT broker connections |
+| `wifi` | TLS certificate for WPA2/WPA3-Enterprise Wi-Fi authentication |
+| `client` | Client certificate for mutual TLS (mTLS) authentication |
+
+### 17.2.19 Events: Alert Type
+
+Published in: `alertEVT` → `alertType`
+
+| Value | Severity | Description |
+|-------|----------|-------------|
+| `TEMPERATURE_HIGH` | `WARNING` or `CRITICAL` | Device internal temperature exceeds configured threshold |
+| `BATTERY_LOW` | `WARNING` | Battery level dropped below the low-battery threshold |
+| `BATTERY_CRITICAL` | `CRITICAL` | Battery level dropped below the critical threshold; shutdown imminent |
+| `BATTERY_HEALTH_DEGRADED` | `WARNING` | Battery state of health has degraded below acceptable levels |
+| `RADIO_ERROR` | `CRITICAL` | RFID radio hardware reported an unrecoverable error |
+
+### 17.2.20 Events: Alert Severity
+
+Published in: `alertEVT` → `severity`
+
+| Value | Description |
+|-------|-------------|
+| `INFO` | Informational alert. No action required. |
+| `WARNING` | The device is approaching a limit. Investigate soon. |
+| `CRITICAL` | Immediate action required. The device may stop functioning. |
+
+### 17.2.21 Events: Exception Type
+
+Published in: `exceptionEVT` → `exceptionType`
+
+| Value | Component | Description |
+|-------|-----------|-------------|
+| `RADIO_COMMUNICATION_ERROR` | `RFID_RADIO` | Communication with the RFID radio module failed |
+| `RADIO_INITIALIZATION_ERROR` | `RFID_RADIO` | The RFID radio failed to initialize on startup |
+| `BLUETOOTH_DISCONNECTION` | `BLUETOOTH` | Bluetooth connection to the host mobile device was lost |
+| `NETWORK_ERROR` | `NETWORK` | Wi-Fi network connection failed or was dropped |
+| `MQTT_PUBLISH_ERROR` | `NETWORK` | An MQTT publish operation failed (broker unreachable or QoS handshake timeout) |
+| `FIRMWARE_ERROR` | `SYSTEM` | Firmware update process encountered an error |
+| `MEMORY_ERROR` | `SYSTEM` | Insufficient memory or memory allocation failure |
+| `HARDWARE_ERROR` | `SYSTEM` | General hardware malfunction detected |
+
+### 17.2.22 Events: Exception Component
+
+Published in: `exceptionEVT` → `component`
+
+| Value | Description |
+|-------|-------------|
+| `RFID_RADIO` | RFID radio subsystem |
+| `BLUETOOTH` | Bluetooth communication subsystem |
+| `NETWORK` | Wi-Fi and TCP/IP networking subsystem |
+| `SYSTEM` | General device hardware and firmware |
+
+### 17.2.23 Events: MQTT Connection Status
+
+Published in: `mqttConnectionEVT` → `status`
+
+| Value | Description |
+|-------|-------------|
+| `CONNECTED` | Successfully connected to the MQTT broker |
+| `DISCONNECTED` | Disconnected from the MQTT broker |
+| `RECONNECTING` | Attempting to reconnect after a connection loss |
+| `CONNECTION_FAILED` | Connection attempt failed (authentication error, broker unreachable, etc.) |
+
+### 17.2.24 Events: MQTT Connection Reason
+
+Published in: `mqttConnectionEVT` → `reason`
+
+| Value | Description |
+|-------|-------------|
+| `BROKER_UNAVAILABLE` | The MQTT broker is unreachable (DNS failure, network timeout, or port blocked) |
+| `KEEPALIVE_TIMEOUT` | The broker did not respond within the MQTT keep-alive interval |
+| `CLEAN_CONNECT` | The device established a new, clean MQTT session |
+| `NETWORK_CHANGE` | The underlying Wi-Fi network changed (roaming, reconnect, or SSID switch) |
+
+### 17.2.25 Control Operations: Control Type
+
+Used in: `control_operation` → `controlType`
+
+| Value | Description |
+|-------|-------------|
+| `RFID` | Start or stop an RFID inventory operation |
+| `SCANNER` | Start or stop a barcode scanning operation |
+
+### 17.2.26 Control Operations: Operation
+
+Used in: `control_operation` → `operation`
+
+| Value | Description |
+|-------|-------------|
+| `START` | Begin the specified operation |
+| `STOP` | Stop the specified operation |
+
+### 17.2.27 Endpoint Configuration: Operation
+
+Used in: `config_endpoint` → `operation`
+
+| Value | Description |
+|-------|-------------|
+| `ADD` | Add a new MQTT broker endpoint configuration |
+| `MODIFY` | Update an existing MQTT broker endpoint configuration |
+| `DELETE` | Remove an existing MQTT broker endpoint configuration |
+
+### 17.2.28 Endpoint Configuration: Interface Type
+
+Used in: `config_endpoint` → `interfaceType`
+
+| Value | Description |
+|-------|-------------|
+| `MGMT` | Management interface; device configuration, firmware updates, Wi-Fi setup |
+| `CTRL` | Control interface; RFID/scanner operation control, operating mode configuration |
+| `DATA` | Data interface; tag read events, barcode data, access operation results |
+| `MDM` | Mobile Device Management interface; remote provisioning commands |
+
+### 17.2.29 Device Status: Power Source
+
+Published in: `heartBeatEVT` → `powerSource`
+
+| Value | Description |
+|-------|-------------|
+| `DC` | External DC power supply |
+| `WALLCHARGER` | Wall charger connected |
+| `USB` | USB power source |
+| `CRADLE` | Charging cradle |
+
+### 17.2.30 Device Status: Radio Activity
+
+Published in: `heartBeatEVT` → `radioActivity`
+
+| Value | Description |
+|-------|-------------|
+| `ACTIVE` | RFID radio is currently performing an inventory or access operation |
+| `INACTIVE` | RFID radio is idle |
+
+### 17.2.31 Device Status: Radio Connection
+
+Published in: `heartBeatEVT` → `radioConnection`
+
+| Value | Description |
+|-------|-------------|
+| `CONNECTED` | RFID radio module is connected and operational |
+| `DISCONNECTED` | RFID radio module is disconnected or not responding |
+
+### 17.2.32 Device Status: Battery State of Health
+
+Published in: `heartBeatEVT` → `batteryStateOfHealth`
+
+| Value | Description |
+|-------|-------------|
+| `GOOD` | Battery capacity is within normal operating range |
+| `AVERAGE` | Battery capacity has degraded moderately. Consider replacement during the next maintenance window. |
+| `POOR` | Battery capacity is significantly degraded. Replace the battery. |
+
+### 17.2.33 Device Status: Charge Status
+
+Published in: `heartBeatEVT` → `chargeStatus`
+
+| Value | Description |
+|------:|-------------|
+| `0` | No charger connected |
+| `1` | Charging |
+| `2` | Fully charged |
+
+---
+
+## 17.3 Topic Registry
+
+Every MQTT message in Zebra RFID Connect is published to or received from a topic that follows the pattern:
+
+```
+{tenantId}/{interface}/clients/{channel}/{deviceSerial}
+```
+
+The table below lists every topic, organized by interface. **Direction** indicates whether the topic carries cloud-to-device (C2D) or device-to-cloud (D2C) messages.
+
+### 17.3.1 Management Interface (MGMT)
+
+| Topic Pattern | Channel | Direction | QoS | Purpose |
+|---------------|---------|-----------|:---:|---------|
+| `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` | `cmnd` | C2D | 1 | Send management commands (config_endpoint, config_events, set_wifi, set_certificate, reboot, firmware_update, etc.) |
+| `{tenantId}/MGMT/clients/resp/{deviceSerial}` | `resp` | D2C | 1 | Receive responses to management commands |
+| `{tenantId}/MGMT/clients/event/{deviceSerial}` | `event` | D2C | 1 | Receive asynchronous management events (heartBeatEVT, alertEVT, exceptionEVT, mqttConnectionEVT, firmwareUpdateEVT) |
+
+### 17.3.2 Control Interface (CTRL)
+
+| Topic Pattern | Channel | Direction | QoS | Purpose |
+|---------------|---------|-----------|:---:|---------|
+| `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` | `cmnd` | C2D | 1 | Send control commands (control_operation, set_operating_mode, set_access_operation, set_post_filter, get_operating_mode, get_post_filter) |
+| `{tenantId}/CTRL/clients/resp/{deviceSerial}` | `resp` | D2C | 1 | Receive responses to control commands |
+
+### 17.3.3 Data Interface (DATA)
+
+| Topic Pattern | Channel | Direction | QoS | Purpose |
+|---------------|---------|-----------|:---:|---------|
+| `{tenantId}/DATA/clients/data1event/{deviceSerial}` | `data1event` | D2C | 0 | Receive RFID tag read events (dataEVT). High-frequency stream during active inventory. |
+| `{tenantId}/DATA/clients/data2event/{deviceSerial}` | `data2event` | D2C | 0 | Receive barcode scan events. Published when the scanner reads a barcode. |
+| `{tenantId}/DATA/clients/rfid/{deviceSerial}` | `rfid` | D2C | 1 | Receive RFID access operation results (read, write, lock, kill). Published with the `retained` flag. |
+
+### 17.3.4 Mobile Device Management Interface (MDM)
+
+| Topic Pattern | Channel | Direction | QoS | Purpose |
+|---------------|---------|-----------|:---:|---------|
+| `{tenantId}/MDM/clients/cmnd/{deviceSerial}` | `cmnd` | C2D | 1 | Send MDM provisioning commands |
+| `{tenantId}/MDM/clients/resp/{deviceSerial}` | `resp` | D2C | 1 | Receive responses to MDM commands |
+
+### Topic Naming Summary
+
+| Component | Source | Example |
+|-----------|--------|---------|
+| `{tenantId}` | Assigned during provisioning. Identifies the organization or deployment. | `acme-corp` |
+| `{interface}` | Fixed per endpoint: `MGMT`, `CTRL`, `DATA`, `MDM` | `MGMT` |
+| `{channel}` | Fixed per direction: `cmnd`, `resp`, `event`, `data1event`, `data2event`, `rfid` | `cmnd` |
+| `{deviceSerial}` | The serial number of the physical reader device | `RFD401234567890` |
+
+> **Wildcard subscriptions**: To monitor all devices for a tenant, subscribe with a wildcard: `{tenantId}/MGMT/clients/event/+` (single-level) or `{tenantId}/MGMT/clients/#` (multi-level). Use wildcards judiciously; high-volume data topics (`data1event`) can saturate client buffers.
+
+---
+
+## 17.4 RFID Glossary
+
+Terms are defined in the context of Zebra RFID Connect and the IoT Connector API. Cross-references to relevant chapters and API commands are noted where applicable.
+
+| Term | Definition |
+|------|------------|
+| **Access operation** | A targeted operation on a specific tag's memory: read, write, lock, or kill. Configured via `set_access_operation`. See §8.4. |
+| **Access password** | A 32-bit password stored in the tag's Reserved memory bank. Required to perform lock or kill operations on password-protected tags. |
+| **Antenna** | The RF radiating element that transmits and receives signals to/from RFID tags. The RFD40 and RFD90 readers have integrated antennas. |
+| **Backscatter** | The method by which a passive RFID tag communicates with the reader. The tag modulates the reader's transmitted RF signal to encode data. |
+| **Channel** | The specific topic segment in the Zebra RFID Connect topic hierarchy that identifies the message direction (e.g., `cmnd`, `resp`, `event`). See §3.2. |
+| **Clean session** | An MQTT connection parameter (`cleanSession: true`) that instructs the broker to discard any stored session state (subscriptions, queued messages) for the client. |
+| **Client ID** | The unique MQTT client identifier used by the reader when connecting to the broker. Typically derived from the device serial number. |
+| **Command** | A C2D (cloud-to-device) JSON message published to a `cmnd` topic. The `command` field identifies the operation to perform. |
+| **C2D** | Cloud-to-Device. Message direction from the MQTT broker (or subscribing client) to the reader device. Carried on `cmnd` topics. |
+| **D2C** | Device-to-Cloud. Message direction from the reader device to the MQTT broker. Carried on `resp`, `event`, and data topics. |
+| **Data rate** | The speed at which the reader and tag exchange data, measured in kilobits per second (kbps). Determined by the link profile. |
+| **Dense reader** | An environment with multiple RFID readers whose read zones overlap, causing potential interference. The `DENSE_READERS` profile mitigates this. |
+| **dBm** | Decibels relative to one milliwatt. The unit for measuring RFID transmit power and RSSI. |
+| **EPC** | Electronic Product Code. A unique identifier stored in a tag's EPC memory bank. The primary identifier in tag read events. Typically 96 bits (24 hex characters). |
+| **EPC Gen2** | The EPCglobal UHF Gen2 air interface protocol (ISO 18000-63). The communication standard between UHF RFID readers and tags. All Zebra RFID Connect readers implement Gen2. |
+| **Event** | An asynchronous D2C message published to an `event`, `data1event`, or `data2event` topic. Events are unprompted; they are generated by device conditions, not in response to a command. |
+| **FM0** | A baseband encoding scheme used in the reader-to-tag link. FM0 provides the highest data rate but least noise immunity. See §17.2.2. |
+| **Firmware update** | The process of downloading and installing a new firmware image on the reader. Initiated via `firmware_update`. Progress reported via `firmwareUpdateEVT`. |
+| **Heartbeat** | A periodic event (`heartBeatEVT`) published by the reader to indicate it is online and operational. Configurable via `config_events`. See §10.1. |
+| **Interface** | One of four MQTT communication domains: MGMT (management), CTRL (control), DATA (data), MDM (device management). Each maps to a separate MQTT topic prefix. See §3.2. |
+| **Inventory** | The process of reading all RFID tags within the reader's RF field. Initiated with `control_operation` (`controlType: "RFID"`, `operation: "START"`). |
+| **Inventory state** | One of two states (A or B) that a tag maintains per session. The reader queries tags in a specific state to avoid re-reading tags already inventoried. |
+| **Keep-alive** | The MQTT keep-alive interval that determines how frequently the client and broker exchange PINGREQ/PINGRESP packets to maintain the connection. |
+| **Kill** | A permanent, irreversible operation that disables an RFID tag. Requires the kill password. The tag becomes permanently non-responsive. |
+| **Kill password** | A 32-bit password stored in the tag's Reserved memory bank. Required to execute a kill operation. |
+| **Link profile** | A combination of encoding scheme and data rate that defines the reader-to-tag RF communication parameters. See §17.2.2. |
+| **Lock** | An access operation that changes the read/write permissions of a tag memory bank. Can be reversible or permanent. See §17.2.9. |
+| **Memory bank** | One of four data storage areas on an EPC Gen2 tag: Reserved (passwords), EPC (identifier), TID (manufacturer data), User (application data). |
+| **Miller encoding** | A subcarrier encoding scheme (Miller 2, 4, or 8) used in the tag-to-reader link. Higher Miller values provide better noise immunity at the cost of data rate. |
+| **MQTT** | Message Queuing Telemetry Transport. A lightweight publish/subscribe messaging protocol used by Zebra RFID Connect for all device communication. Version 3.1.1. |
+| **MQTT broker** | The central message routing server that receives published messages and distributes them to subscribers. Examples: Mosquitto, HiveMQ, AWS IoT Core. See §13. |
+| **mTLS** | Mutual Transport Layer Security. A TLS configuration where both the client (reader) and server (broker) authenticate with certificates. See §7. |
+| **Operating mode** | The RF configuration profile that determines how the reader performs inventory. Set via `set_operating_mode`. Profiles range from preset (e.g., `BALANCED_PERFORMANCE`) to fully manual (`ADVANCED`). See §8.1. |
+| **PC bits** | Protocol Control bits. A 16-bit field in the tag's EPC memory that describes the length and structure of the EPC. |
+| **Phase angle** | The phase of the tag's backscatter signal relative to the reader's transmitted signal. Used for tag location estimation in some applications. |
+| **Post-filter** | A software-based filter applied on the reader after tag reads, using criteria such as EPC prefix, RSSI threshold, or regex pattern. Set via `set_post_filter`. See §8.5. |
+| **Pre-filter** | A hardware-based filter applied during the Gen2 Select phase, before tag singulation. Uses memory bank contents to include or exclude tags from inventory. Configured in `set_operating_mode` → `select`. See §8.3. |
+| **Q algorithm** | The adaptive algorithm that manages the Gen2 anti-collision slot count. The `tagPopulation` hint in ADVANCED mode seeds the Q value. See §8.2. |
+| **QoS** | Quality of Service. MQTT delivery guarantee level. Zebra RFID Connect uses QoS 0 (at most once) for high-frequency data and QoS 1 (at least once) for commands and responses. |
+| **Regulatory region** | The geographic region that determines the allowed RF frequency bands and power limits for the reader. Must be configured before RFID operations. |
+| **Request ID** | A unique string (`requestId`) included in every command payload. The device echoes this value in the response to enable request-response correlation. |
+| **Response** | A D2C message published to a `resp` topic in reply to a command. Contains a `response.code` and `response.description`. See §17.1. |
+| **Retained message** | An MQTT message stored by the broker and delivered to new subscribers immediately upon subscription. The `rfid` channel uses retained messages for access operation results. |
+| **RFID** | Radio-Frequency Identification. A wireless technology that uses electromagnetic fields to identify and track tags attached to objects. |
+| **RSSI** | Received Signal Strength Indicator. The power level of the tag's backscatter signal as measured by the reader, in dBm. Useful for proximity estimation and filtering. |
+| **Seen count** | The number of times a specific tag was read during an inventory round. Reported in tag data when `SEENCOUNT` metadata is enabled. |
+| **Select** | A Gen2 air-interface command that sets or clears a tag's inventory flag based on memory bank contents. Used to implement pre-filters. See §8.3. |
+| **Session** | A Gen2 inventory parameter (S0–S3) that controls how long a tag remembers it has been inventoried. See §17.2.3. |
+| **SL flag** | The Select flag on an EPC Gen2 tag. Set or cleared by Select commands. The reader can query tags based on SL flag state. |
+| **Singulation** | The Gen2 process of isolating a single tag from a population for communication. The anti-collision algorithm selects one tag at a time. |
+| **Tag** | An RFID transponder attached to an object. Contains an integrated circuit and antenna. Stores data in memory banks (EPC, TID, User, Reserved). |
+| **Tag population** | An estimate of the number of tags expected in the reader's field. Provided as a hint to the Q algorithm for optimal anti-collision performance. |
+| **Tenant** | An organizational identity that scopes MQTT topics. The `{tenantId}` in the topic pattern isolates traffic between different deployments. |
+| **TID** | Tag Identification. A read-only memory bank containing the tag manufacturer's ID and chip model. Unique per tag IC. |
+| **TLS** | Transport Layer Security. The cryptographic protocol used to secure MQTT connections between the reader and broker. Zebra RFID Connect supports TLS 1.2 and 1.3. See §7. |
+| **Transmit power** | The RF power output of the reader's antenna, specified in 1/10 dBm units in the API (e.g., `300` = 30.0 dBm). Range varies by reader model. |
+| **User memory** | An optional memory bank on Gen2 tags available for application-defined data storage. Not all tags have user memory. |
+| **Wildcard subscription** | An MQTT subscription using `+` (single-level) or `#` (multi-level) to match multiple topics. Used for fleet monitoring. See §3.3. |
+| **XPC** | Extended Protocol Control. Additional tag capability bits beyond the standard PC field. Indicates support for features like sensor data. |
+
+---
+
+## 17.5 Supported Readers and Firmware Matrix
+
+The following table lists all reader models supported by Zebra RFID Connect (IOTC) V1.1, with their minimum and recommended firmware versions.
+
+| Reader Model | SKU Prefix | IP Rating | Max TX Power | Min Firmware | Recommended Firmware | Notes |
+|--------------|------------|-----------|:------------:|:------------:|:--------------------:|-------|
+| RFD40 Standard | RFD40‑S | IP54 | 30.0 dBm | 3.10.27 | 3.10.27+ (latest) | Entry-level model. Wi-Fi 6, BT 5.3. |
+| RFD40 Premium | RFD40‑P | IP54 | 30.0 dBm | 3.10.27 | 3.10.27+ (latest) | Adds premium scanning features. Wi-Fi 6, BT 5.3. |
+| RFD40 Premium Plus | RFD40‑PP | IP54 | 30.0 dBm | 3.10.27 | 3.10.27+ (latest) | Full feature set including extended-range scanning. Wi-Fi 6, BT 5.3. |
+| RFD40-M | RFD40‑M | IP54 | 34.0 dBm | 3.10.27 | 3.10.27+ (latest) | Mid-range model with higher transmit power (4–34 dBm). Wi-Fi 6, BT 5.3. |
+| RFD9030 | RFD9030 | IP65 | 30.0 dBm | 3.10.27 | 3.10.27+ (latest) | Rugged form factor. IP65 ingress protection. Wi-Fi 6, BT 5.3. |
+| RFD9090 | RFD9090 | IP67 | 30.0 dBm | 3.10.27 | 3.10.27+ (latest) | Maximum ruggedization. IP67 ingress protection. Wi-Fi 6, BT 5.3. |
+
+### Hardware Specifications Summary
+
+| Specification | RFD40 Series | RFD9030 | RFD9090 |
+|---------------|:------------:|:-------:|:-------:|
+| RFID Standard | EPC Gen2 / ISO 18000-63 | EPC Gen2 / ISO 18000-63 | EPC Gen2 / ISO 18000-63 |
+| Frequency Band | 860–960 MHz (region-dependent) | 860–960 MHz (region-dependent) | 860–960 MHz (region-dependent) |
+| Wi-Fi | 802.11 a/b/g/n/ac/ax (Wi-Fi 6) | 802.11 a/b/g/n/ac/ax (Wi-Fi 6) | 802.11 a/b/g/n/ac/ax (Wi-Fi 6) |
+| Bluetooth | 5.3 | 5.3 | 5.3 |
+| Battery | 7,000 mAh | 7,000 mAh | 7,000 mAh |
+| MQTT Version | 3.1.1 | 3.1.1 | 3.1.1 |
+| API Version | V1.1 | V1.1 | V1.1 |
+
+> **Firmware updates**: Always update to the latest firmware before deploying readers in production. Use `firmware_update` for OTA updates (see §12.1) or 123RFID Desktop for USB-based updates. Firmware release notes are available on the [Zebra Support Portal](https://www.zebra.com/support).
+
+---
+
+## 17.6 Changelog
+
+This changelog follows the [Keep a Changelog](https://keepachangelog.com/) convention. All dates use ISO 8601 format.
+
+---
+
+### [V1.1]: 2026-01-15
+
+#### Added
+- `set_post_filter` command with `WHITELIST` and `BLACKLIST` filter types for EPC-list-based filtering.
+- `set_access_operation` support for `KILL` operation type.
+- `HOSTNAME` and `MAC` fields added to `tagMetaDataToEnable` options.
+- `mqttConnectionEVT` event for monitoring MQTT broker connection state changes.
+- `firmwareUpdateEVT` event for tracking firmware update progress asynchronously.
+- Support for WPA3_PERSONAL and WPA3_ENTERPRISE Wi-Fi security types in `set_wifi`.
+- RFD9090 (IP67) added to the supported reader matrix.
+
+#### Changed
+- `set_operating_mode` `ADVANCED` profile now requires explicit `linkProfile` and `session` parameters (previously used defaults when omitted).
+- `dataEVT` payload now includes `antennaPort` field for readers with multiple antenna ports.
+- Maximum pre-filter entries increased from 4 to 8 per `select` array.
+- Response code `22` now overloaded: returns "Advanced config not set" in the Control domain (previously returned only "Operation in progress" in Management domain).
+
+#### Fixed
+- `heartBeatEVT` `chargeStatus` value `2` (fully charged) was not reported when the reader was connected to a cradle.
+- `set_wifi` with `MODIFY` operation no longer requires re-sending the PSK if only the `ssid` or `securityType` is changing.
+- `get_operating_mode` now correctly returns the `select` array when pre-filters are configured.
+- `control_operation` `STOP` response code changed from `0` to `12` when no operation is running, preventing false success interpretation.
+
+---
+
+### [V1.0]: 2025-06-01
+
+#### Added
+- Initial release of Zebra RFID Connect (IOTC) MQTT API.
+- 22 bidirectional commands across MGMT, CTRL, DATA, and MDM interfaces.
+- 6 asynchronous events: `heartBeatEVT`, `alertEVT`, `exceptionEVT`, `dataEVT`, `barcodeEVT`, `mqttConnectionEVT`.
+- Support for RFD40 Standard, Premium, Premium Plus, RFD40-M, and RFD9030.
+- Pre-filter (Gen2 Select) and post-filter (RSSI, PREFIX, SUFFIX, REGEX) support.
+- 6 operating mode profiles: `BALANCED_PERFORMANCE`, `FAST_READ`, `CYCLE_COUNT`, `DENSE_READERS`, `OPTIMAL_BATTERY`, `ADVANCED`.
+- Access operations: READ, WRITE, LOCK.
+- Wi-Fi configuration with WPA2_PERSONAL, WPA2_ENTERPRISE, and OPEN security types.
+- TLS and mTLS support for MQTT broker connections.
+- OTA firmware update via `firmware_update` command.
+
+#### Security
+- All MQTT connections require TLS 1.2 or higher by default.
+- Certificate provisioning via `set_certificate` for broker, Wi-Fi, and client authentication.
+
+---
+
+### [V0.9-beta]: 2025-03-01
+
+#### Added
+- Beta release for early adopter program.
+- Core MQTT topic hierarchy and 16 initial commands.
+- `heartBeatEVT` and `alertEVT` events.
+- Support for RFD40 Premium with firmware 3.8.x.
+
+#### Changed
+- Topic hierarchy changed from `{tenantId}/clients/{interface}/{channel}/{deviceSerial}` to `{tenantId}/{interface}/clients/{channel}/{deviceSerial}` (interface moved before `clients`).
+
+#### Fixed
+- MQTT reconnection loop when broker certificate was rotated without updating the reader.
+
+#### Security
+- Added `cleanSession` parameter to `config_endpoint` to prevent stale session data on reconnection.
+
+---
+
+*End of Chapter 17: Appendices*

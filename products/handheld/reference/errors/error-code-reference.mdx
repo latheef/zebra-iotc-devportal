@@ -1,0 +1,261 @@
+---
+sidebar_position: 2
+title: "Error Code Reference"
+---
+
+# Error Code Reference
+
+📕 **REFERENCE**: Complete table of IoT Connector error codes for RFD40/RFD90 handheld RFID reader sleds.
+
+## Overview
+
+The `responseCode` field in every command response indicates the result of the operation. Code `0` indicates success. All other codes indicate specific error conditions. Use this reference to diagnose failures and implement appropriate error handling.
+
+## Error Code Table
+
+### 0: Success
+
+| | |
+|---|---|
+| **Description** | The command completed successfully. |
+| **Common Causes** | N/A; this is the expected result. |
+| **Resolution** | No action required. Process the response payload normally. |
+
+---
+
+### 1: Invalid Command
+
+| | |
+|---|---|
+| **Description** | The command name in the request is not recognized by the IoT Connector. |
+| **Common Causes** | Typo in the command field; sending a command not supported by the current firmware version; using a command intended for a different product (e.g., fixed reader commands). |
+| **Resolution** | Verify the command name against the API reference. Confirm the device firmware supports the command. |
+
+---
+
+### 2: Invalid Request ID
+
+| | |
+|---|---|
+| **Description** | The `requestId` field is missing, empty, or contains invalid characters. |
+| **Common Causes** | Omitting the `requestId` from the command payload; using characters outside the allowed set (alphanumeric, hyphens, underscores). |
+| **Resolution** | Ensure every command includes a non-empty `requestId` string. Use alphanumeric characters, hyphens, and underscores only. |
+
+---
+
+### 3: Command Timeout
+
+| | |
+|---|---|
+| **Description** | The device was unable to complete the command within its internal timeout period. |
+| **Common Causes** | Device under heavy load; RFID operation taking longer than expected; Bluetooth communication delay with the host device. |
+| **Resolution** | Retry the command after a brief delay (2–5 seconds). If persistent, check device health and reduce concurrent operations. |
+
+---
+
+### 4: Device Busy
+
+| | |
+|---|---|
+| **Description** | The device is currently processing another command or operation that conflicts with the requested action. |
+| **Common Causes** | Sending `start_inventory` while an inventory is already running; issuing configuration changes during an active operation. |
+| **Resolution** | Wait for the current operation to complete or explicitly stop it before issuing the new command. Monitor the response topic for operation completion events. |
+
+---
+
+### 5: Invalid Parameter
+
+| | |
+|---|---|
+| **Description** | One or more parameters in the command payload are outside acceptable ranges or of an incorrect type. |
+| **Common Causes** | Transmit power index out of range; invalid antenna ID; malformed JSON values; string provided where integer expected. |
+| **Resolution** | Check the `responseMessage` for details on which parameter is invalid. Refer to the command's API reference for valid parameter ranges. |
+
+---
+
+### 6: Region Not Configured
+
+| | |
+|---|---|
+| **Description** | The RFID regulatory region has not been set on the device. RFID operations cannot proceed without a configured region. |
+| **Common Causes** | New device that has not been provisioned; factory reset cleared the region setting. |
+| **Resolution** | Set the regulatory region using the 123RFID Desktop application. The region cannot be set via MQTT for regulatory compliance reasons. |
+
+---
+
+### 7: Operation Already Running
+
+| | |
+|---|---|
+| **Description** | The requested operation (e.g., inventory) is already in progress. |
+| **Common Causes** | Duplicate `start_inventory` command; application retry logic re-sending a start command before confirming the first one failed. |
+| **Resolution** | Check operation state before sending start commands. If you need to restart, send a `stop` command first, wait for confirmation, then start again. |
+
+---
+
+### 8: Operation Not Running
+
+| | |
+|---|---|
+| **Description** | A stop command was issued for an operation that is not currently active. |
+| **Common Causes** | Sending `stop_inventory` when no inventory is running; operation ended on its own (e.g., trigger release in immediate mode). |
+| **Resolution** | This is generally a benign condition. Update your application state to reflect that no operation is active. No retry needed. |
+
+---
+
+### 9: Certificate Not Found
+
+| | |
+|---|---|
+| **Description** | The referenced TLS certificate or CA certificate was not found on the device. |
+| **Common Causes** | Attempting to use a certificate alias that has not been installed; certificate was deleted or never provisioned. |
+| **Resolution** | Install the required certificate using the certificate management commands. Verify the alias name matches exactly (case-sensitive). |
+
+---
+
+### 10: Certificate Already Installed
+
+| | |
+|---|---|
+| **Description** | A certificate with the same alias already exists on the device. |
+| **Common Causes** | Re-running a provisioning script without checking for existing certificates. |
+| **Resolution** | Delete the existing certificate first if you need to replace it, or use the existing certificate. |
+
+---
+
+### 11: Endpoint Not Found
+
+| | |
+|---|---|
+| **Description** | The MQTT broker endpoint referenced in the command does not exist in the device configuration. |
+| **Common Causes** | Typo in the endpoint name; endpoint was deleted or never created. |
+| **Resolution** | List configured endpoints and verify the correct endpoint name. Create the endpoint if it does not exist. |
+
+---
+
+### 12: Endpoint Already Exists
+
+| | |
+|---|---|
+| **Description** | An MQTT broker endpoint with the same name already exists. |
+| **Common Causes** | Re-running provisioning without checking existing configuration. |
+| **Resolution** | Use the existing endpoint, update it with new settings, or delete it before re-creating. |
+
+---
+
+### 13: TLS Handshake Failed
+
+| | |
+|---|---|
+| **Description** | The device could not establish a TLS connection to the MQTT broker. |
+| **Common Causes** | Expired or invalid server certificate; CA certificate not installed on device; TLS version mismatch; clock skew causing certificate validation failure. |
+| **Resolution** | Verify the CA certificate is installed and matches the broker's server certificate chain. Check that the device clock is accurate. Confirm the broker supports TLS 1.2. |
+
+---
+
+### 14: Authentication Failed
+
+| | |
+|---|---|
+| **Description** | The MQTT broker rejected the device's credentials. |
+| **Common Causes** | Incorrect username or password; expired client certificate; client ID rejected by broker ACL; device not registered in the broker's authentication backend. |
+| **Resolution** | Verify credentials in the endpoint configuration. If using certificate-based auth, confirm the client certificate is valid and not expired. Check broker-side logs for detailed rejection reasons. |
+
+---
+
+### 15: SSID Not Found
+
+| | |
+|---|---|
+| **Description** | The specified Wi-Fi network (SSID) was not found in the device's saved profiles. |
+| **Common Causes** | Typo in the SSID name; profile was deleted; referencing an SSID that was never configured. |
+| **Resolution** | List saved Wi-Fi profiles and verify the SSID name. Create the profile if it does not exist. |
+
+---
+
+### 16: Cannot Delete Active SSID
+
+| | |
+|---|---|
+| **Description** | The Wi-Fi profile being deleted is the currently connected network. |
+| **Common Causes** | Attempting to remove the active Wi-Fi profile without switching to another network first. |
+| **Resolution** | Connect to a different Wi-Fi network or Bluetooth connection first, then delete the profile. |
+
+---
+
+### 17: Invalid Certificate Format
+
+| | |
+|---|---|
+| **Description** | The certificate data provided is not in a supported format. |
+| **Common Causes** | Providing a DER-encoded certificate when PEM is expected; corrupted certificate data; incomplete base64 encoding. |
+| **Resolution** | Ensure certificates are in PEM format (base64-encoded, with `BEGIN CERTIFICATE` / `END CERTIFICATE` headers). Verify the certificate file is not corrupted. |
+
+---
+
+### 18: SSID Already Exists
+
+| | |
+|---|---|
+| **Description** | A Wi-Fi profile with the specified SSID name already exists. |
+| **Common Causes** | Re-running provisioning without checking existing profiles. |
+| **Resolution** | Update the existing profile or delete it before creating a new one with the same SSID. |
+
+---
+
+### 19: Maximum Profiles Exceeded
+
+| | |
+|---|---|
+| **Description** | The device has reached its maximum number of saved Wi-Fi profiles (10). |
+| **Common Causes** | Adding an 11th Wi-Fi profile without removing an existing one. |
+| **Resolution** | Delete unused Wi-Fi profiles before adding new ones. The device supports a maximum of 10 saved profiles. |
+
+---
+
+### 20: Firmware Update Failed
+
+| | |
+|---|---|
+| **Description** | The firmware update process did not complete successfully. |
+| **Common Causes** | Network interruption during download; insufficient battery level; corrupted firmware package; incompatible firmware version for the hardware. |
+| **Resolution** | Ensure the device has at least 30% battery. Verify network connectivity is stable. Confirm the firmware package is intended for the specific device model (RFD40 or RFD90). Retry the update. |
+
+---
+
+### 21: Reboot Required
+
+| | |
+|---|---|
+| **Description** | The requested configuration change requires a device reboot to take effect. |
+| **Common Causes** | Changing network stack settings; installing new certificates that affect the active connection; firmware update completed. |
+| **Resolution** | Issue a `reboot` command to the device. The new configuration will be applied after the device restarts and reconnects. |
+
+## Quick Lookup Table
+
+| Code | Name | Severity |
+|---:|---|---|
+| 0 | Success | Info |
+| 1 | Invalid Command | Error |
+| 2 | Invalid Request ID | Error |
+| 3 | Command Timeout | Retryable |
+| 4 | Device Busy | Retryable |
+| 5 | Invalid Parameter | Error |
+| 6 | Region Not Configured | Error |
+| 7 | Operation Already Running | Warning |
+| 8 | Operation Not Running | Warning |
+| 9 | Certificate Not Found | Error |
+| 10 | Certificate Already Installed | Warning |
+| 11 | Endpoint Not Found | Error |
+| 12 | Endpoint Already Exists | Warning |
+| 13 | TLS Handshake Failed | Error |
+| 14 | Authentication Failed | Error |
+| 15 | SSID Not Found | Error |
+| 16 | Cannot Delete Active SSID | Error |
+| 17 | Invalid Certificate Format | Error |
+| 18 | SSID Already Exists | Warning |
+| 19 | Maximum Profiles Exceeded | Error |
+| 20 | Firmware Update Failed | Error |
+| 21 | Reboot Required | Info |
+
+> **Tip:** Codes marked as **Retryable** can often be resolved by waiting and retrying. Codes marked as **Warning** indicate the system is already in the desired state. Codes marked as **Error** require corrective action before retrying.

@@ -1,0 +1,107 @@
+---
+sidebar_position: 1
+title: "About Integration Architecture Patterns"
+---
+
+# About Integration Architecture Patterns
+
+Zebra RFID reader sleds communicate exclusively via MQTT 3.1.1. Integrating tag data and device management into cloud platforms requires connecting the reader's MQTT traffic to a cloud-native messaging or IoT service. There are three architectural patterns for this integration, each with different trade-offs in complexity, latency, and operational overhead.
+
+## Pattern 1: Direct Integration
+
+The reader connects directly to the cloud provider's MQTT endpoint. The cloud IoT service acts as the MQTT broker.
+
+```
+┌──────────┐     MQTT 3.1.1     ┌────────────────┐
+│  Reader   │──────────────────►│  Cloud IoT     │
+│  Sled     │                   │  (AWS/Azure/GCP)│
+└──────────┘                    └────────────────┘
+```
+
+**How it works:** The reader's `config_endpoint` is configured to point directly at the cloud provider's MQTT endpoint (e.g., AWS IoT Core's ATS endpoint, Azure IoT Hub's MQTT gateway). Authentication uses the cloud provider's native mechanism; X.509 certificates for AWS, SAS tokens or X.509 for Azure, JWT for GCP.
+
+**Advantages:**
+- Lowest latency, no intermediate hops
+- Fewest components to manage
+- Direct access to cloud-native features (device shadows, digital twins, rules engines)
+
+**Limitations:**
+- Cloud MQTT endpoints may not support all MQTT 3.1.1 features (e.g., some restrict topic structures or QoS levels)
+- Topic mapping may require cloud-side rules to translate Zebra's topic structure to the cloud provider's expectations
+- Reader configuration must include cloud-specific authentication credentials
+
+**Best for:** Single-cloud deployments where the cloud IoT service's MQTT support is sufficient.
+
+## Pattern 2: Bridge Pattern
+
+An MQTT bridge service sits between the reader fleet's local broker and the cloud platform. The bridge subscribes to topics on the local broker and forwards messages to the cloud.
+
+```
+┌──────────┐     MQTT      ┌──────────┐    Bridge    ┌────────────────┐
+│  Reader   │─────────────►│  Local   │─────────────►│  Cloud IoT     │
+│  Sled     │              │  Broker  │              │  (AWS/Azure/GCP)│
+└──────────┘               └──────────┘              └────────────────┘
+```
+
+**How it works:** Readers connect to a local MQTT broker (Mosquitto, HiveMQ, EMQX). A bridge component, either built into the broker or deployed as a separate service; subscribes to reader topics and republishes messages to the cloud endpoint. The bridge handles protocol translation, topic remapping, and authentication with the cloud.
+
+**Advantages:**
+- Local broker buffers messages during cloud outages (store-and-forward)
+- Topic remapping and data transformation happen at the bridge, not on the reader
+- Readers are decoupled from cloud-specific authentication; they authenticate with the local broker only
+- Supports multi-cloud forwarding from a single local broker
+
+**Limitations:**
+- Additional infrastructure to deploy and maintain (local broker + bridge)
+- Added latency from the intermediate hop
+- Bridge is a single point of failure unless deployed with redundancy
+
+**Best for:** Environments requiring local processing, message buffering, or multi-cloud integration.
+
+## Pattern 3: Gateway Pattern
+
+An IoT gateway application processes MQTT messages from readers, performs business logic (filtering, aggregation, enrichment), and forwards results to the cloud using the cloud provider's preferred protocol (HTTPS, AMQP, gRPC, or MQTT).
+
+```
+┌──────────┐     MQTT      ┌──────────┐   HTTPS/AMQP  ┌────────────────┐
+│  Reader   │─────────────►│  Gateway │──────────────►│  Cloud Platform │
+│  Sled     │              │  App     │               │  (API/Events)   │
+└──────────┘               └──────────┘               └────────────────┘
+```
+
+**How it works:** The gateway application subscribes to reader topics on a local broker (or acts as an embedded MQTT server), processes incoming tag events, and pushes processed data to cloud services via their native APIs. The gateway might aggregate tag reads, filter duplicates, enrich events with location data, or trigger business workflows.
+
+**Advantages:**
+- Full control over data transformation and business logic at the edge
+- Can reduce cloud ingestion costs by filtering and aggregating data before upload
+- Protocol flexibility; communicate with the cloud using whatever protocol the cloud prefers
+- Can integrate with non-IoT cloud services (REST APIs, databases, event buses)
+
+**Limitations:**
+- Most complex to build and maintain
+- Gateway application requires its own deployment, monitoring, and scaling strategy
+- Custom code for each integration target
+
+**Best for:** Complex environments requiring edge processing, data enrichment, or integration with non-IoT cloud services.
+
+## Decision Framework
+
+| Criterion | Direct | Bridge | Gateway |
+|---|---|---|---|
+| Infrastructure complexity | Low | Medium | High |
+| Latency | Lowest | Low | Moderate |
+| Offline resilience | None | High (buffering) | High (local processing) |
+| Data transformation | Cloud-side only | Bridge-level | Full edge processing |
+| Multi-cloud support | No | Yes | Yes |
+| Cloud lock-in risk | Higher | Lower | Lowest |
+
+**Start with Direct Integration** if you are deploying on a single cloud provider and the cloud's MQTT support meets your needs. **Move to Bridge** when you need local buffering, multi-cloud support, or topic remapping. **Choose Gateway** when you need edge-side business logic, data enrichment, or integration with non-MQTT cloud services.
+
+> **Note:** These patterns are not mutually exclusive. A common evolution is to start with direct integration for a proof of concept, move to a bridge for production resilience, and add gateway logic as business requirements grow.
+
+## Next Steps
+
+- [How to Integrate with AWS IoT Core](./integrate-aws.mdx)
+- [How to Integrate with Azure IoT Hub](./integrate-azure.mdx)
+- [How to Integrate with Google Cloud IoT](./integrate-gcp.mdx)
+- [How to Integrate with a Custom MQTT Broker](./integrate-custom-broker.mdx)

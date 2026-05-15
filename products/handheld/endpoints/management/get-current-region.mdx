@@ -1,0 +1,120 @@
+---
+sidebar_position: 3
+title: Get Current Region
+description: Retrieve regulatory region information including country, standard, frequency hopping, LBT, power range, and available channels.
+---
+
+# Get Current Region
+
+Retrieve the regulatory region configuration for a Zebra handheld RFID reader. The response includes the country code, regulatory standard, RF parameters such as frequency hopping and Listen Before Talk (LBT), transmit power range, and the list of available channel frequencies.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `get_current_region` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "get_current_region",
+  "requestId": "req-001"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"get_current_region"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response with this request. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "get_current_region",
+  "requestId": "req-001",
+  "responseCode": 0,
+  "regionInfo": {
+    "country": "US",
+    "regulatoryStandard": "FCC",
+    "frequencyHopping": true,
+    "lbtEnabled": false,
+    "minTxPowerSupported": 50,
+    "maxTxPowerSupported": 300,
+    "channelData": [
+      902750, 903250, 903750, 904250, 904750,
+      905250, 905750, 906250, 906750, 907250
+    ]
+  }
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echo of the command name. |
+| `requestId` | string | Echo of the request identifier. |
+| `responseCode` | integer | Result code indicating success or failure. |
+| `regionInfo` | object | Container for regulatory region information. |
+| `regionInfo.country` | string | ISO 3166-1 alpha-2 country code. |
+| `regionInfo.regulatoryStandard` | string | Regulatory standard (e.g., `"FCC"`, `"ETSI"`, `"MIC"`). |
+| `regionInfo.frequencyHopping` | boolean | Whether frequency hopping spread spectrum (FHSS) is enabled. |
+| `regionInfo.lbtEnabled` | boolean | Whether Listen Before Talk (LBT) is enabled. |
+| `regionInfo.minTxPowerSupported` | integer | Minimum supported transmit power in 1/10 dBm units. |
+| `regionInfo.maxTxPowerSupported` | integer | Maximum supported transmit power in 1/10 dBm units. |
+| `regionInfo.channelData` | array of integers | Available channel frequencies in kHz. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success. |
+| `1` | General failure. |
+| `6` | Region not configured. |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "get_current_region",
+  "requestId": "region-20260414-001"
+}
+```
+
+### Response
+
+```json
+{
+  "command": "get_current_region",
+  "requestId": "region-20260414-001",
+  "responseCode": 0,
+  "regionInfo": {
+    "country": "DE",
+    "regulatoryStandard": "ETSI",
+    "frequencyHopping": false,
+    "lbtEnabled": true,
+    "minTxPowerSupported": 50,
+    "maxTxPowerSupported": 275,
+    "channelData": [
+      865700, 866300, 866900, 867500
+    ]
+  }
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

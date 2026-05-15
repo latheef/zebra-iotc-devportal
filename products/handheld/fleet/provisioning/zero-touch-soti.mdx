@@ -1,0 +1,127 @@
+---
+sidebar_position: 2
+title: "How to Set Up Zero-Touch Provisioning with SOTI Connect"
+---
+
+# How to Set Up Zero-Touch Provisioning with SOTI Connect
+
+This guide walks through configuring SOTI Connect to automatically provision RFD40 and RFD90 reader sleds when they first power on and enroll with the MDM platform.
+
+## Prerequisites
+
+- SOTI Connect server deployed and licensed for IoT device management
+- Network connectivity between SOTI Connect and the reader sleds (Wi-Fi or Ethernet via host mobile computer)
+- MQTT broker deployed and accessible from both the readers and SOTI Connect
+- TLS certificates for broker authentication (if using mutual TLS)
+- Reader firmware version 2.0 or later
+
+## Step 1: Configure the MDM Enrollment Endpoint
+
+In the SOTI Connect administration console, register the Zebra RFID reader sled as a managed device type.
+
+1. Navigate to **Device Management → Device Profiles → Add Profile**
+2. Select **Zebra RFID Sled** as the device type
+3. Enter the enrollment endpoint URL; this is the SOTI Connect server address that readers will contact during first boot
+4. Configure the enrollment authentication method (certificate-based or token-based)
+
+> **Note:** The enrollment endpoint must be reachable from the network segment where readers will be deployed. If readers connect through a mobile computer's Wi-Fi, ensure the mobile computer's network can reach the SOTI Connect server.
+
+## Step 2: Create a Configuration Profile
+
+A configuration profile defines the complete set of parameters pushed to a reader during provisioning.
+
+Create a profile that includes:
+
+```json
+{
+  "mqtt": {
+    "broker_host": "broker.example.com",
+    "broker_port": 8883,
+    "tls_enabled": true,
+    "client_id_pattern": "rfd-{SERIAL_NUMBER}",
+    "username": "reader-fleet",
+    "password_ref": "vault://mqtt-reader-credentials"
+  },
+  "rf_config": {
+    "power_level_dbm": 27.0,
+    "session": "S1",
+    "link_profile": "AUTO",
+    "dynamic_power": true
+  },
+  "operating_mode": "INVENTORY",
+  "reporting_interval_ms": 500
+}
+```
+
+> **Warning:** Store credentials using SOTI Connect's secure credential vault rather than embedding plaintext passwords in configuration profiles. The `password_ref` field references a vault entry.
+
+## Step 3: Enroll Devices
+
+Enrollment can be initiated in two ways:
+
+**Batch enrollment via serial number import:**
+1. Export serial numbers from your purchase order or asset management system
+2. In SOTI Connect, navigate to **Enrollment → Batch Import**
+3. Upload the CSV file containing serial numbers
+4. Assign the configuration profile created in Step 2
+
+**Automatic enrollment via network discovery:**
+1. Enable SOTI Connect's network discovery on the target subnet
+2. Readers connecting to the network for the first time are detected automatically
+3. Apply enrollment rules that match Zebra RFID sleds by device type identifier
+
+## Step 4: Configure Firmware Update Orchestration
+
+SOTI Connect can distribute firmware updates alongside configuration profiles.
+
+1. Upload the target firmware binary to **Firmware Repository → Add Firmware**
+2. Create an update policy: **Firmware → Update Policies → New**
+3. Set the rollout strategy:
+   - **Immediate**: all readers update on next check-in
+   - **Staged**: update a percentage of the fleet, wait for health confirmation, then proceed
+   - **Scheduled**: update during a defined maintenance window
+
+> **Warning:** Firmware updates cause a reader reboot. Schedule updates during non-operational periods to avoid disrupting active RFID workflows.
+
+## Step 5: Monitor Enrollment and Provisioning Status
+
+SOTI Connect publishes provisioning events to the MDM interface MQTT topics. Monitor these topics to track fleet-wide provisioning progress:
+
+**MDM enrollment event topic:**
+```
+zebra/mdm/{device_id}/enrollment/status
+```
+
+**Provisioning completion event:**
+```
+zebra/mdm/{device_id}/provisioning/complete
+```
+
+The `alert_short` event fires when a reader completes provisioning but encounters a non-critical issue; for example, a deprecated RF parameter that was auto-corrected:
+
+```json
+{
+  "event": "alert_short",
+  "device_id": "RFD40-ABC123",
+  "severity": "WARNING",
+  "message": "Parameter 'link_profile' value 'MODE_3' deprecated; auto-corrected to 'AUTO'",
+  "timestamp": "2026-05-14T10:30:00Z"
+}
+```
+
+## Step 6: Validate Provisioned Readers
+
+After enrollment completes, verify that readers are operating correctly:
+
+1. In SOTI Connect, check each reader's status shows **Enrolled: Active**
+2. Verify the reader is publishing to the expected MQTT topics by checking your broker's client list
+3. Issue a `get_config` command to a sample of readers and confirm the returned configuration matches the profile
+
+## Troubleshooting
+
+| Symptom | Likely Cause | Resolution |
+|---|---|---|
+| Reader not appearing in SOTI Connect | Enrollment endpoint unreachable | Verify network path from reader's host device to SOTI server |
+| Profile applied but reader not connecting to broker | Incorrect broker credentials in profile | Check credential vault entry; verify broker accepts the configured username |
+| Firmware update stuck at 0% | Firmware binary incompatible with reader model | Confirm firmware version is compatible with the target hardware (RFD40 vs RFD90) |
+| `alert_short` events on multiple readers | Deprecated parameters in profile | Update the configuration profile to use current parameter values |

@@ -1,0 +1,93 @@
+---
+sidebar_position: 1
+title: "About Tag Data Event Architecture"
+description: "Understanding the flow of RFID tag data from RF antenna to your application via MQTT on the RFD40/RFD90."
+---
+
+# About Tag Data Event Architecture
+
+When the RFD40/RFD90 reads an RFID tag, the data flows through several stages before reaching your application. Understanding this pipeline helps you design efficient data processing and set realistic expectations for latency and throughput.
+
+## Data Flow Pipeline
+
+```
+RF Antenna → Reader Firmware → MQTT Client → Broker → Your Application
+```
+
+### Stage 1: RF Singulation
+
+The reader's RF antenna energizes tags in the field using UHF radio waves. Each tag responds with its EPC and any additional data the operating mode requires (RSSI, TID, phase angle). The reader's anti-collision algorithm ensures each tag is individually identified even when hundreds are in range simultaneously.
+
+### Stage 2: Firmware Processing
+
+The reader firmware receives raw RF data and applies several processing steps:
+
+1. **Decoding**: converts the raw RF signal into structured tag data
+2. **Post-filtering**: applies any configured post-filter to include/exclude tags
+3. **Deduplication window**: within a single scan cycle, the firmware may consolidate multiple reads of the same tag
+4. **Payload assembly**: constructs the `dataEVT` JSON payload with all relevant fields
+5. **Channel routing**: directs the payload to `data1event` or `data2event` based on `config_events` settings
+
+### Stage 3: MQTT Transmission
+
+The reader's internal MQTT 3.1.1 client publishes the `dataEVT` payload to the configured data topic:
+
+```
+{tenantId}/DATA/clients/data1event/{deviceSerial}
+```
+
+The message is published at the configured QoS level (typically QoS 0 for data events to maximize throughput).
+
+### Stage 4: Broker Delivery
+
+The MQTT broker receives the message and delivers it to all subscribed clients. Delivery latency depends on broker configuration, network conditions, and subscriber count.
+
+### Stage 5: Application Processing
+
+Your application receives the `dataEVT` payload and processes it according to your business logic; inventory updates, alerting, location tracking, etc.
+
+## Event Generation Rate Factors
+
+The rate at which `dataEVT` messages are generated depends on several factors:
+
+| Factor | Effect |
+|---|---|
+| **Tag population** | More tags in range = more events per second |
+| **Operating mode** | Simple Inventory generates the fastest stream; TID mode is slower per tag |
+| **Antenna power** | Higher power reads tags at greater distance, increasing the effective population |
+| **RF environment** | Reflections and interference affect read rate |
+| **Post-filters** | Filters reduce the number of events transmitted (but not the RF read rate) |
+| **Session setting** | S0 re-reads tags every round; S1+ reduces repeat reads |
+
+In a dense environment with S0 session and hundreds of tags, the reader can generate thousands of events per second. Your application must be designed to handle this throughput.
+
+## Deduplication
+
+The reader firmware performs basic deduplication within a scan cycle. If the same EPC is read multiple times in rapid succession, the firmware may consolidate these into a single event with an updated `seen_count` field. However, across multiple scan cycles, the same tag will generate new events.
+
+Your application should implement its own deduplication strategy appropriate to the use case:
+
+- **Inventory counts**: Deduplicate by EPC, keep latest timestamp
+- **Movement tracking**: Track EPC + RSSI changes over time
+- **Presence detection**: Maintain a sliding window of recent reads
+
+## Latency Characteristics
+
+Typical end-to-end latency from tag read to application delivery:
+
+| Stage | Typical Latency |
+|---|---|
+| RF singulation | 1–5 ms per tag |
+| Firmware processing | 1–2 ms |
+| MQTT publish | 1–10 ms (network dependent) |
+| Broker → subscriber | 1–50 ms (network dependent) |
+| **Total** | **5–70 ms typical** |
+
+> **Note**: These are typical values under normal network conditions. High tag populations, congested networks, or overloaded brokers can increase latency significantly.
+
+## Related Topics
+
+- [dataEVT Payload Schema](./dataevt-payload.mdx): complete field reference
+- [How to Interpret Tag Data Fields](./interpret-tag-data.mdx): decoding tag data
+- [About Dual Data Channels](./dual-data-channels.mdx): data1event vs data2event
+- [How to Process Tag Data in Your Application](./process-tag-data.mdx): processing strategies

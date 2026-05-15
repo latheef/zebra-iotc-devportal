@@ -1,0 +1,147 @@
+---
+sidebar_position: 7
+title: "set_wifi"
+description: "Create or modify a Wi-Fi profile on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# set_wifi
+
+Creates a new Wi-Fi profile or modifies an existing one, including security credentials and IPv4 configuration.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "7",
+  "wifiConfig": {
+    "operation": "CREATE",
+    "accessPoint": {
+      "essid": "Warehouse-IoT",
+      "isPreferred": true,
+      "securityType": "WPA2Personal",
+      "security": {
+        "passphrase": "SecureP@ss123"
+      }
+    },
+    "ipv4Configuration": {
+      "enableDhcp": true
+    }
+  }
+}
+```
+
+### Enterprise Example (WPA2Enterprise with PEAP)
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "8",
+  "wifiConfig": {
+    "operation": "CREATE",
+    "accessPoint": {
+      "essid": "Corp-Secure",
+      "isPreferred": false,
+      "securityType": "WPA2Enterprise",
+      "security": {
+        "authMethod": "peap",
+        "identity": "rfid-reader@corp.com",
+        "password": "EntPwd456",
+        "caCertificate": "CorpRootCA"
+      }
+    },
+    "ipv4Configuration": {
+      "enableDhcp": true
+    }
+  }
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"set_wifi"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `wifiConfig.operation` | string | Yes | `CREATE` for a new profile, `MODIFY` for an existing one |
+| `wifiConfig.accessPoint.essid` | string | Yes | Network SSID |
+| `wifiConfig.accessPoint.isPreferred` | boolean | No | Set as the preferred network. Default: `false` |
+| `wifiConfig.accessPoint.securityType` | string | Yes | Security protocol (see table below) |
+| `wifiConfig.accessPoint.security.passphrase` | string | Conditional | Required for `WPA2Personal` and `WPA3Personal` |
+| `wifiConfig.accessPoint.security.authMethod` | string | Conditional | Required for Enterprise types: `tls`, `ttls`, `peap` |
+| `wifiConfig.accessPoint.security.identity` | string | Conditional | Required for Enterprise types |
+| `wifiConfig.accessPoint.security.password` | string | Conditional | Required for `ttls` and `peap` |
+| `wifiConfig.accessPoint.security.caCertificate` | string | No | Name of an installed CA certificate for server validation |
+| `wifiConfig.accessPoint.security.clientCertificate` | string | Conditional | Required for `tls` authentication |
+| `wifiConfig.ipv4Configuration.enableDhcp` | boolean | Yes | `true` for DHCP, `false` for static IP |
+| `wifiConfig.ipv4Configuration.ipAddress` | string | Conditional | Required when `enableDhcp` is `false` |
+| `wifiConfig.ipv4Configuration.subnetMask` | string | Conditional | Required when `enableDhcp` is `false` |
+| `wifiConfig.ipv4Configuration.gateway` | string | Conditional | Required when `enableDhcp` is `false` |
+
+### Security Types
+
+| Value | Description |
+|---|---|
+| `WPA2Personal` | WPA2 with pre-shared key (PSK) |
+| `WPA3Personal` | WPA3 with SAE |
+| `WPA2Enterprise` | WPA2 with 802.1X authentication |
+| `WPA3Enterprise` | WPA3 with 802.1X authentication |
+| `OPEN` | No security (not recommended) |
+
+### Enterprise Authentication Methods
+
+| Method | Credentials Required |
+|---|---|
+| `tls` | `identity`, `clientCertificate`, optionally `caCertificate` |
+| `ttls` | `identity`, `password`, optionally `caCertificate` |
+| `peap` | `identity`, `password`, optionally `caCertificate` |
+
+## Response Payload
+
+```json
+{
+  "command": "set_wifi",
+  "requestId": "7",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | A required field is missing or a value is invalid |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `10` | OperationFailed | The profile could not be created (e.g., max 10 profiles reached) |
+
+## Notes
+
+- The device supports a maximum of **10 Wi-Fi profiles**. Attempting to create an 11th profile returns error code `10`.
+- When `operation` is `MODIFY`, the SSID must match an existing profile. Only the fields provided are updated; omitted fields retain their current values.
+- For `tls` authentication, the client certificate must be installed on the device before calling `set_wifi`. Use `install_certificate` with type `WIFI`.
+- Setting `isPreferred: true` clears the preferred flag on any previously preferred profile.
+
+## See Also
+
+- [get_wifi](get-wifi): List current Wi-Fi profiles
+- [delete_wifi_profile](delete-wifi-profile): Remove a saved Wi-Fi profile
+- [install_certificate](install-certificate): Install certificates for enterprise Wi-Fi
+- [API Overview](../api-overview): Complete endpoint inventory

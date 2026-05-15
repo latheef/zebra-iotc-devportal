@@ -1,0 +1,75 @@
+---
+sidebar_position: 1
+title: "Quick Start Overview"
+description: "Overview of the 6-step quick start flow for performing your first RFID read operation via MQTT with the Zebra IoT Connector."
+---
+
+# Quick Start Overview
+
+📗 **TUTORIAL**: This tutorial guides you through your first end-to-end RFID tag read operation using the Zebra IoT Connector platform and MQTT. You will connect to the broker, discover your reader, subscribe to tag data, start an inventory operation, read tags, and stop the operation.
+
+## The 6-Step Flow
+
+```
+Connect → Discover → Subscribe → Start → Read → Stop
+```
+
+| Step | Action | Description |
+|------|--------|-------------|
+| **1** | [Connect to the MQTT Broker](./connect-broker.mdx) | Establish an authenticated MQTT connection to the IOTC broker |
+| **2** | [Discover Your Reader](./discover-reader.mdx) | Send a `get_version` command to verify your reader is online |
+| **3** | [Subscribe to Tag Data Events](./subscribe-data.mdx) | Subscribe to the DATA interface to receive tag reads |
+| **4** | [Start an RFID Read Operation](./start-operation.mdx) | Configure operating mode and start inventory |
+| **5** | [Read Your First Tags](./read-tags.mdx) | Observe RFID tag data flowing from the reader |
+| **6** | [Stop the Operation](./stop-operation.mdx) | Stop the inventory operation cleanly |
+
+## Prerequisites Checklist
+
+Before starting this tutorial, confirm the following:
+
+- [ ] Reader sled (RFD40 or RFD90) bootstrapped and connected to IOTC (see [Reader Bootstrap](../prerequisites/bootstrap-123rfid.mdx))
+- [ ] Firmware version ≥ 3.10.27 confirmed (see [Verify Firmware](../prerequisites/verify-firmware.mdx))
+- [ ] IOTC credentials obtained (Tenant ID, broker host, username, password)
+- [ ] MQTT client installed (`mosquitto_sub` / `mosquitto_pub` recommended)
+- [ ] At least one UHF RFID tag available for testing
+
+## Your Configuration Values
+
+Record your values here for use throughout the tutorial:
+
+| Parameter | Your Value | Example |
+|-----------|-----------|---------|
+| **Broker Host** | `_______________` | `mqtt.iotconnector.zebra.com` |
+| **Broker Port** | `_______________` | `8883` |
+| **Tenant ID** | `_______________` | `abc123def456` |
+| **MQTT Username** | `_______________` | `tenant-user@abc123def456` |
+| **MQTT Password** | `_______________` | *(your password)* |
+| **Device Serial** | `_______________` | `RFD40-1234567890` |
+
+## MQTT Topics Used in This Tutorial
+
+This tutorial uses the following MQTT topics:
+
+| Topic | Purpose |
+|-------|---------|
+| `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` | Send management commands to the reader |
+| `{tenantId}/MGMT/clients/resp/{deviceSerial}` | Receive management responses from the reader |
+| `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` | Send control commands (start/stop operations) |
+| `{tenantId}/CTRL/clients/resp/{deviceSerial}` | Receive control responses from the reader |
+| `{tenantId}/DATA/clients/data1event/{deviceSerial}` | Receive RFID tag data events |
+
+## Time Estimate
+
+The complete tutorial takes approximately **15–20 minutes** for first-time users.
+
+## Code Examples
+
+After completing the step-by-step tutorial, runnable code examples are available in Python, Node.js, and C#:
+
+- [Python Example](./example-python.mdx)
+- [Node.js Example](./example-nodejs.mdx)
+- [C# (.NET) Example](./example-csharp.mdx)
+
+## Let's Begin
+
+Proceed to [Step 1: Connect to the MQTT Broker](./connect-broker.mdx).

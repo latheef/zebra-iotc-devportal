@@ -1,0 +1,114 @@
+---
+sidebar_position: 4
+title: "About Dual Data Channels"
+description: "Understanding why the RFD40/RFD90 supports two data channels (data1event and data2event) and how to use them."
+---
+
+# About Dual Data Channels
+
+The RFD40/RFD90 reader sled publishes tag data on two separate MQTT topics: `data1event` and `data2event`. This dual-channel architecture enables load balancing, priority separation, and flexible subscriber routing.
+
+## The Two Channels
+
+| Channel | Topic Pattern | Default Use |
+|---|---|---|
+| `data1event` | `{tenantId}/DATA/clients/data1event/{deviceSerial}` | Primary data channel |
+| `data2event` | `{tenantId}/DATA/clients/data2event/{deviceSerial}` | Secondary data channel |
+
+Both channels carry the same `dataEVT` payload format. The difference is which events are routed to which channel, as configured via the `config_events` command.
+
+## Why Two Channels?
+
+### Load Balancing
+
+In high-throughput environments (hundreds of tags per second), a single MQTT topic can become a bottleneck for subscriber processing. Splitting tag data across two channels allows you to distribute the processing load:
+
+- **Subscriber A** listens on `data1event` and processes tags with even sequence IDs
+- **Subscriber B** listens on `data2event` and processes tags with odd sequence IDs
+
+This pattern enables horizontal scaling of your tag data processing pipeline.
+
+### Priority Separation
+
+You can assign high-priority tag data to one channel and lower-priority data to another:
+
+- **`data1event`**: Tags matching a critical filter (e.g., high-value items, security tags)
+- **`data2event`**: All other tag reads
+
+Your application subscribes to `data1event` with higher processing priority, ensuring critical tags are handled first even under load.
+
+### Subscriber Isolation
+
+Different applications or services may need different subsets of tag data:
+
+- **Inventory service** subscribes to `data1event` for inventory counts
+- **Security service** subscribes to `data2event` for loss prevention alerts
+
+This avoids each service needing to filter a single high-volume stream.
+
+## Channel Assignment
+
+Channel assignment is configured via the `config_events` command. You can assign events to channels based on criteria defined by the firmware.
+
+```json
+{
+  "command": "config_events",
+  "command_id": "cmd-040",
+  "payload": {
+    "data_channel_mode": "SPLIT",
+    "data1_assignment": "PRIMARY",
+    "data2_assignment": "SECONDARY"
+  }
+}
+```
+
+### Channel Modes
+
+| Mode | Behavior |
+|---|---|
+| `SINGLE` | All tag data goes to `data1event` only. `data2event` is inactive. |
+| `SPLIT` | Tag data is distributed across both channels per the assignment rules. |
+| `DUPLICATE` | Every tag event is published to both channels (useful for testing). |
+
+## Default Behavior
+
+Out of the box, the reader uses **`SINGLE`** mode, all `dataEVT` payloads are published to `data1event`. The `data2event` topic is silent until you explicitly configure `SPLIT` or `DUPLICATE` mode via `config_events`.
+
+## Subscribing to Both Channels
+
+To receive all tag data regardless of channel assignment, subscribe to both topics:
+
+```
+{tenantId}/DATA/clients/data1event/{deviceSerial}
+{tenantId}/DATA/clients/data2event/{deviceSerial}
+```
+
+Or use an MQTT wildcard to capture both:
+
+```
+{tenantId}/DATA/clients/+/{deviceSerial}
+```
+
+> **Note**: The `+` wildcard matches a single topic level. This subscription will also match any other data-level topics if they exist, so verify the topic structure for your deployment.
+
+## When to Use Dual Channels
+
+| Scenario | Recommended Mode |
+|---|---|
+| Simple deployment, single consumer | `SINGLE` (default) |
+| High-throughput processing, multiple workers | `SPLIT` |
+| Priority-based processing | `SPLIT` with assignment rules |
+| Testing and debugging | `DUPLICATE` |
+| Multiple independent services | `SPLIT` with service-specific subscriptions |
+
+## Performance Considerations
+
+- In `DUPLICATE` mode, every tag event is transmitted twice, doubling MQTT bandwidth usage and battery consumption
+- In `SPLIT` mode, total event volume is the same as `SINGLE` but distributed
+- Channel assignment happens in firmware, so there is no latency difference between channels
+
+## Related Topics
+
+- [How to Configure Event Reporting](../../observability/events/configure-event-reporting.mdx): `config_events` command reference
+- [dataEVT Payload Schema](./dataevt-payload.mdx): payload format
+- [About Tag Data Event Architecture](./about-tag-data-architecture.mdx): data flow pipeline

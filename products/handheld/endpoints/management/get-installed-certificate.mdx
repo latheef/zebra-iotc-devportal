@@ -1,0 +1,135 @@
+---
+sidebar_position: 14
+title: Get Installed Certificate
+description: List all installed TLS certificates with issuer, subject, validity dates, serial number, and fingerprint.
+---
+
+# Get Installed Certificate
+
+List all TLS certificates currently installed on the reader. The response includes certificate metadata such as issuer, subject, validity period, serial number, and SHA-256 fingerprint for each certificate. This is useful for auditing the device's certificate store and verifying that the correct certificates are deployed.
+
+## Endpoint Details
+
+| Property | Value |
+|----------|-------|
+| **Command** | `get_installed_certificate` |
+| **Interface** | MGMT |
+| **Direction** | PUB (command) → SUB (response) |
+| **Command Topic** | `{tenantId}/MGMT/clients/cmnd/{deviceSerial}` |
+| **Response Topic** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` |
+| **Content Type** | `application/json` |
+
+## Request Payload (PUB)
+
+```json
+{
+  "command": "get_installed_certificate",
+  "requestId": "req-getcert-001"
+}
+```
+
+### Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `command` | string | Yes | Must be `"get_installed_certificate"`. |
+| `requestId` | string | Yes | Unique identifier to correlate the response. |
+
+## Response Payload (SUB)
+
+```json
+{
+  "command": "get_installed_certificate",
+  "requestId": "req-getcert-001",
+  "responseCode": 0,
+  "message": "Success",
+  "certificates": [
+    {
+      "name": "mqtt-broker-ca",
+      "type": "mqtt",
+      "issuer": "CN=Example Root CA, O=Example Corp, C=US",
+      "subject": "CN=mqtt-broker.example.com",
+      "validFrom": "2025-01-15T00:00:00Z",
+      "validTo": "2027-01-15T23:59:59Z",
+      "serialNumber": "0A:1B:2C:3D:4E:5F:60:71",
+      "fingerprint": "SHA256:2B:4A:7F:3C:9E:1D:5A:8B:0C:6F:2E:4D:7A:9C:1B:3F:5E:8D:0A:6C:2F:4B:7E:9D:1C:3A:5F:8E:0B:6D:2A:4C"
+    },
+    {
+      "name": "client-mtls-cert",
+      "type": "client",
+      "issuer": "CN=Example Intermediate CA, O=Example Corp, C=US",
+      "subject": "CN=RFD40-212735201D0053, O=Acme Corp",
+      "validFrom": "2025-06-01T00:00:00Z",
+      "validTo": "2026-06-01T23:59:59Z",
+      "serialNumber": "1A:2B:3C:4D:5E:6F:70:81",
+      "fingerprint": "SHA256:3C:5B:8E:2D:0A:7F:4C:9E:1B:6A:3D:5F:8C:0E:2A:4B:7D:9F:1C:6E:3A:5C:8B:0D:2F:4A:7E:9C:1D:6B:3F:5A"
+    }
+  ]
+}
+```
+
+### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `command` | string | Echoes the command name `"get_installed_certificate"`. |
+| `requestId` | string | Echoes the request identifier. |
+| `responseCode` | integer | Status code indicating the result. |
+| `message` | string | Human-readable status message. |
+| `certificates` | array | List of installed certificate objects. |
+| `certificates[].name` | string | User-defined label for the certificate. |
+| `certificates[].type` | enum | Certificate purpose: `mqtt`, `wifi`, or `client`. |
+| `certificates[].issuer` | string | Certificate issuer distinguished name (DN). |
+| `certificates[].subject` | string | Certificate subject. |
+| `certificates[].validFrom` | date-time | Certificate validity start date (ISO 8601). |
+| `certificates[].validTo` | date-time | Certificate validity end date (ISO 8601). |
+| `certificates[].serialNumber` | string | Certificate serial number in hexadecimal. |
+| `certificates[].fingerprint` | string | SHA-256 fingerprint of the certificate. |
+
+## Response Codes
+
+| Code | Description |
+|------|-------------|
+| `0` | Success |
+| `1` | General error |
+| `3` | Command not supported |
+
+## Example
+
+### Request
+
+```json
+{
+  "command": "get_installed_certificate",
+  "requestId": "req-getcert-002"
+}
+```
+
+### Response
+
+```json
+{
+  "command": "get_installed_certificate",
+  "requestId": "req-getcert-002",
+  "responseCode": 0,
+  "message": "Success",
+  "certificates": [
+    {
+      "name": "mqtt-broker-ca",
+      "type": "mqtt",
+      "issuer": "CN=Example Root CA, O=Example Corp, C=US",
+      "subject": "CN=mqtt-broker.example.com",
+      "validFrom": "2025-01-15T00:00:00Z",
+      "validTo": "2027-01-15T23:59:59Z",
+      "serialNumber": "0A:1B:2C:3D:4E:5F:60:71",
+      "fingerprint": "SHA256:2B:4A:7F:3C:9E:1D:5A:8B:0C:6F:2E:4D:7A:9C:1B:3F:5E:8D:0A:6C:2F:4B:7E:9D:1C:3A:5F:8E:0B:6D:2A:4C"
+    }
+  ]
+}
+```
+
+---
+
+:::info
+See the [Interactive API Reference](/zebra-iotc-devportal/handheld/mqtt-api-reference) for the full schema explorer.
+:::

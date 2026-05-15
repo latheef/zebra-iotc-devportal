@@ -1,0 +1,92 @@
+---
+sidebar_position: 3
+title: "control_operation"
+description: "Start or stop RFID operations on a Zebra RFD40/RFD90 handheld RFID reader."
+---
+
+# control_operation
+
+Starts or stops an RFID operation (inventory, locate, or access) on the device using the currently configured operating mode.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Request** | `{tenantId}/CTRL/clients/cmnd/{deviceSerial}` |
+| **Response** | `{tenantId}/CTRL/clients/resp/{deviceSerial}` |
+
+## Direction
+
+Application → Reader → Application
+
+## Request Payload
+
+### Start Operation
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "32",
+  "operationType": "START"
+}
+```
+
+### Stop Operation
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "33",
+  "operationType": "STOP"
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `command` | string | Yes | Must be `"control_operation"` |
+| `requestId` | string | Yes | Unique identifier to correlate the response |
+| `operationType` | string | Yes | `START` to begin an RFID operation, `STOP` to end it |
+
+## Response Payload
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "32",
+  "statusCode": 0,
+  "statusMessage": "Success"
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `command` | string | Echo of the command name |
+| `requestId` | string | Echo of the request identifier |
+| `statusCode` | integer | `0` for success |
+| `statusMessage` | string | Human-readable status |
+
+## Error Responses
+
+| Code | Name | Description |
+|---|---|---|
+| `1` | GeneralError | Unexpected internal error |
+| `3` | InvalidParameter | `operationType` is not `START` or `STOP` |
+| `4` | InvalidRequestId | `requestId` is missing or empty |
+| `5` | DeviceBusy | A `START` was issued while an operation is already running |
+| `10` | OperationFailed | The operation could not start (e.g., radio hardware error) |
+
+## Notes
+
+- After `START`, tag read data is published to the DATA topics (`data1event`/`data2event`) as `dataEVT` events.
+- Sending `STOP` when no operation is running returns `statusCode: 0` (idempotent).
+- Sending `START` when an operation is already running returns error code `5`. Stop the current operation first.
+- The operating mode must be configured via `set_operating_mode` before starting an operation. If no mode has been set, the device uses its default configuration.
+- RFID operations consume significant battery. Monitor `get_status` or configure battery alerts via `config_events`.
+
+## See Also
+
+- [set_operating_mode](set-operating-mode): Configure RFID operating mode before starting
+- [get_operating_mode](get-operating-mode): Verify current operating mode
+- [dataEVT](../data/dataevt): Tag read data events produced during an operation
+- [set_post_filter](set-post-filter): Filter tag data during operations
+- [API Overview](../api-overview): Complete endpoint inventory

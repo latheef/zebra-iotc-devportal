@@ -1,0 +1,127 @@
+---
+sidebar_position: 3
+title: How to Check Ethernet Status (Cradle-Connected)
+description: "Query Ethernet interface status when the RFD40/RFD90 reader is docked in a charging cradle"
+---
+
+# How to Check Ethernet Status (Cradle-Connected)
+
+When an RFD40 or RFD90 reader is docked in a charging cradle with an Ethernet connection, the reader can use the cradle's wired network interface. The `get_eth` command retrieves the current Ethernet status; useful for verifying connectivity before deploying readers in fixed cradle-mounted scenarios, or for diagnosing network issues in docked configurations.
+
+> **Read-only.** Ethernet settings are determined by the cradle hardware and DHCP server. You cannot configure Ethernet parameters directly on the reader. To change IP addressing, modify your DHCP server configuration or cradle network settings.
+
+**Publish to:**
+
+```
+{tenantId}/MGMT/clients/cmnd/{deviceSerial}
+```
+
+**Subscribe for responses on:**
+
+```
+{tenantId}/MGMT/clients/resp/{deviceSerial}
+```
+
+---
+
+## Query Ethernet Status
+
+**Request:**
+
+```json
+{
+  "requestId": "req-eth-001",
+  "command": "get_eth"
+}
+```
+
+**Response (connected):**
+
+```json
+{
+  "requestId": "req-eth-001",
+  "command": "get_eth",
+  "responseCode": 0,
+  "responseMessage": "Success",
+  "payload": {
+    "interfaceStatus": "UP",
+    "linkSpeed": 100,
+    "duplex": "FULL",
+    "macAddress": "00:A0:C9:14:C8:29",
+    "ipAddress": "10.1.50.101",
+    "subnetMask": "255.255.255.0",
+    "gateway": "10.1.50.1",
+    "dns": ["10.1.1.10", "10.1.1.11"],
+    "dhcpEnabled": true,
+    "dhcpLeaseExpiry": "2026-05-15T08:30:00Z"
+  }
+}
+```
+
+**Response (not docked / no Ethernet):**
+
+```json
+{
+  "requestId": "req-eth-001",
+  "command": "get_eth",
+  "responseCode": 0,
+  "responseMessage": "Success",
+  "payload": {
+    "interfaceStatus": "DOWN",
+    "linkSpeed": 0,
+    "duplex": "UNKNOWN",
+    "macAddress": "00:A0:C9:14:C8:29",
+    "ipAddress": "",
+    "subnetMask": "",
+    "gateway": "",
+    "dns": [],
+    "dhcpEnabled": false,
+    "dhcpLeaseExpiry": ""
+  }
+}
+```
+
+---
+
+## Field Reference
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `interfaceStatus` | String | `UP` if the Ethernet link is active, `DOWN` if the reader is undocked or the cable is disconnected. |
+| `linkSpeed` | Integer | Negotiated link speed in Mbps (typically 100 or 1000). `0` when the link is down. |
+| `duplex` | String | `FULL`, `HALF`, or `UNKNOWN`. |
+| `macAddress` | String | The MAC address of the cradle's Ethernet interface as seen by the reader. |
+| `ipAddress` | String | IPv4 address assigned via DHCP (or static, if configured on the cradle). Empty when the link is down. |
+| `subnetMask` | String | Subnet mask for the assigned IP address. |
+| `gateway` | String | Default gateway address. |
+| `dns` | Array | DNS server addresses provided by DHCP. |
+| `dhcpEnabled` | Boolean | Whether the Ethernet interface is using DHCP for address assignment. |
+| `dhcpLeaseExpiry` | String | ISO 8601 timestamp of the DHCP lease expiration. Empty if DHCP is not active. |
+
+---
+
+## When to Use Ethernet Status Checks
+
+**Cradle-mounted deployments:** Readers mounted in cradles at dock doors or workstations can use Ethernet for a more stable, higher-bandwidth connection than Wi-Fi. Verify the link is up before relying on it.
+
+**Troubleshooting connectivity:** If a docked reader is not reaching the MQTT broker, check Ethernet status first. A `DOWN` interface means the physical connection (cradle seating, cable, switch port) needs attention.
+
+**Monitoring scripts:** Periodically query `get_eth` across your fleet to detect docked readers that have lost Ethernet connectivity; this can indicate cradle hardware issues or network switch problems.
+
+---
+
+## Common Issues
+
+| Symptom | Likely Cause | Action |
+|---------|-------------|--------|
+| `interfaceStatus: DOWN` when docked | Reader not fully seated, Ethernet cable disconnected, or switch port disabled | Reseat reader, check cable, verify switch port status |
+| IP address is `169.254.x.x` | DHCP server unreachable; link-local address assigned | Check DHCP server, verify VLAN configuration |
+| `gateway` is empty | DHCP response did not include a gateway | Check DHCP scope configuration |
+| DNS array is empty | DHCP did not provide DNS servers | Add DNS option to DHCP scope or use static DNS |
+
+---
+
+## Next Steps
+
+- [About Network Architecture](./about-network-architecture): understand how Ethernet fits into the overall connectivity model
+- [Troubleshoot Network Issues](./troubleshoot-network): full network diagnostic guide

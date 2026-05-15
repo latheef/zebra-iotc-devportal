@@ -1,0 +1,110 @@
+---
+sidebar_position: 5
+title: "About Alert Events"
+description: "Understanding alert event types, severity levels, and de-bounce behavior on the RFD40/RFD90."
+---
+
+# About Alert Events
+
+Alert events fire when a monitored device metric crosses a configured threshold. They are low-frequency, high-importance events designed to trigger operational responses, replacing a low battery, investigating overheating, or addressing connectivity issues.
+
+## Alert Types
+
+The RFD40/RFD90 generates alerts for the following conditions:
+
+### Battery Low (`BATTERY_LOW`)
+
+Fires when the battery level drops below the warning threshold (default: 20%). Severity: **WARNING**.
+
+This alert signals that the device will need charging or a battery swap soon. In a warehouse shift context, this typically means the device has 1–2 hours of active use remaining.
+
+### Battery Critical (`BATTERY_CRITICAL`)
+
+Fires when the battery level drops below the critical threshold (default: 10%). Severity: **CRITICAL**.
+
+At this level, the device may power off unexpectedly during an RFID operation. Immediate action is required; dock the device or swap the battery.
+
+### Temperature High (`TEMPERATURE_HIGH`)
+
+Fires when the internal device temperature exceeds the configured threshold (default: 45°C). Severity: **WARNING** or **CRITICAL** depending on the temperature.
+
+Sustained high temperatures can indicate:
+- Extended high-power RF scanning sessions
+- Device in direct sunlight or near heat sources
+- Hardware malfunction
+
+### Connection Degraded (`CONNECTION_DEGRADED`)
+
+Fires when the Wi-Fi signal strength or Bluetooth link quality falls below acceptable levels. Severity: **WARNING**.
+
+Degraded connectivity may cause:
+- Delayed `dataEVT` delivery
+- Missed MQTT messages (especially at QoS 0)
+- Eventual disconnection if conditions persist
+
+### Operation Failed (`OPERATION_FAILED`)
+
+Fires when an RFID operation terminates unexpectedly due to an error. Severity: **ERROR**.
+
+This may indicate RF hardware issues, antenna faults, or firmware errors that prevented the operation from completing normally.
+
+## alerts vs. alert_short
+
+The reader can publish alerts in two formats simultaneously:
+
+| Format | Payload Size | Content | Use Case |
+|---|---|---|---|
+| `alerts` | Full (~300–500 bytes) | Complete context: device state snapshot, threshold, message | Rich monitoring systems |
+| `alert_short` | Compact (~80–120 bytes) | Essential fields only: type, severity, value | Bandwidth-constrained or high-volume fleets |
+
+Both formats carry the same `alert_type` and `severity`. The difference is the amount of contextual data included. You can enable one or both via `config_events`.
+
+## De-bounce Behavior
+
+To prevent alert storms when a metric oscillates around a threshold, the reader firmware implements **de-bounce logic**:
+
+1. **Initial trigger**: When the metric first crosses the threshold, the alert fires immediately
+2. **Suppression window**: After firing, the same alert type is suppressed for a configurable period (typically 60 seconds)
+3. **Re-trigger**: If the metric is still in the alert condition after the suppression window, the alert fires again
+4. **Clear condition**: When the metric returns to a normal value and stays there through a full suppression window, the alert is eligible to re-trigger on the next breach
+
+This prevents scenarios like a battery bouncing between 19% and 21% from generating hundreds of `BATTERY_LOW` alerts per minute.
+
+### Example Timeline
+
+```
+10:00:00 - Battery at 21% → no alert
+10:00:30 - Battery at 19% → BATTERY_LOW alert fires
+10:00:45 - Battery at 20% → suppressed (within window)
+10:01:00 - Battery at 18% → suppressed (within window)
+10:01:30 - Battery at 17% → BATTERY_LOW alert fires again (window expired)
+```
+
+## Severity Levels
+
+| Severity | Meaning | Recommended Action |
+|---|---|---|
+| `WARNING` | Approaching a limit; action recommended | Schedule maintenance, notify supervisor |
+| `CRITICAL` | At or beyond a dangerous limit; immediate action required | Stop operations, swap device |
+| `ERROR` | Operation failure; system is impacted | Investigate, restart operation or device |
+
+## Subscribing to Alerts
+
+Subscribe to alerts for a specific device:
+```
+{tenantId}/DATA/clients/alerts/{deviceSerial}
+```
+
+Subscribe to alerts for all devices in the fleet:
+```
+{tenantId}/DATA/clients/alerts/+
+```
+
+> **Note**: Alerts are published at QoS 1, ensuring at-least-once delivery. Your application should handle potential duplicate alert deliveries by deduplicating on `device_serial` + `timestamp` + `alert_type`.
+
+## Related Topics
+
+- [Event Types Reference](./event-types-reference.mdx): alert payload schemas
+- [How to Configure Event Reporting](./configure-event-reporting.mdx): setting alert thresholds
+- [How to Monitor Battery Lifecycle](../monitoring/monitor-battery.mdx): battery management
+- [About Exception Events](./about-exception-events.mdx): error-level events

@@ -1,0 +1,79 @@
+---
+sidebar_position: 4
+title: REST Management
+---
+
+# REST API: Management
+
+Use the REST API to manage firmware, system settings, and lifecycle operations on your Zebra fixed RFID reader.
+
+## System Status
+
+### Get Reader Status
+
+```bash
+curl -k -u admin:password https://<READER_IP>/api/v1/status
+```
+
+Response:
+
+```json
+{
+  "model": "FX9600",
+  "serialNumber": "FX9600-123456",
+  "firmwareVersion": "4.1.0",
+  "uptime": 86400,
+  "temperature": 45,
+  "antennaCount": 4
+}
+```
+
+## Firmware Management
+
+### Check Current Firmware
+
+```bash
+curl -k -u admin:password https://<READER_IP>/api/v1/firmware
+```
+
+### Upload Firmware
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v1/firmware/upload \
+  -F "file=@firmware-v4.2.0.bin"
+```
+
+### Apply Firmware Update
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v1/firmware/apply
+```
+
+The reader reboots automatically after applying the firmware.
+
+## System Operations
+
+### Reboot Reader
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v1/system/reboot
+```
+
+### Factory Reset
+
+```bash
+curl -k -u admin:password \
+  -X POST https://<READER_IP>/api/v1/system/factory-reset
+```
+
+:::danger
+Factory reset erases all configuration including network settings. The reader reverts to default IP addressing.
+:::
+
+## See Also
+
+- [REST API Reference](/fixed/api-reference): Full interactive API documentation
+- [Configuration](./configuration): RF and network configuration endpoints

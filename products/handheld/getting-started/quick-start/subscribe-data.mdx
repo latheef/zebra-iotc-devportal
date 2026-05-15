@@ -1,0 +1,95 @@
+---
+sidebar_position: 4
+title: "Step 3: Subscribe to Tag Data Events"
+description: "Subscribe to the DATA interface topic to receive RFID tag read events from your reader."
+---
+
+# Step 3: Subscribe to Tag Data Events
+
+📗 **TUTORIAL**: In this step, you subscribe to the DATA interface to receive RFID tag data events when the reader performs inventory operations.
+
+## What You Will Do
+
+1. Open a third terminal for the data subscription
+2. Subscribe to the `data1event` topic on the DATA interface
+3. Confirm the subscription is active
+
+## Subscribe to the Data Event Topic
+
+Open a **new terminal** (keep your previous terminals running) and subscribe to the tag data event topic:
+
+```bash
+mosquitto_sub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/DATA/clients/data1event/<DEVICE_SERIAL>" \
+  -v
+```
+
+### Example with Sample Values
+
+```bash
+mosquitto_sub -h mqtt.iotconnector.zebra.com -p 8883 \
+  -u "tenant-user@abc123def456" -P "mySecretPassword" \
+  --capath /etc/ssl/certs \
+  -t "abc123def456/DATA/clients/data1event/RFD40-1234567890" \
+  -v
+```
+
+## Understanding the Topic
+
+The topic follows the standard IOTC pattern:
+
+```
+{tenantId}/DATA/clients/data1event/{deviceSerial}
+```
+
+| Segment | Value | Description |
+|---------|-------|-------------|
+| `{tenantId}` | Your tenant ID | Identifies your IOTC tenant |
+| `DATA` | Interface | The DATA interface carries tag read events |
+| `clients` | Fixed | Standard topic segment |
+| `data1event` | Channel | Primary tag data event channel |
+| `{deviceSerial}` | Reader serial | Filters events from a specific reader |
+
+### Available Data Channels
+
+| Channel | Description |
+|---------|-------------|
+| `data1event` | Primary tag data events (inventory reads) |
+| `data2event` | Secondary tag data events (access operations, read/write results) |
+
+For this quick start, you only need `data1event`.
+
+## Also Subscribe to Control Responses
+
+You will also need to see control command responses in the next steps. Open one more terminal (or add to an existing subscription) for the CTRL response topic:
+
+```bash
+mosquitto_sub -h <BROKER_HOST> -p 8883 \
+  -u "<MQTT_USERNAME>" -P "<MQTT_PASSWORD>" \
+  --capath /etc/ssl/certs \
+  -t "<TENANT_ID>/CTRL/clients/resp/<DEVICE_SERIAL>" \
+  -v
+```
+
+## What to Expect
+
+Both subscriber terminals will appear idle; this is normal. No data will appear until you start an RFID inventory operation in the next step.
+
+## Terminal Summary
+
+At this point, you should have the following terminals running:
+
+| Terminal | Subscribed Topic | Purpose |
+|----------|-----------------|---------|
+| **Terminal 1** | `{tenantId}/MGMT/clients/resp/{deviceSerial}` | Management responses |
+| **Terminal 2** | Publisher terminal | Sending commands |
+| **Terminal 3** | `{tenantId}/DATA/clients/data1event/{deviceSerial}` | Tag data events |
+| **Terminal 4** | `{tenantId}/CTRL/clients/resp/{deviceSerial}` | Control responses |
+
+> **Note:** If you prefer fewer terminals, you can use MQTT wildcard subscriptions (e.g., `{tenantId}/+/clients/+/{deviceSerial}`) to capture all topics in a single subscriber. However, separate terminals make it easier to follow this tutorial.
+
+## Next Step
+
+Your data subscription is ready. Proceed to [Step 4: Start an RFID Read Operation](./start-operation.mdx).

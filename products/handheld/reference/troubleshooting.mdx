@@ -1,0 +1,369 @@
+---
+sidebar_position: 1
+title: "Troubleshooting Guide"
+---
+
+# Troubleshooting Guide
+
+📙 **HOW-TO GUIDE**: Systematic approaches for diagnosing and resolving common issues with Zebra RFD40/RFD90 IoT Connector deployments.
+
+## 18.1 Systematic Approach
+
+Before diving into specific symptoms, follow this structured methodology:
+
+1. **Identify the layer.** Determine whether the issue is at the RFID layer, Bluetooth layer, network/Wi-Fi layer, MQTT layer, or application layer.
+2. **Gather data.** Collect device logs, MQTT broker logs, heartbeat status, and any error responses. Note the device firmware version.
+3. **Isolate the variable.** Change one thing at a time. Test with a known-good configuration before modifying the suspect component.
+4. **Test with minimal setup.** Use a single device, a single MQTT client, and a simple command (e.g., `get_version`) to verify basic connectivity.
+5. **Verify the fix.** After applying a resolution, confirm the issue is resolved and monitor for recurrence over at least 15 minutes.
+
+> **Tip:** The `get_version` command is the simplest health check. If it succeeds, the MQTT path from your client through the broker to the device is working.
+
+---
+
+## 18.2 Connection Issues
+
+### Device Not Appearing on Broker
+
+**Symptom:** The device is powered on but no client ID appears in the broker's connected clients list.
+
+**Probable Causes:**
+- Device is not connected to Wi-Fi
+- MQTT endpoint is not configured on the device
+- Broker hostname or port is incorrect
+- DNS resolution failure
+
+**Diagnostic Steps:**
+1. Verify the device has a Wi-Fi connection (check LED indicators or use 123RFID Desktop).
+2. Confirm the MQTT endpoint is configured with the correct broker address and port.
+3. Test DNS resolution from the same network segment the device is on.
+4. Check the broker logs for rejected connection attempts.
+
+**Resolution:** Reconfigure the MQTT endpoint with the correct broker address. If DNS is the issue, use the broker's IP address temporarily to confirm connectivity, then fix DNS.
+
+---
+
+### Immediate Disconnect After Connecting
+
+**Symptom:** The device connects to the broker but immediately disconnects (visible in broker logs as a brief session).
+
+**Probable Causes:**
+- Client ID collision; another device or client is using the same client ID
+- Broker ACL rejecting the client after authentication
+- MQTT keepalive set too low
+
+**Diagnostic Steps:**
+1. Check the broker for another client with the same client ID. MQTT 3.1.1 disconnects the existing session when a duplicate client ID connects.
+2. Review broker ACL logs for authorization failures.
+3. Verify the keepalive interval is at least 30 seconds.
+
+**Resolution:** Ensure each device uses a unique client ID (the device serial number is recommended). Adjust keepalive to a minimum of 30 seconds.
+
+---
+
+### Intermittent Disconnections
+
+**Symptom:** The device connects successfully but drops connection periodically.
+
+**Probable Causes:**
+- Weak Wi-Fi signal (RSSI below -75 dBm)
+- Network infrastructure issues (AP roaming, DHCP lease expiry)
+- Broker overloaded or restarting
+- MQTT keepalive timeout exceeded due to network latency
+
+**Diagnostic Steps:**
+1. Monitor the Wi-Fi signal strength via device events or 123RFID Desktop.
+2. Check if disconnections correlate with AP roaming events.
+3. Review broker resource utilization during disconnection times.
+4. Increase the keepalive interval and observe if disconnections reduce.
+
+**Resolution:** Improve Wi-Fi coverage in the operating area. Set keepalive to 60 seconds or higher. Enable MQTT clean session = false so the broker queues messages during brief disconnections.
+
+---
+
+### TLS Handshake Failures
+
+**Symptom:** Error code 13 in response, or broker logs show TLS negotiation failure.
+
+**Probable Causes:**
+- CA certificate not installed on the device
+- Server certificate expired or not matching the hostname
+- TLS version mismatch (device requires TLS 1.2)
+- Device clock significantly out of sync, causing certificate validation failure
+
+**Diagnostic Steps:**
+1. Verify the CA certificate is installed on the device using `get_config`.
+2. Check the broker's server certificate expiry date.
+3. Confirm the broker supports TLS 1.2.
+4. Check the device timestamp in heartbeat events; significant clock skew causes certificate validation to fail.
+
+**Resolution:** Install the correct CA certificate. Renew expired server certificates. Synchronize the device clock via NTP if available on the network.
+
+---
+
+### Authentication Failures
+
+**Symptom:** Error code 14, or broker logs show `CONNACK` with return code 4 (bad username/password) or 5 (not authorized).
+
+**Probable Causes:**
+- Incorrect username or password in the endpoint configuration
+- Client certificate not matching the broker's trust store
+- Device not registered in the broker's ACL
+
+**Diagnostic Steps:**
+1. Test the same credentials from a desktop MQTT client (e.g., MQTT Explorer) to isolate whether the issue is credential-related or device-specific.
+2. Check the broker's authentication backend for the device's entry.
+
+**Resolution:** Update the endpoint credentials on the device. Ensure the device's client certificate is signed by a CA trusted by the broker.
+
+---
+
+### Firewall Blocking Connections
+
+**Symptom:** Device cannot reach the broker. No connection attempts visible in broker logs.
+
+**Probable Causes:**
+- Outbound port 1883 (MQTT) or 8883 (MQTTS) blocked by corporate firewall
+- Network proxy intercepting connections
+
+**Diagnostic Steps:**
+1. From a machine on the same network, test TCP connectivity to the broker's address and port.
+2. Check with the network team for firewall rules affecting the device VLAN.
+
+**Resolution:** Request firewall rules to allow outbound TCP on port 8883 (preferred, TLS) or 1883 from the device network to the broker address.
+
+---
+
+## 18.3 RFID Operation Issues
+
+### Start Succeeds but No Tags Detected
+
+**Symptom:** `start_inventory` returns success (code 0) but no tag read events arrive.
+
+**Probable Causes:**
+- No tags in the antenna field
+- Transmit power set too low
+- Tags are detuned (metal, liquid environment)
+- Antenna fault not detected
+
+**Diagnostic Steps:**
+1. Place a known-good tag within 30 cm of the reader and retry.
+2. Check the current transmit power via `get_config`; increase if set below 200 (about 20 dBm).
+3. Try a different tag to rule out a defective tag.
+
+**Resolution:** Increase transmit power. Ensure tags are appropriate for the environment (use on-metal tags for metallic surfaces). Verify the antenna is not physically damaged.
+
+---
+
+### Low Read Rate
+
+**Symptom:** Tags are being read but the read rate is significantly lower than expected.
+
+**Probable Causes:**
+- High tag population exceeding the session/target configuration
+- RF interference from other readers or equipment
+- Suboptimal antenna orientation relative to tags
+- Session persistence causing tags not to be re-inventoried
+
+**Diagnostic Steps:**
+1. Check the inventory session setting; Session 0 provides highest re-read rate; Session 1/2/3 provide singulation for large populations.
+2. Scan the RF environment for interference sources.
+3. Test in a controlled environment with a known tag count.
+
+**Resolution:** Adjust the session and target settings based on the use case. Use Session 0 for high re-read applications (dock door). Use Session 1 with Target AB for singulation in high-population scenarios.
+
+---
+
+### Reading Wrong Tags (Unwanted Reads)
+
+**Symptom:** Inventory results include tags outside the intended read zone.
+
+**Probable Causes:**
+- Transmit power too high for the application
+- No tag filtering configured
+
+**Diagnostic Steps:**
+1. Lower the transmit power and observe if stray reads decrease.
+2. Review the current tag filter configuration via `get_config`.
+
+**Resolution:** Reduce transmit power to match the intended read range. Configure tag filters (EPC prefix mask, RSSI threshold) to exclude unwanted tags.
+
+---
+
+### Inventory Stops Unexpectedly
+
+**Symptom:** An active inventory operation stops without a `stop_inventory` command.
+
+**Probable Causes:**
+- Trigger mode set to immediate with a short duration
+- Battery critically low; device suspended RFID to conserve power
+- Thermal protection activated due to overheating
+- Bluetooth disconnection from host device (in tethered trigger mode)
+
+**Diagnostic Steps:**
+1. Check for exception events (codes 1002, 1204) around the time the operation stopped.
+2. Review the trigger mode and duration settings.
+
+**Resolution:** Adjust trigger mode and duration for the use case. Ensure adequate battery charge. Allow the device to cool if temperature warnings were reported.
+
+---
+
+## 18.4 Tag Data Issues
+
+### No Events Received on Event Topic
+
+**Symptom:** Inventory is running (confirmed via response) but no tag events arrive on the event topic.
+
+**Probable Causes:**
+- MQTT client not subscribed to the correct event topic
+- Topic string has a typo or incorrect device ID
+- Broker ACL preventing the client from subscribing
+
+**Diagnostic Steps:**
+1. Verify the subscription topic matches `zebra/iotc/event/{deviceId}` exactly.
+2. Use a wildcard subscription (`zebra/iotc/event/#`) temporarily to see if events appear under a different device ID.
+3. Check broker ACL logs.
+
+**Resolution:** Correct the subscription topic. Ensure the device ID in the topic matches the actual device identifier.
+
+---
+
+### Empty or Partial Payloads
+
+**Symptom:** Tag events arrive but contain empty or incomplete data.
+
+**Probable Causes:**
+- MQTT message size exceeding broker's maximum payload setting
+- Network packet fragmentation causing truncation
+- QoS 0 delivery with packet loss
+
+**Diagnostic Steps:**
+1. Check the broker's maximum message size configuration.
+2. Monitor for MQTT packet errors in broker logs.
+3. Switch to QoS 1 and observe if the issue resolves.
+
+**Resolution:** Increase the broker's max message size setting. Use QoS 1 for reliable delivery. If payloads are very large (high tag populations), consider reducing the reporting interval or enabling tag batching.
+
+---
+
+### Duplicate Tag Events
+
+**Symptom:** The same tag EPC appears multiple times in rapid succession.
+
+**Probable Causes:**
+- This is expected behavior; RFID readers report every interrogation cycle. Use unique tag reporting or deduplication in your application.
+- QoS 1 re-delivery after network hiccup
+
+**Diagnostic Steps:**
+1. Check if `uniqueTagReportInterval` is configured in the device settings.
+2. Verify if duplicates are true duplicates (same EPC, same timestamp) or re-reads (same EPC, different timestamp).
+
+**Resolution:** Enable unique tag reporting to suppress re-reads within a configurable time window. Implement application-level deduplication using EPC + timestamp as a composite key.
+
+---
+
+### Timestamp Drift
+
+**Symptom:** Tag event timestamps do not align with the server clock.
+
+**Probable Causes:**
+- Device clock not synchronized; the device does not have an NTP source
+- Time zone mismatch between device and server
+
+**Diagnostic Steps:**
+1. Compare the device timestamp in a heartbeat event with the server's current time.
+2. Check if the device is configured with an NTP server.
+
+**Resolution:** Configure an NTP server on the network accessible to the device. All timestamps from the IoT Connector are in UTC; ensure your server also processes them as UTC.
+
+---
+
+## 18.5 Bluetooth & Host Issues
+
+### Device Not Pairing
+
+**Symptom:** The RFD40/RFD90 does not appear in the host device's Bluetooth discovery.
+
+**Probable Causes:**
+- Reader sled not in pairing mode
+- Host device Bluetooth is off or in airplane mode
+- Previous pairing record needs to be cleared
+
+**Diagnostic Steps:**
+1. Ensure the reader is in pairing mode (refer to the hardware quick-start guide for the pairing barcode procedure).
+2. Verify Bluetooth is enabled on the host device.
+3. Clear existing pairings on both devices and retry.
+
+**Resolution:** Follow the hardware pairing procedure. If the reader was previously paired with a different host, unpair it first using 123RFID Desktop or a factory reset.
+
+---
+
+### Bluetooth Disconnections
+
+**Symptom:** The Bluetooth connection between the reader sled and host device drops intermittently.
+
+**Probable Causes:**
+- Distance exceeding Bluetooth range (approximately 10 meters)
+- Physical obstructions or RF interference
+- Host device entering power-saving mode and suspending Bluetooth
+
+**Diagnostic Steps:**
+1. Test at close range (< 2 meters) to rule out distance issues.
+2. Check if disconnections correlate with the host device's screen-off or sleep events.
+
+**Resolution:** Keep the reader within operational range. Configure the host device to prevent Bluetooth power-saving during active use. RFID operations continue during brief Bluetooth disconnections; data is queued and delivered when the connection is restored.
+
+---
+
+## 18.6 Battery & Power Issues
+
+### Rapid Battery Drain
+
+**Symptom:** Battery depletes significantly faster than the expected 8–12 hour operational life.
+
+**Probable Causes:**
+- Transmit power set to maximum continuously
+- Continuous inventory running without pauses
+- Wi-Fi reconnection loops consuming power
+- Bluetooth scanning continuously active
+
+**Diagnostic Steps:**
+1. Check the transmit power setting; higher power uses more battery.
+2. Review whether inventory operations are running continuously or triggered on demand.
+3. Monitor Wi-Fi connection stability; frequent reconnections drain battery.
+
+**Resolution:** Reduce transmit power to the minimum level that meets read range requirements. Use trigger-based inventory instead of continuous scanning. Fix Wi-Fi connectivity issues to prevent reconnection loops.
+
+---
+
+### Unexpected Shutdown
+
+**Symptom:** The device powers off without warning.
+
+**Probable Causes:**
+- Battery critically depleted; the device shut down to protect the battery
+- Hardware fault (rare)
+- Thermal shutdown due to sustained high-power operation in hot environments
+
+**Diagnostic Steps:**
+1. Check the last exception events before shutdown; look for codes 1002 (battery critical) or 1204 (temperature shutdown).
+2. Inspect the battery for swelling or physical damage.
+
+**Resolution:** Charge the battery fully and retry. If thermal shutdown, allow the device to cool and reduce transmit power or duty cycle. If the issue persists with a full battery in normal temperatures, contact Zebra support.
+
+---
+
+### Battery Health Degradation
+
+**Symptom:** Exception event code 1005 reported, or the device does not hold charge as long as when new.
+
+**Probable Causes:**
+- Normal battery aging after many charge cycles (typically 500+ full cycles)
+- Exposure to extreme temperatures
+- Leaving the device on the charger continuously for extended periods
+
+**Diagnostic Steps:**
+1. Check the battery health percentage via `get_config` if supported by the firmware version.
+2. Review the device's charge cycle history.
+
+**Resolution:** Replace the battery when health drops below 60% of original capacity. Follow Zebra's battery care guidelines: avoid full discharges, charge at room temperature, and remove from the charger when fully charged.

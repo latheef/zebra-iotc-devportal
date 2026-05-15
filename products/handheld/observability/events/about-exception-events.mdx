@@ -1,0 +1,108 @@
+---
+sidebar_position: 6
+title: "About Exception Events"
+description: "Understanding exception events, severity levels, and common exception codes on the RFD40/RFD90."
+---
+
+# About Exception Events
+
+Exception events (`exceptionEVT`) report error conditions encountered by the RFD40/RFD90 reader sled. Unlike alerts, which monitor gradual metric degradation, exceptions represent discrete error occurrences; something went wrong at a specific moment.
+
+## Exception Semantics
+
+An exception event means the device encountered a condition it could not handle normally. Exceptions may be transient (a single failed RF query) or persistent (a hardware fault). The `severity` field indicates the impact.
+
+Exceptions do not necessarily mean the device has stopped working. Many exceptions are informational or recoverable; the reader logs the event and continues operating. However, `FATAL` exceptions indicate a condition that requires intervention.
+
+## Severity Levels
+
+| Severity | Meaning | Example |
+|---|---|---|
+| `INFO` | Informational, logged but not actionable | Firmware completed a self-test |
+| `WARNING` | Recoverable issue, device compensated automatically | Antenna retry succeeded after initial failure |
+| `ERROR` | Significant failure, operation may be impacted | RF module failed to initialize; scan aborted |
+| `FATAL` | Critical failure, device cannot continue normal operation | Flash memory corruption; reboot required |
+
+## Common Exception Codes
+
+| Code | Severity | Description |
+|---|---|---|
+| `RF_HARDWARE_FAULT` | ERROR | RF module hardware error detected |
+| `ANTENNA_INIT_FAIL` | ERROR | Antenna failed to initialize |
+| `ANTENNA_RETRY_OK` | WARNING | Antenna initialization failed then succeeded on retry |
+| `FIRMWARE_WATCHDOG` | FATAL | Firmware watchdog timer expired (unexpected hang) |
+| `MEMORY_LOW` | WARNING | Device running low on available memory |
+| `MEMORY_CRITICAL` | ERROR | Memory exhaustion affecting operations |
+| `MQTT_PUBLISH_FAIL` | WARNING | Failed to publish an MQTT message (will retry) |
+| `MQTT_BUFFER_OVERFLOW` | ERROR | MQTT outbound buffer full; messages dropped |
+| `BT_LINK_LOST` | WARNING | Bluetooth connection to mobile computer lost |
+| `FLASH_WRITE_FAIL` | ERROR | Failed to write to flash storage |
+| `CONFIG_PARSE_ERROR` | WARNING | Received a malformed configuration command |
+| `OPERATION_TIMEOUT` | WARNING | RFID operation exceeded maximum duration |
+| `SELF_TEST_FAIL` | ERROR | Device self-test detected an anomaly |
+
+## Exception Event Structure
+
+Each exception includes:
+
+- **`exception_code`**: Machine-readable identifier for programmatic handling
+- **`severity`**: Impact level
+- **`message`**: Human-readable description
+- **`context`**: Additional key-value data specific to the exception type
+
+The `context` object varies by exception code. For `RF_HARDWARE_FAULT`, it may include `antenna_id` and `last_operation`. For `MQTT_BUFFER_OVERFLOW`, it may include `dropped_count` and `buffer_size`.
+
+## Building Exception-Driven Alerting
+
+Exceptions should be routed to your logging and alerting infrastructure. A typical processing pipeline:
+
+### 1. Collect
+
+Subscribe to exception events across the fleet:
+```
+{tenantId}/DATA/clients/exceptions/+
+```
+
+### 2. Classify
+
+Route exceptions by severity:
+
+- **INFO/WARNING**: Log for analysis, no immediate action
+- **ERROR**: Create a support ticket, notify operations
+- **FATAL**: Page on-call support, mark device as out-of-service
+
+### 3. Aggregate
+
+Track exception frequency per device and per exception code. Patterns to watch:
+
+| Pattern | Indicates |
+|---|---|
+| Same device, repeated `RF_HARDWARE_FAULT` | Likely hardware defect; schedule RMA |
+| Multiple devices, `MQTT_BUFFER_OVERFLOW` | Broker or network capacity issue |
+| Cluster of `BT_LINK_LOST` in same area | Bluetooth interference in that zone |
+| `FIRMWARE_WATCHDOG` on any device | Potential firmware bug; report to Zebra |
+
+### 4. Correlate
+
+Cross-reference exceptions with other event types:
+
+- An `OPERATION_FAILED` alert often follows an `RF_HARDWARE_FAULT` exception
+- `MQTT_BUFFER_OVERFLOW` exceptions may explain gaps in `dataEVT` delivery
+- `MEMORY_LOW` warnings may precede `MEMORY_CRITICAL` errors
+
+## Exception vs. Alert
+
+| | Exception | Alert |
+|---|---|---|
+| Trigger | Discrete error event | Metric threshold breach |
+| Frequency | Sporadic, event-driven | Periodic when condition persists |
+| De-bounce | No, each occurrence fires independently | Yes; suppression window |
+| Purpose | Error diagnostics | Operational health monitoring |
+
+Both event types are published at QoS 1 for reliable delivery.
+
+## Related Topics
+
+- [Event Types Reference](./event-types-reference.mdx): exceptionEVT payload schema
+- [About Alert Events](./about-alert-events.mdx): threshold-based alerting
+- [How to Check Device Status & Health](../monitoring/check-device-health.mdx): on-demand diagnostics

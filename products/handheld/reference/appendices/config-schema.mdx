@@ -1,0 +1,188 @@
+---
+sidebar_position: 1
+title: "Complete Configuration Document Schema"
+---
+
+# Complete Configuration Document Schema
+
+📕 **REFERENCE**: Full JSON schema overview for `get_config` and `set_config` commands.
+
+## Overview
+
+The IoT Connector configuration document is a JSON object returned by the `get_config` command and accepted by the `set_config` command. It contains all device-level settings organized into logical sections.
+
+When using `set_config`, you only need to include the sections and fields you want to change. Omitted fields retain their current values.
+
+## Top-Level Structure
+
+```json
+{
+  "deviceInfo": { },
+  "mqtt": { },
+  "network": { },
+  "rfid": { },
+  "inventory": { },
+  "tagReporting": { },
+  "triggers": { },
+  "heartbeat": { },
+  "bluetooth": { },
+  "battery": { },
+  "firmware": { },
+  "logging": { }
+}
+```
+
+## Section Reference
+
+### deviceInfo
+
+Read-only device identification and hardware details.
+
+| Field | Type | Description |
+|---|---|---|
+| `serialNumber` | String | Device serial number (unique identifier). |
+| `model` | String | Device model (e.g., `"RFD40"`, `"RFD90"`). |
+| `hardwareRevision` | String | Hardware revision identifier. |
+| `firmwareVersion` | String | Current firmware version string. |
+| `iotcVersion` | String | IoT Connector software version. |
+| `region` | String | Configured regulatory region code. |
+
+### mqtt
+
+MQTT broker connection settings.
+
+| Field | Type | Description |
+|---|---|---|
+| `endpoints` | Array | List of configured MQTT broker endpoints. |
+| `endpoints[].name` | String | Endpoint name (unique identifier). |
+| `endpoints[].host` | String | Broker hostname or IP address. |
+| `endpoints[].port` | Integer | Broker port (default: 8883 for TLS, 1883 for plain). |
+| `endpoints[].clientId` | String | MQTT client ID (defaults to serial number). |
+| `endpoints[].username` | String | Username for broker authentication (if applicable). |
+| `endpoints[].useTls` | Boolean | Whether to use TLS encryption. |
+| `endpoints[].caCertAlias` | String | Alias of the CA certificate for server verification. |
+| `endpoints[].clientCertAlias` | String | Alias of the client certificate for mutual TLS. |
+| `endpoints[].keepAlive` | Integer | MQTT keepalive interval in seconds (default: 60). |
+| `endpoints[].cleanSession` | Boolean | Whether to use MQTT clean session (default: true). |
+| `endpoints[].qos` | Integer | Default QoS level for publishing (0 or 1). |
+| `activeEndpoint` | String | Name of the currently active endpoint. |
+
+### network
+
+Wi-Fi network configuration.
+
+| Field | Type | Description |
+|---|---|---|
+| `wifiProfiles` | Array | List of saved Wi-Fi profiles (maximum 10). |
+| `wifiProfiles[].ssid` | String | Network SSID. |
+| `wifiProfiles[].security` | String | Security type: `"OPEN"`, `"WPA2_PSK"`, `"WPA2_ENTERPRISE"`, `"WPA3_SAE"`. |
+| `wifiProfiles[].priority` | Integer | Connection priority (lower number = higher priority). |
+| `wifiProfiles[].autoConnect` | Boolean | Whether to auto-connect when the SSID is available. |
+| `activeProfile` | String | SSID of the currently connected network. |
+| `rssi` | Integer | Current Wi-Fi signal strength in dBm (read-only). |
+| `ipAddress` | String | Current IP address assigned to the device (read-only). |
+
+### rfid
+
+RFID radio and antenna configuration.
+
+| Field | Type | Description |
+|---|---|---|
+| `transmitPowerIndex` | Integer | Transmit power level (1–300, where 300 ≈ 30 dBm). |
+| `antennaConfig` | Object | Antenna-specific settings. |
+| `antennaConfig.antennaId` | Integer | Antenna identifier (typically 1 for handheld). |
+| `rfMode` | Integer | RF mode index controlling modulation and data rate. |
+| `session` | Integer | Inventory session (0, 1, 2, or 3). |
+| `target` | String | Inventory target: `"A"`, `"B"`, or `"AB"`. |
+
+### inventory
+
+Inventory operation behavior.
+
+| Field | Type | Description |
+|---|---|---|
+| `startTrigger` | Object | Conditions for starting inventory (see triggers). |
+| `stopTrigger` | Object | Conditions for stopping inventory. |
+| `tagFilter` | Object | Tag filtering configuration. |
+| `tagFilter.memoryBank` | String | Memory bank for filter: `"EPC"`, `"TID"`, `"USER"`. |
+| `tagFilter.mask` | String | Hex string bit mask for filtering. |
+| `tagFilter.offset` | Integer | Bit offset in the memory bank. |
+| `tagFilter.action` | String | Filter action: `"INCLUDE"` or `"EXCLUDE"`. |
+
+### tagReporting
+
+Controls how tag read data is reported.
+
+| Field | Type | Description |
+|---|---|---|
+| `uniqueTagInterval` | Integer | Minimum interval (ms) between duplicate EPC reports. 0 = report every read. |
+| `reportRssi` | Boolean | Include RSSI value in tag events. |
+| `reportPhase` | Boolean | Include phase angle in tag events. |
+| `reportChannel` | Boolean | Include frequency channel in tag events. |
+| `reportTimestamp` | Boolean | Include device timestamp in tag events. |
+| `batchMode` | Boolean | Batch multiple tag reads into a single MQTT message. |
+| `batchSize` | Integer | Maximum number of tags per batch message (when batchMode is true). |
+
+### triggers
+
+Trigger mode configuration for RFID operations.
+
+| Field | Type | Description |
+|---|---|---|
+| `mode` | String | Trigger mode: `"IMMEDIATE"`, `"RFID_TRIGGER"`, `"BARCODE_TRIGGER"`. |
+| `startDelay` | Integer | Delay in ms before starting after trigger activation. |
+| `duration` | Integer | Maximum operation duration in ms (0 = no limit). |
+
+### heartbeat
+
+Heartbeat event configuration.
+
+| Field | Type | Description |
+|---|---|---|
+| `enabled` | Boolean | Whether heartbeat events are published. |
+| `interval` | Integer | Heartbeat interval in seconds (minimum 15). |
+| `includeBatteryLevel` | Boolean | Include battery level in heartbeat payload. |
+| `includeWifiRssi` | Boolean | Include Wi-Fi signal strength in heartbeat payload. |
+| `includeUptime` | Boolean | Include connection uptime in heartbeat payload. |
+
+### bluetooth
+
+Bluetooth connection settings (read-only via MQTT).
+
+| Field | Type | Description |
+|---|---|---|
+| `paired` | Boolean | Whether the reader is currently paired with a host device. |
+| `hostDeviceName` | String | Name of the paired host device. |
+| `connectionState` | String | Current Bluetooth state: `"CONNECTED"`, `"DISCONNECTED"`, `"PAIRING"`. |
+
+### battery
+
+Battery status information (read-only).
+
+| Field | Type | Description |
+|---|---|---|
+| `level` | Integer | Current battery level percentage (0–100). |
+| `charging` | Boolean | Whether the device is currently charging. |
+| `health` | Integer | Battery health percentage relative to original capacity. |
+| `temperature` | Float | Battery temperature in Celsius. |
+
+### firmware
+
+Firmware management settings.
+
+| Field | Type | Description |
+|---|---|---|
+| `currentVersion` | String | Currently installed firmware version (read-only). |
+| `availableVersion` | String | Available firmware version for update (read-only, if known). |
+| `autoUpdate` | Boolean | Whether to allow automatic firmware updates. |
+
+### logging
+
+Device-side logging configuration.
+
+| Field | Type | Description |
+|---|---|---|
+| `level` | String | Log level: `"ERROR"`, `"WARN"`, `"INFO"`, `"DEBUG"`. |
+| `publishLogs` | Boolean | Whether to publish log messages to the MQTT log topic. |
+
+> **Note:** Read-only fields are returned by `get_config` but ignored if included in `set_config`. Always retrieve the current configuration first to understand the device's state before making changes.

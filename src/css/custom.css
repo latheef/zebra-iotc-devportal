@@ -1,0 +1,647 @@
+/**
+ * Zebra Technologies Documentation — Custom CSS
+ *
+ * Styling derived from docs.yml (Fern) configuration:
+ *   accent:         #004C97 (light) / #6CB4EE (dark)
+ *   background:     #FFFFFF (light) / #101820 (dark)
+ *   sidebar-bg:     #F5F6F8 (light) / #0C1219 (dark)
+ *   header-bg:      #FFFFFF (light) / #101820 (dark)
+ *   card-bg:        #F0F2F5 (light) / #1A2332 (dark)
+ *   border:         #D1D5DB (light) / #2A3544 (dark)
+ *   typography:     NotoSans (body/headings), NotoSansMono (code)
+ *   layout:         header 64px, page 1408px, content 704px, sidebar 300px
+ */
+
+/* ==========================================================
+   FONT FACES — NotoSans from static/fonts/
+   ========================================================== */
+@font-face {
+  font-family: 'NotoSans';
+  src: url('./fonts/NotoSans-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NotoSans';
+  src: url('./fonts/NotoSans-Italic.ttf') format('truetype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NotoSans';
+  src: url('./fonts/NotoSans-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NotoSans';
+  src: url('./fonts/NotoSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NotoSansMono';
+  src: url('./fonts/NotoSansMono-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'NotoSansMono';
+  src: url('./fonts/NotoSansMono-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+/* ==========================================================
+   LIGHT MODE — CSS custom properties
+   ========================================================== */
+:root {
+  /* Accent / primary: Zebra brand blue #004C97 */
+  --ifm-color-primary:          #004C97;
+  --ifm-color-primary-dark:     #004088;
+  --ifm-color-primary-darker:   #003A7E;
+  --ifm-color-primary-darkest:  #002E63;
+  --ifm-color-primary-light:    #1A5EAA;
+  --ifm-color-primary-lighter:  #2C6AB5;
+  --ifm-color-primary-lightest: #4E84C9;
+
+  /* Surfaces */
+  --ifm-background-color:         #FFFFFF;
+  --ifm-background-surface-color: #F0F2F5;
+  --ifm-navbar-background-color:  #FFFFFF;
+  --ifm-footer-background-color:  #F5F6F8;
+
+  /* Borders */
+  --ifm-color-emphasis-300: #D1D5DB;
+  --ifm-hr-border-color:    #D1D5DB;
+
+  /* Typography */
+  --ifm-font-family-base:      'NotoSans', system-ui, -apple-system, sans-serif;
+  --ifm-heading-font-family:   'NotoSans', system-ui, -apple-system, sans-serif;
+  --ifm-font-family-monospace: 'NotoSansMono', 'SFMono-Regular', Consolas, monospace;
+  --ifm-font-size-base:        15px;
+  --ifm-line-height-base:      1.6;
+  --ifm-font-weight-semibold:  600;
+
+  /* Code */
+  --ifm-code-font-size:      93%;
+  --ifm-code-background:     #F0F2F5;
+  --ifm-code-border-radius:  4px;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 76, 151, 0.08);
+
+  /* Layout (from docs.yml layout section) */
+  --ifm-navbar-height:       64px;
+  --ifm-container-width:     1408px;
+  --ifm-container-width-xl:  1408px;
+  --content-max-width:       704px;
+  --sidebar-width:           300px;
+  --doc-sidebar-width:       300px;
+  --ifm-sidebar-border-color: #D1D5DB;
+
+  /* Links */
+  --ifm-link-color:       #004C97;
+  --ifm-link-hover-color: #003A7E;
+
+  /* Radius */
+  --ifm-global-radius:     6px;
+  --ifm-card-border-radius: 8px;
+}
+
+/* ==========================================================
+   DARK MODE — CSS custom properties
+   ========================================================== */
+[data-theme='dark'] {
+  /* Accent */
+  --ifm-color-primary:          #6CB4EE;
+  --ifm-color-primary-dark:     #54A8EB;
+  --ifm-color-primary-darker:   #3A9AE7;
+  --ifm-color-primary-darkest:  #1582D5;
+  --ifm-color-primary-light:    #87C2F2;
+  --ifm-color-primary-lighter:  #9ECEF5;
+  --ifm-color-primary-lightest: #C5E4FB;
+
+  /* Surfaces */
+  --ifm-background-color:         #101820;
+  --ifm-background-surface-color: #1A2332;
+  --ifm-navbar-background-color:  #101820;
+  --ifm-footer-background-color:  #0C1219;
+
+  /* Borders */
+  --ifm-color-emphasis-300: #2A3544;
+  --ifm-hr-border-color:    #2A3544;
+
+  /* Code */
+  --ifm-code-background: #1A2332;
+  --docusaurus-highlighted-code-line-bg: rgba(108, 180, 238, 0.12);
+
+  /* Links */
+  --ifm-link-color:       #6CB4EE;
+  --ifm-link-hover-color: #87C2F2;
+}
+
+/* ==========================================================
+   GLOBAL TYPOGRAPHY
+   ========================================================== */
+body {
+  font-family: var(--ifm-font-family-base);
+  font-size: var(--ifm-font-size-base);
+  line-height: var(--ifm-line-height-base);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--ifm-heading-font-family);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h1 { font-size: 2rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.25rem; }
+h4 { font-size: 1.1rem; }
+
+/* ==========================================================
+   NAVBAR
+   ========================================================== */
+.navbar {
+  height: var(--ifm-navbar-height);
+  box-shadow: 0 1px 0 var(--ifm-hr-border-color);
+  padding: 0 24px;
+}
+
+.navbar__inner {
+  max-width: var(--ifm-container-width);
+  margin: 0 auto;
+}
+
+.navbar__logo {
+  height: 32px;
+  width: auto;
+}
+
+.navbar__link {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* Filled "Developer Portal" button */
+.navbar-btn-filled {
+  background-color: var(--ifm-color-primary);
+  color: #FFFFFF !important;
+  border-radius: 6px;
+  padding: 6px 16px !important;
+  font-weight: 600;
+  transition: background-color 0.15s ease;
+}
+.navbar-btn-filled:hover {
+  background-color: var(--ifm-color-primary-dark);
+  text-decoration: none;
+  color: #FFFFFF !important;
+}
+[data-theme='dark'] .navbar-btn-filled {
+  color: #101820 !important;
+}
+
+/* ==========================================================
+   LAYOUT — container and content widths
+   ========================================================== */
+.container {
+  max-width: var(--ifm-container-width) !important;
+}
+
+/* Fern content-width: 704px */
+.theme-doc-markdown,
+article .markdown {
+  max-width: var(--content-max-width);
+}
+
+/* ==========================================================
+   SIDEBAR
+   ========================================================== */
+.theme-doc-sidebar-container {
+  width: var(--sidebar-width) !important;
+  min-width: var(--sidebar-width) !important;
+  border-right: 1px solid var(--ifm-hr-border-color);
+}
+
+.menu {
+  padding: 12px 0;
+  background: var(--ifm-footer-background-color);
+}
+
+/* Active page link */
+.menu__link--active {
+  color: var(--ifm-color-primary) !important;
+  font-weight: 600;
+  background-color: rgba(0, 76, 151, 0.08);
+  border-radius: 4px;
+}
+[data-theme='dark'] .menu__link--active {
+  background-color: rgba(108, 180, 238, 0.12);
+}
+
+.menu__link:hover {
+  background-color: var(--ifm-color-emphasis-100);
+  color: var(--ifm-color-primary);
+  border-radius: 4px;
+}
+
+/* Sub-items font size */
+.menu__list .menu__list .menu__link {
+  font-size: 0.875rem;
+  padding: 5px 12px 5px 16px;
+}
+
+/* ==========================================================
+   SIDEBAR SECTION HEADERS (Roman numeral groups)
+   Top-level non-collapsible categories styled as divider labels
+   ========================================================== */
+.sidebar-section-header > .menu__list-item-collapsible > .menu__link {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ifm-font-color-base) !important;
+  padding-top: 16px;
+  padding-bottom: 4px;
+  pointer-events: none;
+}
+
+.sidebar-section-header > .menu__list-item-collapsible:hover {
+  background: transparent;
+}
+
+.sidebar-section-header > .menu__list-item-collapsible > .menu__caret {
+  display: none;
+}
+
+/* Level-2 category labels (Control Commands, Events etc.) */
+.menu__list .menu__list > .menu__list-item > .menu__list-item-collapsible > .menu__link {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--ifm-font-color-base);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+/* ==========================================================
+   CODE
+   ========================================================== */
+code {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: var(--ifm-code-font-size);
+  padding: 2px 6px;
+  border-radius: var(--ifm-code-border-radius);
+  background: var(--ifm-code-background);
+  border: 1px solid var(--ifm-hr-border-color);
+}
+
+pre code {
+  border: none;
+  padding: 0;
+  background: transparent;
+}
+
+.prism-code {
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.875rem;
+  border-radius: var(--ifm-card-border-radius);
+}
+
+/* ==========================================================
+   TABLES
+   ========================================================== */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+
+th {
+  background-color: var(--ifm-background-surface-color);
+  font-weight: 600;
+  text-align: left;
+  padding: 10px 12px;
+  border-bottom: 2px solid var(--ifm-hr-border-color);
+}
+
+td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--ifm-hr-border-color);
+  vertical-align: top;
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+/* ==========================================================
+   CARDS
+   ========================================================== */
+.card {
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-hr-border-color);
+  border-radius: var(--ifm-card-border-radius);
+  padding: 20px;
+}
+
+/* ==========================================================
+   FOOTER
+   ========================================================== */
+.footer {
+  background-color: #F5F6F8;
+  border-top: 1px solid var(--ifm-hr-border-color);
+  color: var(--ifm-font-color-secondary);
+  font-size: 0.875rem;
+}
+
+[data-theme='dark'] .footer {
+  background-color: #0C1219;
+  border-top-color: #2A3544;
+}
+
+.footer__title {
+  font-weight: 600;
+  font-size: 0.875rem;
+  color: var(--ifm-font-color-base);
+}
+
+/* ==========================================================
+   PAGINATION
+   ========================================================== */
+.pagination-nav__link {
+  border: 1px solid var(--ifm-hr-border-color);
+  border-radius: var(--ifm-global-radius);
+  transition: border-color 0.15s;
+}
+.pagination-nav__link:hover {
+  border-color: var(--ifm-color-primary);
+}
+
+/* ==========================================================
+   TABLE OF CONTENTS (right sidebar)
+   ========================================================== */
+.table-of-contents__link {
+  font-size: 0.8125rem;
+  color: var(--ifm-font-color-secondary);
+}
+.table-of-contents__link:hover,
+.table-of-contents__link--active {
+  color: var(--ifm-color-primary);
+  font-weight: 500;
+}
+
+/* ==========================================================
+   SEARCH
+   ========================================================== */
+.navbar__search-input {
+  border: 1px solid var(--ifm-hr-border-color);
+  border-radius: 6px;
+  background: var(--ifm-background-surface-color);
+  font-family: var(--ifm-font-family-base);
+  font-size: 0.875rem;
+}
+
+/* ==========================================================
+   PROTOCOL BADGES
+   ========================================================== */
+.protocol-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.protocol-badge--rest {
+  color: #1e40af;
+  background-color: #dbeafe;
+}
+.protocol-badge--mqtt {
+  color: #166534;
+  background-color: #dcfce7;
+}
+[data-theme='dark'] .protocol-badge--rest {
+  color: #93c5fd;
+  background-color: #1e3a5f;
+}
+[data-theme='dark'] .protocol-badge--mqtt {
+  color: #86efac;
+  background-color: #14532d;
+}
+
+/* ==========================================================
+   DOCS HOME — product grid cards
+   ========================================================== */
+.docs-product-card {
+  display: flex;
+  flex-direction: column;
+  background: var(--ifm-background-surface-color);
+  border: 1px solid var(--ifm-hr-border-color);
+  border-radius: var(--ifm-card-border-radius);
+  padding: 24px;
+  text-decoration: none;
+  color: var(--ifm-font-color-base);
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.docs-product-card:hover {
+  border-color: var(--ifm-color-primary);
+  text-decoration: none;
+}
+.docs-product-card__title {
+  font-weight: 700;
+  font-size: 1rem;
+  margin-bottom: 6px;
+  color: var(--ifm-color-primary);
+}
+.docs-product-card__desc {
+  font-size: 0.875rem;
+  color: var(--ifm-font-color-secondary);
+  line-height: 1.5;
+}
+
+/* ==========================================================
+   RESPONSIVE
+   ========================================================== */
+@media (max-width: 996px) {
+  .navbar {
+    padding: 0 16px;
+  }
+}
+
+/* ==========================================================
+   ASYNCAPI REACT COMPONENT — docs.yml brand overrides
+   Target: @asyncapi/react-component v2.x (.aui-root scope)
+   Strategy: Override hardcoded Tailwind utility classes to
+   align typography, accent color, and surfaces with docs.yml.
+
+   docs.yml sources mapped here:
+     typography.bodyFont/headingsFont → .aui-root font-sans
+     typography.codeFont             → .aui-root font-mono / pre/code
+     colors.accent-primary.light     → blue-400/500/600, text-blue-500,
+                                       border-blue-300/600, hover states, prose a
+     colors.accent-primary.dark      → same classes under [data-theme='dark']
+     colors.sidebar-background.light → bg-gray-100
+     colors.card-background.light    → bg-gray-200
+     colors.sidebar-background.dark  → bg-gray-100 dark
+     colors.card-background.dark     → bg-gray-200 dark
+     colors.background.dark          → bg-gray-800, bg-white dark
+     colors.border.dark              → border-gray-400 dark
+   ========================================================== */
+
+/* --- Typography: NotoSans / NotoSansMono ------------------- */
+.aui-root html,
+.aui-root body,
+.aui-root .font-sans {
+  font-family: 'NotoSans', system-ui, -apple-system, sans-serif !important;
+}
+
+.aui-root pre,
+.aui-root code,
+.aui-root kbd,
+.aui-root samp,
+.aui-root .font-mono {
+  font-family: 'NotoSansMono', 'SFMono-Regular', Consolas, monospace !important;
+}
+
+/* --- Primary accent — light: #004C97 ----------------------- */
+.aui-root .bg-blue-400,
+.aui-root .bg-blue-500 {
+  background-color: rgba(0, 76, 151, var(--tw-bg-opacity, 1)) !important;   /* #004C97 */
+}
+.aui-root .bg-blue-600 {
+  background-color: rgba(0, 64, 136, var(--tw-bg-opacity, 1)) !important;   /* #004088 */
+}
+.aui-root .hover\:bg-blue-300:hover {
+  background-color: #E3EEF8 !important;                                      /* light hover tint */
+}
+.aui-root .text-blue-500 {
+  color: rgba(0, 76, 151, var(--tw-text-opacity, 1)) !important;
+}
+.aui-root .hover\:text-blue-600:hover {
+  color: rgba(0, 58, 126, var(--tw-text-opacity, 1)) !important;             /* #003A7E */
+}
+.aui-root .border-blue-300,
+.aui-root .border-blue-600 {
+  border-color: rgba(0, 76, 151, var(--tw-border-opacity, 1)) !important;
+}
+.aui-root .prose a {
+  color: #004C97 !important;
+}
+.aui-root .prose a:hover {
+  color: #003A7E !important;
+}
+
+/* --- Surface backgrounds — light: sidebar #F5F6F8, card #F0F2F5 --- */
+.aui-root .bg-gray-100 {
+  background-color: rgba(245, 246, 248, var(--tw-bg-opacity, 1)) !important; /* #F5F6F8 sidebar */
+}
+.aui-root .bg-gray-200 {
+  background-color: rgba(240, 242, 245, var(--tw-bg-opacity, 1)) !important; /* #F0F2F5 card */
+}
+
+/* ============================================================
+   DARK MODE — [data-theme='dark']
+   docs.yml: colors.accent-primary.dark  #6CB4EE
+             colors.background.dark      #101820
+             colors.card-background.dark #1A2332
+             colors.sidebar-background.dark #0C1219
+             colors.border.dark          #2A3544
+   ============================================================ */
+
+/* Accent dark: #6CB4EE */
+[data-theme='dark'] .aui-root .bg-blue-400,
+[data-theme='dark'] .aui-root .bg-blue-500 {
+  background-color: rgba(108, 180, 238, var(--tw-bg-opacity, 1)) !important; /* #6CB4EE */
+}
+[data-theme='dark'] .aui-root .bg-blue-600 {
+  background-color: rgba(84, 168, 235, var(--tw-bg-opacity, 1)) !important;  /* #54A8EB */
+}
+[data-theme='dark'] .aui-root .hover\:bg-blue-300:hover {
+  background-color: rgba(108, 180, 238, 0.15) !important;
+}
+[data-theme='dark'] .aui-root .text-blue-500 {
+  color: rgba(108, 180, 238, var(--tw-text-opacity, 1)) !important;
+}
+[data-theme='dark'] .aui-root .hover\:text-blue-600:hover {
+  color: rgba(135, 194, 242, var(--tw-text-opacity, 1)) !important;          /* #87C2F2 */
+}
+[data-theme='dark'] .aui-root .border-blue-300,
+[data-theme='dark'] .aui-root .border-blue-600 {
+  border-color: rgba(108, 180, 238, var(--tw-border-opacity, 1)) !important;
+}
+[data-theme='dark'] .aui-root .prose a {
+  color: #6CB4EE !important;
+}
+[data-theme='dark'] .aui-root .prose a:hover {
+  color: #87C2F2 !important;
+}
+
+/* Dark prose body / headings text */
+[data-theme='dark'] .aui-root .prose {
+  color: #CBD5E0 !important;
+}
+[data-theme='dark'] .aui-root .prose strong,
+[data-theme='dark'] .aui-root .prose h1,
+[data-theme='dark'] .aui-root .prose h2,
+[data-theme='dark'] .aui-root .prose h3,
+[data-theme='dark'] .aui-root .prose h4 {
+  color: #E2E8F0 !important;
+}
+
+/* Dark text utility classes */
+[data-theme='dark'] .aui-root .text-gray-700 {
+  color: rgba(203, 213, 224, var(--tw-text-opacity, 1)) !important;
+}
+[data-theme='dark'] .aui-root .text-gray-800 {
+  color: rgba(226, 232, 240, var(--tw-text-opacity, 1)) !important;
+}
+
+/* Dark surface backgrounds */
+[data-theme='dark'] .aui-root .bg-gray-100 {
+  background-color: rgba(12, 18, 25, var(--tw-bg-opacity, 1)) !important;    /* #0C1219 sidebar */
+}
+[data-theme='dark'] .aui-root .bg-gray-200 {
+  background-color: rgba(26, 35, 50, var(--tw-bg-opacity, 1)) !important;    /* #1A2332 card */
+}
+[data-theme='dark'] .aui-root .bg-gray-800 {
+  background-color: rgba(16, 24, 32, var(--tw-bg-opacity, 1)) !important;    /* #101820 main bg */
+}
+[data-theme='dark'] .aui-root .bg-white {
+  background-color: rgba(16, 24, 32, var(--tw-bg-opacity, 1)) !important;    /* #101820 main bg */
+}
+
+/* Dark border */
+[data-theme='dark'] .aui-root .border-gray-400 {
+  border-color: rgba(42, 53, 68, var(--tw-border-opacity, 1)) !important;    /* #2A3544 */
+}
+
+/* Dark component root */
+[data-theme='dark'] .aui-root {
+  color: #CBD5E0;
+  background-color: #101820;
+}
+
+/* Hide internal AsyncAPI hamburger/sidebar toggle button */
+.aui-root .burger-menu {
+  display: none !important;
+}
+
+/* Keep AsyncAPI sidebar sticky within the page — prevent viewport-fixed
+   positioning from overlapping the Docusaurus left nav */
+.aui-root .fixed {
+  position: sticky !important;
+  top: var(--ifm-navbar-height, 64px);
+  max-height: calc(100vh - var(--ifm-navbar-height, 64px));
+  overflow-y: auto;
+}
+
