@@ -6,7 +6,7 @@ description: "Tag read data event reference for Zebra RFD40/RFD90 handheld RFID 
 
 # dataEVT
 
-Tag read data events published by the reader during an active RFID operation. Each event contains one or more tag reads with EPC, RSSI, antenna, timestamp, and optional fields based on the `tagReportConfig` in the operating mode.
+Tag and barcode read data events published by the reader during an active RFID inventory operation. Each event contains tag data and optionally barcode data with EPC, RSSI, antenna, timestamp, and access results.
 
 ## Topic
 
@@ -21,87 +21,125 @@ Reader → Application
 
 ## Payload
 
+### RFID Tag Data
+
 ```json
 {
-  "event": "dataEVT",
-  "deviceSerial": "24042AR50033",
-  "timestamp": "2026-05-14T10:32:15.123Z",
-  "tags": [
-    {
-      "epc": "30340242A02C00000000001A",
-      "rssi": -52.5,
-      "antennaId": 1,
-      "firstSeenTime": "2026-05-14T10:32:15.100Z",
-      "lastSeenTime": "2026-05-14T10:32:15.123Z",
-      "phase": 124.7,
-      "channelIndex": 12,
-      "seenCount": 3
-    },
-    {
-      "epc": "E20068060000004012345678",
-      "rssi": -61.2,
-      "antennaId": 1,
-      "firstSeenTime": "2026-05-14T10:32:15.105Z",
-      "lastSeenTime": "2026-05-14T10:32:15.120Z",
-      "phase": 87.3,
-      "channelIndex": 14,
-      "tid": "E2003412F8300000",
-      "seenCount": 2
-    }
-  ]
+  "type": "BALANCED_PERFORMANCE",
+  "timestamp": "2019-08-24T14:15:22Z",
+  "data": {
+    "tagData": [
+      {
+        "EPCid": "BEDD11112222333344445555",
+        "EPC": "BEDD11112222333344445555",
+        "TID": "E2003412013BFD000B4E16D21D030143000D5FFBFFFFDC60",
+        "USER": "12343333123456781234567812345678",
+        "channel": 911.75,
+        "eventNum": 1,
+        "format": "epc",
+        "peakRssi": -39,
+        "phase": 0,
+        "seenCount": 1,
+        "accessResults": [
+          "READ-EPC-SUCCESS",
+          "READ-TID-SUCCESS",
+          "WRITE-USER-No Response from Tag"
+        ]
+      }
+    ]
+  }
 }
 ```
 
-### With User Memory
+### With Barcode Data
 
 ```json
 {
-  "event": "dataEVT",
-  "deviceSerial": "24042AR50033",
+  "type": "FAST_READ",
   "timestamp": "2026-05-14T10:32:16.456Z",
-  "tags": [
-    {
-      "epc": "30340242A02C00000000001A",
-      "rssi": -48.1,
-      "antennaId": 1,
-      "firstSeenTime": "2026-05-14T10:32:16.450Z",
-      "lastSeenTime": "2026-05-14T10:32:16.456Z",
-      "phase": 131.2,
-      "channelIndex": 8,
-      "tid": "E2003412F8300000",
-      "userMemory": "48656C6C6F",
-      "seenCount": 1
-    }
-  ]
+  "data": {
+    "tagData": [
+      {
+        "EPCid": "30340242A02C00000000001A",
+        "EPC": "30340242A02C00000000001A",
+        "eventNum": 2,
+        "format": "epc",
+        "peakRssi": -48,
+        "seenCount": 3,
+        "firstSeenTime": 1747218136100,
+        "lastSeenTime": 1747218136456
+      }
+    ],
+    "barcodeData": [
+      {
+        "symbology": "CODE_39",
+        "decodedBarcode": "ITEM-00123456"
+      }
+    ]
+  }
 }
 ```
 
 | Field | Type | Description |
 |---|---|---|
-| `event` | string | Always `"dataEVT"` |
-| `deviceSerial` | string | Serial number of the reporting device |
+| `type` | string | Operating mode that produced the data (see enum below) |
 | `timestamp` | string | Event publish timestamp in ISO 8601 format |
-| `tags` | array | Array of tag read records |
-| `tags[].epc` | string | Electronic Product Code in hexadecimal |
-| `tags[].rssi` | number | Received Signal Strength Indicator in dBm |
-| `tags[].antennaId` | integer | Antenna that read the tag (present when `includeAntennaId` is `true`) |
-| `tags[].firstSeenTime` | string | First read timestamp (present when `includeFirstSeenTime` is `true`) |
-| `tags[].lastSeenTime` | string | Last read timestamp (present when `includeLastSeenTime` is `true`) |
-| `tags[].phase` | number | RF phase angle in degrees (present when `includePhase` is `true`) |
-| `tags[].channelIndex` | integer | RF channel index used for the read (present when `includeChannel` is `true`) |
-| `tags[].tid` | string | Tag identifier memory bank in hexadecimal (present when `includeTid` is `true`) |
-| `tags[].userMemory` | string | User memory bank in hexadecimal (present when `includeUserMemory` is `true`) |
-| `tags[].seenCount` | integer | Number of times the tag was read in the reporting interval |
+| `data` | object | Tag and barcode data container |
+| `data.tagData` | array | Array of tag read records |
+| `data.barcodeData` | array | Array of barcode scan records (present when barcodes are scanned) |
+
+### `type` Enum
+
+| Value | Description |
+|---|---|
+| `FAST_READ` | High-speed read mode |
+| `CYCLE_COUNT` | Cycle count inventory mode |
+| `DENSE_READERS` | Dense reader environment mode |
+| `OPTIMAL_BATTERY` | Battery-optimized mode |
+| `BALANCED_PERFORMANCE` | Balanced speed/battery mode |
+| `ADVANCED` | Advanced custom configuration mode |
+
+### Tag Data Fields (`data.tagData[]`)
+
+| Field | Type | Description |
+|---|---|---|
+| `eventNum` | number | Event sequence number (required) |
+| `format` | string | EPC encoding format, typically `"epc"` (required) |
+| `EPCid` | string | EPC identifier — unique identifier encoded on the tag (hex string) |
+| `EPC` | string | EPC memory bank content (hex string) |
+| `TID` | string | Tag Identifier memory bank — manufacturer-assigned, immutable (hex string) |
+| `USER` | string | User memory bank — application-defined data (hex string) |
+| `RESERVED` | string | Reserved memory bank — kill and access passwords (hex string) |
+| `PC` | string | PC bits of the inventoried tag (hex string) |
+| `CRC` | string | CRC bits of the inventoried tag (hex string) |
+| `XPC` | string | XPC bits, if present (hex string) |
+| `channel` | number | RF channel in MHz when the tag was read (only when `reportFilter` duration is `0`) |
+| `peakRssi` | number | Signal strength in dBm (peak value since last report) |
+| `phase` | number | RF phase angle in degrees (only when `reportFilter` duration is `0`) |
+| `seenCount` | number | Times the tag was inventoried since the previous report (always `1` when `reportFilter` duration is `0`) |
+| `firstSeenTime` | number | Timestamp in milliseconds since epoch when the tag was first seen |
+| `lastSeenTime` | number | Timestamp in milliseconds since epoch when the tag was last seen |
+| `accessResults` | array | Results of access operations (read/write/lock/kill) as string array |
+| `userDefined` | string | Custom string value configured in operating mode |
+| `MAC` | string | MAC address of the reader that inventoried the tag |
+| `HOSTNAME` | string | Hostname of the reader that inventoried the tag |
+
+### Barcode Data Fields (`data.barcodeData[]`)
+
+| Field | Type | Description |
+|---|---|---|
+| `symbology` | string | Barcode symbology: `CODE_39` |
+| `decodedBarcode` | string | Decoded barcode string value (required) |
 
 ## Notes
 
-- The `data1event` and `data2event` topics carry the same event type. Two topics are provided to allow different QoS or subscriber routing for high-throughput scenarios.
+- The `data1event` and `data2event` topics carry the same event type. Two topics are provided for different QoS or subscriber routing in high-throughput scenarios.
 - The fields present in each tag record depend on the `tagReportConfig` configured via `set_operating_mode`. Only enabled fields appear in the payload.
-- `epc` is always present in every tag record regardless of configuration.
-- `rssi` values are negative dBm. Higher values (closer to 0) indicate stronger signal and closer proximity.
-- `phase` values range from 0 to 360 degrees and can be used for motion detection or distance estimation algorithms.
-- Tag events are batched; a single `dataEVT` may contain multiple tags. The batch size depends on the read rate and internal buffering.
-- High tag populations and dense read environments can generate significant data volume. Use `seenCountThreshold` and post-filters to manage throughput.
+- `EPCid` is typically the same as `EPC` — both represent the Electronic Product Code.
+- `peakRssi` values are negative dBm. Higher values (closer to 0) indicate stronger signal.
+- `firstSeenTime` and `lastSeenTime` are milliseconds since Unix epoch (not ISO 8601 strings).
+- `channel` and `phase` are only included when `reportFilter` duration is set to `0` (per-read reporting).
+- High tag populations can generate significant data volume. Use `seenCountThreshold` and post-filters to manage throughput.
 
 ## See Also
 

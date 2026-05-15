@@ -21,38 +21,62 @@ Application → Reader → Application
 
 ## Request Payload
 
+### Enable All Events
+
 ```json
 {
   "command": "config_events",
-  "requestId": "15",
-  "eventConfig": {
-    "heartbeat": {
-      "enabled": true,
-      "intervalSeconds": 300
+  "requestId": "abc123",
+  "eventConfiguration": {
+    "antenna": true,
+    "terminalConnection": true,
+    "firmwareUpdate": true,
+    "gpi": true,
+    "network": true,
+    "exceptions": true,
+    "ntp": true,
+    "userApp": true,
+    "heartbeat": true,
+    "power": true,
+    "battery": true,
+    "temperature": true,
+    "fileDownload": true,
+    "cpuUsage": true,
+    "flashUsage": true,
+    "ramUsage": true,
+    "heartbeatConfiguration": {
+      "interval": 100,
+      "inventoryStatus": true,
+      "batteryStatus": true,
+      "userApps": true
     },
-    "alerts": {
-      "enabled": true,
-      "batteryLow": {
-        "enabled": true,
-        "thresholdPercent": 20
-      },
-      "batteryCritical": {
-        "enabled": true,
-        "thresholdPercent": 5
-      },
-      "temperatureHigh": {
-        "enabled": true,
-        "thresholdCelsius": 50
-      },
-      "networkDisconnect": {
-        "enabled": true
-      },
-      "powerSourceChange": {
-        "enabled": true
-      }
-    },
-    "mqttConnectionEvents": {
-      "enabled": true
+    "cpuThreshold": 80,
+    "ramThreshold": 80,
+    "flashThreshold": 80,
+    "temperatureThreshold": 55
+  }
+}
+```
+
+### Selective Event Configuration
+
+```json
+{
+  "command": "config_events",
+  "requestId": "abc123",
+  "eventConfiguration": {
+    "terminalConnection": true,
+    "firmwareUpdate": true,
+    "network": true,
+    "heartbeat": true,
+    "power": true,
+    "battery": true,
+    "temperature": true,
+    "fileDownload": true,
+    "heartbeatConfiguration": {
+      "interval": 300,
+      "inventoryStatus": true,
+      "batteryStatus": true
     }
   }
 }
@@ -62,27 +86,43 @@ Application → Reader → Application
 |---|---|---|---|
 | `command` | string | Yes | Must be `"config_events"` |
 | `requestId` | string | Yes | Unique identifier to correlate the response |
-| `eventConfig.heartbeat.enabled` | boolean | No | Enable or disable heartbeat events |
-| `eventConfig.heartbeat.intervalSeconds` | integer | No | Heartbeat interval in seconds (60–3600). Default: `300` |
-| `eventConfig.alerts.enabled` | boolean | No | Master enable/disable for all alerts |
-| `eventConfig.alerts.batteryLow.enabled` | boolean | No | Enable low battery alert |
-| `eventConfig.alerts.batteryLow.thresholdPercent` | integer | No | Battery percentage threshold (1–50) |
-| `eventConfig.alerts.batteryCritical.enabled` | boolean | No | Enable critical battery alert |
-| `eventConfig.alerts.batteryCritical.thresholdPercent` | integer | No | Battery percentage threshold (1–20) |
-| `eventConfig.alerts.temperatureHigh.enabled` | boolean | No | Enable high temperature alert |
-| `eventConfig.alerts.temperatureHigh.thresholdCelsius` | integer | No | Temperature threshold in Celsius (30–70) |
-| `eventConfig.alerts.networkDisconnect.enabled` | boolean | No | Enable network disconnection alerts |
-| `eventConfig.alerts.powerSourceChange.enabled` | boolean | No | Enable power source change alerts |
-| `eventConfig.mqttConnectionEvents.enabled` | boolean | No | Enable MQTT connect/disconnect events |
+| `eventConfiguration` | object | Yes | Event enable flags and threshold configuration |
+| `eventConfiguration.antenna` | boolean | No | Enable antenna connect/disconnect events |
+| `eventConfiguration.terminalConnection` | boolean | No | Enable terminal connection/disconnection events |
+| `eventConfiguration.firmwareUpdate` | boolean | No | Enable firmware update progress events |
+| `eventConfiguration.gpi` | boolean | No | Enable General Purpose Input (GPI) state change events |
+| `eventConfiguration.network` | boolean | No | Enable network interface events |
+| `eventConfiguration.exceptions` | boolean | No | Enable exception and error events |
+| `eventConfiguration.ntp` | boolean | No | Enable NTP synchronization events |
+| `eventConfiguration.userApp` | boolean | No | Enable user application lifecycle events |
+| `eventConfiguration.heartbeat` | boolean | No | Enable periodic heartbeat messages |
+| `eventConfiguration.power` | boolean | No | Enable power source change events |
+| `eventConfiguration.battery` | boolean | No | Enable battery status alert events |
+| `eventConfiguration.temperature` | boolean | No | Enable temperature monitoring events |
+| `eventConfiguration.fileDownload` | boolean | No | Enable file download progress events |
+| `eventConfiguration.cpuUsage` | boolean | No | Enable CPU usage alert events |
+| `eventConfiguration.flashUsage` | boolean | No | Enable flash storage usage alert events |
+| `eventConfiguration.ramUsage` | boolean | No | Enable RAM usage alert events |
+| `eventConfiguration.heartbeatConfiguration.interval` | integer | No | Heartbeat interval in seconds |
+| `eventConfiguration.heartbeatConfiguration.inventoryStatus` | boolean | No | Include inventory status in heartbeat payload |
+| `eventConfiguration.heartbeatConfiguration.batteryStatus` | boolean | No | Include battery status in heartbeat payload |
+| `eventConfiguration.heartbeatConfiguration.userApps` | boolean | No | Include user application status in heartbeat payload |
+| `eventConfiguration.cpuThreshold` | integer | No | CPU usage percentage threshold for alerts |
+| `eventConfiguration.ramThreshold` | integer | No | RAM usage percentage threshold for alerts |
+| `eventConfiguration.flashThreshold` | integer | No | Flash usage percentage threshold for alerts |
+| `eventConfiguration.temperatureThreshold` | integer | No | Temperature threshold in Celsius for alerts |
 
 ## Response Payload
 
 ```json
 {
   "command": "config_events",
-  "requestId": "15",
-  "statusCode": 0,
-  "statusMessage": "Success"
+  "requestId": "abc123",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
 }
 ```
 
@@ -90,24 +130,25 @@ Application → Reader → Application
 |---|---|---|
 | `command` | string | Echo of the command name |
 | `requestId` | string | Echo of the request identifier |
-| `statusCode` | integer | `0` for success |
-| `statusMessage` | string | Human-readable status |
+| `apiVersion` | string | API version: `"V1.0"` or `"V1.1"` |
+| `response` | object | Standard response envelope |
+| `response.code` | integer | `0` for success |
+| `response.description` | string | Human-readable result description |
 
 ## Error Responses
 
-| Code | Name | Description |
-|---|---|---|
-| `1` | GeneralError | Unexpected internal error |
-| `3` | InvalidParameter | A threshold value is out of range |
-| `4` | InvalidRequestId | `requestId` is missing or empty |
+| Code | Description |
+|---|---|
+| `0` | Success |
+| `1` | Failure |
 
 ## Notes
 
 - Only the fields included in the request are updated. Omitted fields retain their current values.
-- The heartbeat interval must be between 60 and 3600 seconds. Values outside this range return error code `3`.
-- `batteryCritical.thresholdPercent` must be lower than `batteryLow.thresholdPercent`.
 - Alert events are published to the MGMT event topic: `{tenantId}/MGMT/clients/event/{deviceSerial}`.
 - Event configuration persists across reboots.
+- If `heartbeat` is `true` but `heartbeatConfiguration.interval` is omitted, the current interval setting is unchanged.
+- Threshold fields (`cpuThreshold`, `ramThreshold`, `flashThreshold`, `temperatureThreshold`) only apply when their corresponding event flag is enabled.
 
 ## See Also
 

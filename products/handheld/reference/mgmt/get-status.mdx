@@ -6,7 +6,7 @@ description: "Query the operational status of a Zebra RFD40/RFD90 handheld RFID 
 
 # get_status
 
-Queries the current operational status of the device including radio activity, power source, battery health, and NTP synchronization.
+Queries the current operational status of the device including radio activity, power source, battery health, NTP synchronization, and terminal connection state.
 
 ## Topic
 
@@ -24,7 +24,7 @@ Application → Reader → Application
 ```json
 {
   "command": "get_status",
-  "requestId": "2"
+  "requestId": "abc123"
 }
 ```
 
@@ -38,17 +38,33 @@ Application → Reader → Application
 ```json
 {
   "command": "get_status",
-  "requestId": "2",
-  "statusCode": 0,
-  "statusMessage": "Success",
-  "radioActivity": "IDLE",
-  "radioConnection": "CONNECTED",
-  "powerSource": "BATTERY",
-  "chargePercentage": 85,
-  "stateOfHealth": "GOOD",
-  "ntp": {
-    "reach": 377,
-    "status": "SYNCHRONIZED"
+  "requestId": "abc123",
+  "apiVersion": "V1.1",
+  "deviceStatus": {
+    "powerSource": "USB",
+    "radioActivity": "INACTIVE",
+    "radioConnection": "CONNECTED",
+    "hostname": "RFD40-212735201D0053.local",
+    "systemTime": "2024-02-26T13:45:53.728Z",
+    "temperature": 32,
+    "ntp": {
+      "offset": 0,
+      "reach": 321
+    },
+    "terminalConnection": {
+      "status": "CONNECTED",
+      "type": "USB"
+    },
+    "batteryStatus": {
+      "capacity": 6400,
+      "stateOfHealth": "GOOD",
+      "chargePercentage": 100,
+      "chargeStatus": 1
+    }
+  },
+  "response": {
+    "code": 0,
+    "description": "Success"
   }
 }
 ```
@@ -57,30 +73,48 @@ Application → Reader → Application
 |---|---|---|
 | `command` | string | Echo of the command name |
 | `requestId` | string | Echo of the request identifier |
-| `statusCode` | integer | `0` for success |
-| `statusMessage` | string | Human-readable status |
-| `radioActivity` | string | RFID radio state: `IDLE`, `READING`, `WRITING`, `LOCATING` |
-| `radioConnection` | string | Connection to host device: `CONNECTED`, `DISCONNECTED` |
-| `powerSource` | string | Current power source: `BATTERY`, `CRADLE`, `USB` |
-| `chargePercentage` | integer | Battery charge level (0–100) |
-| `stateOfHealth` | string | Battery health: `GOOD`, `DEGRADED`, `REPLACE` |
-| `ntp` | object | NTP synchronization details |
-| `ntp.reach` | integer | NTP reach register (octal bitmask of last 8 polls, `377` = all successful) |
-| `ntp.status` | string | `SYNCHRONIZED`, `NOT_SYNCHRONIZED`, `NOT_CONFIGURED` |
+| `apiVersion` | string | API version: `"V1.0"` or `"V1.1"` |
+| `deviceStatus` | object | Current device health and connectivity snapshot |
+| `deviceStatus.powerSource` | string | Power source: `DC`, `WALLCHARGER`, `USB`, or `CRADLE` |
+| `deviceStatus.radioActivity` | string | RFID radio state: `INACTIVE` or `ACTIVE` |
+| `deviceStatus.radioConnection` | string | Radio connection to host: `CONNECTED` or `DISCONNECTED` |
+| `deviceStatus.hostname` | string | Device hostname on the network |
+| `deviceStatus.systemTime` | string | Device system time in ISO 8601 format |
+| `deviceStatus.temperature` | integer | Internal device temperature in degrees Celsius |
+| `deviceStatus.ntp` | object | NTP synchronization details |
+| `deviceStatus.ntp.offset` | integer | Clock offset from NTP server in milliseconds |
+| `deviceStatus.ntp.reach` | integer | NTP reachability score (non-zero means server is reachable) |
+| `deviceStatus.terminalConnection` | object | Host terminal connection details |
+| `deviceStatus.terminalConnection.status` | string | Terminal connection state: `CONNECTED` or `DISCONNECTED` |
+| `deviceStatus.terminalConnection.type` | string | Connection type: `BLUETOOTH`, `CIO`, or `USB` |
+| `deviceStatus.batteryStatus` | object | Battery health and capacity information |
+| `deviceStatus.batteryStatus.mfgDate` | string | Battery manufacture date (e.g., `"2024-01-15"`) |
+| `deviceStatus.batteryStatus.cycleCount` | integer | Number of completed charge cycles |
+| `deviceStatus.batteryStatus.fullChargeCapacity` | integer | Current full charge capacity in mAh |
+| `deviceStatus.batteryStatus.temperature` | integer | Battery temperature in degrees Celsius |
+| `deviceStatus.batteryStatus.designCapacity` | integer | Designed battery capacity in mAh |
+| `deviceStatus.batteryStatus.batteryType` | string | Battery chemistry (e.g., `"Li-ion"`) |
+| `deviceStatus.batteryStatus.capacity` | integer | Battery capacity remaining in mAh |
+| `deviceStatus.batteryStatus.stateOfHealth` | string | Battery health: `GOOD`, `AVERAGE`, or `POOR` |
+| `deviceStatus.batteryStatus.chargePercentage` | integer | Battery charge level (0–100) |
+| `deviceStatus.batteryStatus.chargeStatus` | integer | `0` = charger not connected, `1` = charging, `2` = fully charged |
+| `response` | object | Standard response envelope |
+| `response.code` | integer | `0` for success, `3` for retrieval failure |
+| `response.description` | string | Human-readable result description |
 
 ## Error Responses
 
-| Code | Name | Description |
-|---|---|---|
-| `1` | GeneralError | Unexpected internal error |
-| `4` | InvalidRequestId | `requestId` is missing or empty |
+| Code | Description |
+|---|---|
+| `0` | Success |
+| `3` | Not able to retrieve information |
 
 ## Notes
 
-- `radioActivity` reflects real-time RFID radio state. If a read operation is in progress, the value is `READING`.
+- `radioActivity` reflects real-time RFID radio state. Check for `INACTIVE` before starting a new inventory operation.
 - `chargePercentage` is approximate. Actual capacity varies with battery age and temperature.
-- The `ntp.reach` value `377` (octal) indicates all eight most recent NTP polls succeeded. A value of `0` means no polls have succeeded.
-- Poll `get_status` periodically to monitor device health in fleet management scenarios. For automated monitoring, configure `heartBeatEVT` events instead.
+- `ntp.reach` — a non-zero value means NTP is reachable and syncing. A value of `0` means the NTP server is not reachable.
+- Poll `get_status` to verify device readiness before starting operations. For continuous monitoring, configure `heartBeatEVT` instead.
 
 ## See Also
 

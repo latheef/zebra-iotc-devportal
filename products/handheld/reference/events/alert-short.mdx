@@ -1,12 +1,12 @@
 ---
 sidebar_position: 3
 title: "alert_short"
-description: "Compact MDM-optimized alert event reference for Zebra RFD40/RFD90 handheld RFID readers."
+description: "Compact alert event reference for Zebra RFD40/RFD90 handheld RFID readers."
 ---
 
 # alert_short
 
-Compact alert format optimized for Mobile Device Management (MDM) systems. Provides essential alert information in a minimal payload for bandwidth-constrained environments.
+Compact alert notification for lightweight event logging and real-time monitoring. Provides a short identifier, type, priority, and human-readable description for each alert condition.
 
 ## Topic
 
@@ -14,101 +14,180 @@ Compact alert format optimized for Mobile Device Management (MDM) systems. Provi
 |---|---|
 | **Event** | `{tenantId}/MGMT/clients/event/{deviceSerial}` |
 
-> **Note:** `alert_short` events are published on the same MGMT event topic as full `alerts`. MDM systems can filter by the `event` field to process only compact alerts.
-
 ## Direction
 
 Reader → Application
 
 ## Payload
 
-```json
-{
-  "event": "alert_short",
-  "sn": "24042AR50033",
-  "ts": 1747218125,
-  "type": "BAT_LOW",
-  "sev": "W",
-  "val": 18,
-  "thr": 20
-}
-```
+### Firmware Download Success
 
 ```json
 {
-  "event": "alert_short",
-  "sn": "24042AR50033",
-  "ts": 1747221030,
-  "type": "BAT_CRIT",
-  "sev": "C",
-  "val": 4,
-  "thr": 5
+  "id": "FIRMWARE_DOWNLOAD_SUCCESS",
+  "timestamp": "22:54:25",
+  "type": "ALERT",
+  "priority": "LOW",
+  "messageID": "ZEBRA_RFID_HH_ALERTS",
+  "description": "firmware download completed successfully"
 }
 ```
 
-```json
-{
-  "event": "alert_short",
-  "sn": "24042AR50033",
-  "ts": 1747214700,
-  "type": "TEMP_HI",
-  "sev": "W",
-  "val": 52,
-  "thr": 50
-}
-```
+### Battery Critical
 
 ```json
 {
-  "event": "alert_short",
-  "sn": "24042AR50033",
-  "ts": 1747210800,
-  "type": "PWR_CHG",
-  "sev": "I",
-  "val": 1,
-  "thr": 0
+  "id": "BATTERY_CRITICAL_SET",
+  "timestamp": "14:30:15",
+  "type": "ALERT",
+  "priority": "CRITICAL",
+  "messageID": "ZEBRA_RFID_HH_ALERTS",
+  "description": "battery level is critically low"
+}
+```
+
+### Wi-Fi Configuration Failure
+
+```json
+{
+  "id": "WIFI_CONFIG_FAIL",
+  "timestamp": "09:15:42",
+  "type": "NOTIFICATION",
+  "priority": "HIGH",
+  "messageID": "ZEBRA_RFID_HH_ALERTS",
+  "description": "WiFi configuration failed"
+}
+```
+
+### MQTT CA Certificate Install Success
+
+```json
+{
+  "id": "MQTT_ROOT_CERT_INSTALL_SUCCESS",
+  "timestamp": "2026-04-17T05:09:13.808Z",
+  "type": "NOTIFICATION",
+  "priority": "HIGH",
+  "messageID": "ZEBRA_RFID_HH_ALERTS",
+  "description": "MQTT root certificate install success"
 }
 ```
 
 | Field | Type | Description |
 |---|---|---|
-| `event` | string | Always `"alert_short"` |
-| `sn` | string | Device serial number (abbreviated field name) |
-| `ts` | integer | Unix timestamp (seconds since epoch) |
-| `type` | string | Short alert type code (see table below) |
-| `sev` | string | Severity code: `I` (info), `W` (warning), `C` (critical) |
-| `val` | number | Current value that triggered the alert |
-| `thr` | number | Configured threshold |
+| `id` | string | Alert identifier (see full enum table below) |
+| `timestamp` | string | Time when the alert was generated |
+| `type` | string | Category: `NOTIFICATION` or `ALERT` |
+| `priority` | string | Urgency level: `CRITICAL`, `HIGH`, or `LOW` |
+| `messageID` | string | Always `"ZEBRA_RFID_HH_ALERTS"` |
+| `description` | string | Human-readable description of the alert condition |
 
-### Alert Type Codes
+### Alert Identifier Enum (58 values)
 
-| Code | Full Alert Type | Description |
-|---|---|---|
-| `BAT_LOW` | `BATTERY_LOW` | Battery below low threshold |
-| `BAT_CRIT` | `BATTERY_CRITICAL` | Battery below critical threshold |
-| `TEMP_HI` | `TEMPERATURE_HIGH` | Temperature above threshold |
-| `NET_DC` | `NETWORK_DISCONNECT` | Network interface disconnected |
-| `PWR_CHG` | `POWER_SOURCE_CHANGE` | Power source changed |
+#### Firmware
 
-### Severity Codes
-
-| Code | Meaning |
+| `id` | Description |
 |---|---|
-| `I` | Info |
-| `W` | Warning |
-| `C` | Critical |
+| `FIRMWARE_DOWNLOAD_FAIL` | Firmware file download failed |
+| `FIRMWARE_DOWNLOAD_SUCCESS` | Firmware file download completed successfully |
+| `FIRMWARE_UPDATE_FAIL` | Firmware update process failed |
+| `FIRMWARE_UPDATE_SUCCESS` | Firmware update completed successfully |
+
+#### Battery
+
+| `id` | Description |
+|---|---|
+| `BATTERY_LOW_SET` | Battery level dropped below the low threshold |
+| `BATTERY_LOW_CLEAR` | Battery level recovered above the low threshold |
+| `BATTERY_CRITICAL_SET` | Battery level is critically low |
+| `BATTERY_FULL` | Battery reached full charge |
+
+#### Temperature
+
+| `id` | Description |
+|---|---|
+| `TEMPERATURE_HIGH_SET` | Temperature crossed the high threshold |
+| `TEMPERATURE_HIGH_CLEAR` | Temperature returned below the high threshold |
+| `TEMPERATURE_CRITICAL_SET` | Temperature crossed the critical threshold |
+| `TEMPERATURE_CRITICAL_CLEAR` | Temperature returned below the critical threshold |
+
+#### Network & Power
+
+| `id` | Description |
+|---|---|
+| `NETWORK_INTERFACE_CHANGE` | Network interface state changed |
+| `WIFI_CONFIG_SUCCESS` | Wi-Fi profile configured successfully |
+| `WIFI_CONFIG_FAIL` | Wi-Fi profile configuration failed |
+| `ETH_CONFIG_SUCCESS` | Ethernet configured successfully |
+| `ETH_CONFIG_FAIL` | Ethernet configuration failed |
+| `POWER_SOURCE_UPDATE` | Power source changed |
+
+#### MQTT Certificates
+
+| `id` | Description |
+|---|---|
+| `MQTT_INSTALL_CERTIFICATE_SUCCESS` | MQTT certificate installed successfully |
+| `MQTT_INSTALL_CERTIFICATE_FAIL` | MQTT certificate installation failed |
+| `MQTT_ROOT_CERT_DOWNLOAD_SUCCESS` | MQTT CA certificate downloaded successfully |
+| `MQTT_ROOT_CERT_DOWNLOAD_FAIL` | MQTT CA certificate download failed |
+| `MQTT_ROOT_CERT_INSTALL_SUCCESS` | MQTT CA certificate installed successfully |
+| `MQTT_ROOT_CERT_INSTALL_FAIL` | MQTT CA certificate installation failed |
+| `MQTT_CLIENT_CERT_DOWNLOAD_SUCCESS` | MQTT client certificate downloaded successfully |
+| `MQTT_CLIENT_CERT_DOWNLOAD_FAIL` | MQTT client certificate download failed |
+| `MQTT_CLIENT_CERT_INSTALL_SUCCESS` | MQTT client certificate installed successfully |
+| `MQTT_CLIENT_CERT_INSTALL_FAIL` | MQTT client certificate installation failed |
+| `MQTT_CLIENT_KEY_DOWNLOAD_SUCCESS` | MQTT client key downloaded successfully |
+| `MQTT_CLIENT_KEY_DOWNLOAD_FAIL` | MQTT client key download failed |
+| `MQTT_CLIENT_KEY_INSTALL_SUCCESS` | MQTT client key installed successfully |
+| `MQTT_CLIENT_KEY_INSTALL_FAIL` | MQTT client key installation failed |
+
+#### Wi-Fi Certificates
+
+| `id` | Description |
+|---|---|
+| `WIFI_INSTALL_CERTIFICATE_SUCCESS` | Wi-Fi certificate installed successfully |
+| `WIFI_INSTALL_CERTIFICATE_FAIL` | Wi-Fi certificate installation failed |
+| `WIFI_ROOT_CERT_DOWNLOAD_SUCCESS` | Wi-Fi CA certificate downloaded successfully |
+| `WIFI_ROOT_CERT_DOWNLOAD_FAIL` | Wi-Fi CA certificate download failed |
+| `WIFI_ROOT_CERT_INSTALL_SUCCESS` | Wi-Fi CA certificate installed successfully |
+| `WIFI_ROOT_CERT_INSTALL_FAIL` | Wi-Fi CA certificate installation failed |
+| `WIFI_CLIENT_CERT_DOWNLOAD_SUCCESS` | Wi-Fi client certificate downloaded successfully |
+| `WIFI_CLIENT_CERT_DOWNLOAD_FAIL` | Wi-Fi client certificate download failed |
+| `WIFI_CLIENT_CERT_INSTALL_SUCCESS` | Wi-Fi client certificate installed successfully |
+| `WIFI_CLIENT_CERT_INSTALL_FAIL` | Wi-Fi client certificate installation failed |
+| `WIFI_CLIENT_KEY_DOWNLOAD_SUCCESS` | Wi-Fi client key downloaded successfully |
+| `WIFI_CLIENT_KEY_DOWNLOAD_FAIL` | Wi-Fi client key download failed |
+| `WIFI_CLIENT_KEY_INSTALL_SUCCESS` | Wi-Fi client key installed successfully |
+| `WIFI_CLIENT_KEY_INSTALL_FAIL` | Wi-Fi client key installation failed |
+
+#### Filestore Certificates
+
+| `id` | Description |
+|---|---|
+| `FILESTORE_INSTALL_CERTIFICATE_SUCCESS` | Filestore certificate installed successfully |
+| `FILESTORE_INSTALL_CERTIFICATE_FAIL` | Filestore certificate installation failed |
+| `FILESTORE_ROOT_CERT_DOWNLOAD_SUCCESS` | Filestore CA certificate downloaded successfully |
+| `FILESTORE_ROOT_CERT_DOWNLOAD_FAIL` | Filestore CA certificate download failed |
+| `FILESTORE_ROOT_CERT_INSTALL_SUCCESS` | Filestore CA certificate installed successfully |
+| `FILESTORE_ROOT_CERT_INSTALL_FAIL` | Filestore CA certificate installation failed |
+| `FILESTORE_CLIENT_CERT_DOWNLOAD_SUCCESS` | Filestore client certificate downloaded successfully |
+| `FILESTORE_CLIENT_CERT_DOWNLOAD_FAIL` | Filestore client certificate download failed |
+| `FILESTORE_CLIENT_CERT_INSTALL_SUCCESS` | Filestore client certificate installed successfully |
+| `FILESTORE_CLIENT_CERT_INSTALL_FAIL` | Filestore client certificate installation failed |
+| `FILESTORE_CLIENT_KEY_DOWNLOAD_SUCCESS` | Filestore client key downloaded successfully |
+| `FILESTORE_CLIENT_KEY_DOWNLOAD_FAIL` | Filestore client key download failed |
+| `FILESTORE_CLIENT_KEY_INSTALL_SUCCESS` | Filestore client key installed successfully |
+| `FILESTORE_CLIENT_KEY_INSTALL_FAIL` | Filestore client key installation failed |
 
 ## Notes
 
-- `alert_short` uses abbreviated field names and Unix timestamps to minimize payload size, typically under 100 bytes per alert.
-- The `val` field semantics depend on the alert type: battery percentage for `BAT_LOW`/`BAT_CRIT`, temperature in Celsius for `TEMP_HI`, and a numeric indicator for `PWR_CHG` and `NET_DC`.
-- For `PWR_CHG`, `val` encodes the new power source: `0` = CRADLE, `1` = BATTERY, `2` = USB.
-- `alert_short` events are generated alongside full `alerts` events. Both are published when an alert condition is triggered.
-- MDM systems that do not need the full `alerts` payload can subscribe to the same topic and filter for `"event": "alert_short"`.
+- `CRITICAL` priority alerts (e.g., `BATTERY_CRITICAL_SET`) require immediate attention.
+- `LOW` priority alerts (e.g., `FIRMWARE_DOWNLOAD_SUCCESS`) are informational.
+- `alert_short` events are published on the same MGMT event topic as full `alerts` events. Filter by event content to distinguish them.
+- The `messageID` field is always `"ZEBRA_RFID_HH_ALERTS"` and can be used to identify this event type.
 
 ## See Also
 
-- [alerts](alerts): Full-format alert events with detailed payloads
+- [alerts](alerts): Full-format alert events with structured `alertDetails` payloads
 - [config_events](../mgmt/config-events): Configure alert thresholds
 - [heartBeatEVT](heartbeatevt): Periodic health reports
 - [API Overview](../api-overview): Complete endpoint inventory

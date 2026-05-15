@@ -1,12 +1,12 @@
 ---
 sidebar_position: 3
 title: "control_operation"
-description: "Start or stop RFID operations on a Zebra RFD40/RFD90 handheld RFID reader."
+description: "Start or stop RFID or scanner operations on a Zebra RFD40/RFD90 handheld RFID reader."
 ---
 
 # control_operation
 
-Starts or stops an RFID operation (inventory, locate, or access) on the device using the currently configured operating mode.
+Starts or stops an RFID or barcode scanner operation on the device using the currently configured operating mode.
 
 ## Topic
 
@@ -21,23 +21,42 @@ Application → Reader → Application
 
 ## Request Payload
 
-### Start Operation
+### Start RFID Inventory
 
 ```json
 {
   "command": "control_operation",
-  "requestId": "32",
-  "operationType": "START"
+  "requestId": "abcd1432",
+  "ctrlOprPayload": {
+    "controlType": "RFID",
+    "operation": "START"
+  }
 }
 ```
 
-### Stop Operation
+### Stop RFID Inventory
 
 ```json
 {
   "command": "control_operation",
-  "requestId": "33",
-  "operationType": "STOP"
+  "requestId": "abcd1432",
+  "ctrlOprPayload": {
+    "controlType": "RFID",
+    "operation": "STOP"
+  }
+}
+```
+
+### Start Barcode Scanner
+
+```json
+{
+  "command": "control_operation",
+  "requestId": "abcd1433",
+  "ctrlOprPayload": {
+    "controlType": "SCANNER",
+    "operation": "START"
+  }
 }
 ```
 
@@ -45,16 +64,21 @@ Application → Reader → Application
 |---|---|---|---|
 | `command` | string | Yes | Must be `"control_operation"` |
 | `requestId` | string | Yes | Unique identifier to correlate the response |
-| `operationType` | string | Yes | `START` to begin an RFID operation, `STOP` to end it |
+| `ctrlOprPayload` | object | Yes | Specifies the control type and operation to perform |
+| `ctrlOprPayload.controlType` | string | Yes | Subsystem to control: `RFID` or `SCANNER` |
+| `ctrlOprPayload.operation` | string | Yes | Action to perform: `START` or `STOP` |
 
 ## Response Payload
 
 ```json
 {
   "command": "control_operation",
-  "requestId": "32",
-  "statusCode": 0,
-  "statusMessage": "Success"
+  "requestId": "abcd1432",
+  "apiVersion": "V1.1",
+  "response": {
+    "code": 0,
+    "description": "Success"
+  }
 }
 ```
 
@@ -62,24 +86,25 @@ Application → Reader → Application
 |---|---|---|
 | `command` | string | Echo of the command name |
 | `requestId` | string | Echo of the request identifier |
-| `statusCode` | integer | `0` for success |
-| `statusMessage` | string | Human-readable status |
+| `apiVersion` | string | API version: `"V1.0"` or `"V1.1"` |
+| `response` | object | Standard response envelope |
+| `response.code` | integer | Response code (see table below) |
+| `response.description` | string | Human-readable result description |
 
 ## Error Responses
 
-| Code | Name | Description |
-|---|---|---|
-| `1` | GeneralError | Unexpected internal error |
-| `3` | InvalidParameter | `operationType` is not `START` or `STOP` |
-| `4` | InvalidRequestId | `requestId` is missing or empty |
-| `5` | DeviceBusy | A `START` was issued while an operation is already running |
-| `10` | OperationFailed | The operation could not start (e.g., radio hardware error) |
+| Code | Description |
+|---|---|
+| `0` | Success |
+| `11` | Inventory in progress — cannot start while operation is already running |
+| `12` | No radio operation in progress — STOP sent when already idle |
+| `23` | Invalid enum value — `controlType` or `operation` field has an unrecognized value |
 
 ## Notes
 
 - After `START`, tag read data is published to the DATA topics (`data1event`/`data2event`) as `dataEVT` events.
-- Sending `STOP` when no operation is running returns `statusCode: 0` (idempotent).
-- Sending `START` when an operation is already running returns error code `5`. Stop the current operation first.
+- Sending `STOP` when no operation is running returns error code `12`. This is not a failure — the device is already idle.
+- Sending `START` when an operation is already running returns error code `11`. Stop the current operation first.
 - The operating mode must be configured via `set_operating_mode` before starting an operation. If no mode has been set, the device uses its default configuration.
 - RFID operations consume significant battery. Monitor `get_status` or configure battery alerts via `config_events`.
 

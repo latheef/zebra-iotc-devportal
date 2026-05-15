@@ -6,7 +6,7 @@ description: "Periodic heartbeat event reference for Zebra RFD40/RFD90 handheld 
 
 # heartBeatEVT
 
-Periodic health heartbeat event published by the device at a configurable interval. Reports device status, battery level, temperature, radio activity, and uptime.
+Periodic liveness and health event published by the device at a configurable interval. Reports device uptime, inventory status, and battery health.
 
 ## Topic
 
@@ -20,48 +20,70 @@ Reader → Application
 
 ## Payload
 
+### Heartbeat with Inventory and Battery Status
+
 ```json
 {
-  "event": "heartBeatEVT",
-  "deviceSerial": "24042AR50033",
+  "eventName": "heartbeat",
+  "timestamp": "2019-08-24T14:15:22Z",
+  "eventNumber": 120,
+  "upTime": "5 days 4hr 3min",
+  "data": {
+    "inventoryStatus": {
+      "rfidStatus": "INPROGRESS",
+      "tagCount": 45,
+      "scanCount": 128
+    },
+    "batteryAlert": {
+      "status": "HIGH",
+      "stateOfHealth": "FULL",
+      "chargePercentage": 85
+    }
+  }
+}
+```
+
+### Heartbeat with Battery Alert Only
+
+```json
+{
+  "eventName": "heartbeat",
   "timestamp": "2026-05-14T10:35:00.000Z",
-  "deviceStatus": "ONLINE",
-  "batteryLevel": 82,
-  "stateOfHealth": "GOOD",
-  "temperature": 34.5,
-  "radioActivity": "IDLE",
-  "powerSource": "BATTERY",
-  "uptime": 86400,
-  "networkInterface": "WIFI",
-  "signalStrength": -48,
-  "firmwareVersion": "2.1.0.0"
+  "eventNumber": 42,
+  "upTime": "1 days 2hr 15min",
+  "data": {
+    "batteryAlert": {
+      "status": "LOW",
+      "stateOfHealth": "FULL",
+      "chargePercentage": 18
+    }
+  }
 }
 ```
 
 | Field | Type | Description |
 |---|---|---|
-| `event` | string | Always `"heartBeatEVT"` |
-| `deviceSerial` | string | Serial number of the reporting device |
+| `eventName` | string | Always `"heartbeat"` |
 | `timestamp` | string | Event timestamp in ISO 8601 format |
-| `deviceStatus` | string | Device state: `ONLINE`, `IDLE`, `BUSY` |
-| `batteryLevel` | integer | Battery charge percentage (0–100) |
-| `stateOfHealth` | string | Battery health: `GOOD`, `DEGRADED`, `REPLACE` |
-| `temperature` | number | Internal device temperature in Celsius |
-| `radioActivity` | string | RFID radio state: `IDLE`, `READING`, `WRITING`, `LOCATING` |
-| `powerSource` | string | Current power source: `BATTERY`, `CRADLE`, `USB` |
-| `uptime` | integer | Seconds since last boot |
-| `networkInterface` | string | Active network interface: `WIFI`, `ETHERNET` |
-| `signalStrength` | integer | Wi-Fi RSSI in dBm (0 if on Ethernet) |
-| `firmwareVersion` | string | Current firmware version |
+| `eventNumber` | integer | Sequence number for the event |
+| `upTime` | string | Device uptime since last boot (e.g., `"5 days 4hr 3min"`) |
+| `data` | object | Heartbeat payload; contents depend on `heartbeatConfiguration` |
+| `data.inventoryStatus` | object | Present when `inventoryStatus` is enabled in `heartbeatConfiguration` |
+| `data.inventoryStatus.rfidStatus` | string | RFID inventory state: `INPROGRESS` or `STOPPED` |
+| `data.inventoryStatus.tagCount` | integer | Total tags scanned in the current operation |
+| `data.inventoryStatus.scanCount` | integer | Total scan attempts in the current operation |
+| `data.batteryAlert` | object | Present when `batteryStatus` is enabled in `heartbeatConfiguration` |
+| `data.batteryAlert.status` | string | Battery state: `LOW`, `CRITICAL`, `CHARGING`, `FULL`, or `HIGH` |
+| `data.batteryAlert.stateOfHealth` | string | Battery health: `LOW`, `CRITICAL`, `CHARGING`, `FULL`, or `HIGH` |
+| `data.batteryAlert.chargePercentage` | integer | Battery charge level (0–100) |
 
 ## Notes
 
-- Heartbeat events are enabled and configured via `config_events`. The default interval is 300 seconds (5 minutes).
-- The valid interval range is 60–3600 seconds.
-- Heartbeats are published regardless of RFID operation state, providing continuous device monitoring.
+- Heartbeat events are enabled and configured via `config_events` under `eventConfiguration.heartbeat` and `eventConfiguration.heartbeatConfiguration`.
+- The `data.inventoryStatus` block is included only when `heartbeatConfiguration.inventoryStatus` is `true`.
+- The `data.batteryAlert` block is included only when `heartbeatConfiguration.batteryStatus` is `true`.
 - If the device loses MQTT connectivity, heartbeat events are not queued. The absence of heartbeats is itself an indicator of connectivity loss.
 - Fleet management systems should monitor heartbeat events and raise alerts when a device misses multiple consecutive heartbeats.
-- `uptime` resets to `0` after each reboot.
 
 ## See Also
 

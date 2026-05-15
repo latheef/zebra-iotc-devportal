@@ -275,63 +275,180 @@ const sidebars = {
           collapsed: true,
           items: [
             { type: 'doc', id: 'reference/api-overview', label: '16.1 API Reference Overview' },
+            // ── Management Interface (MGMT) ──────────────────────
             {
               type: 'category',
               label: 'Management Interface (MGMT)',
               collapsible: true,
-              collapsed: true,
+              collapsed: false,
               items: [
-                { type: 'doc', id: 'reference/mgmt/get-version', label: 'get_version' },
-                { type: 'doc', id: 'reference/mgmt/get-status', label: 'get_status' },
-                { type: 'doc', id: 'reference/mgmt/get-current-region', label: 'get_current_region' },
-                { type: 'doc', id: 'reference/mgmt/get-eth', label: 'get_eth' },
-                { type: 'doc', id: 'reference/mgmt/get-wifi', label: 'get_wifi' },
-                { type: 'doc', id: 'reference/mgmt/delete-wifi-profile', label: 'delete_wifi_profile' },
-                { type: 'doc', id: 'reference/mgmt/set-wifi', label: 'set_wifi' },
-                { type: 'doc', id: 'reference/mgmt/get-installed-certificate', label: 'get_installed_certificate' },
-                { type: 'doc', id: 'reference/mgmt/delete-certificate', label: 'delete_certificate' },
-                { type: 'doc', id: 'reference/mgmt/install-certificate', label: 'install_certificate' },
-                { type: 'doc', id: 'reference/mgmt/get-endpoint-config', label: 'get_endpoint_config' },
-                { type: 'doc', id: 'reference/mgmt/config-endpoint', label: 'config_endpoint' },
-                { type: 'doc', id: 'reference/mgmt/config-events', label: 'config_events' },
-                { type: 'doc', id: 'reference/mgmt/get-config', label: 'get_config' },
-                { type: 'doc', id: 'reference/mgmt/set-config', label: 'set_config' },
-                { type: 'doc', id: 'reference/mgmt/reboot', label: 'reboot' },
-                { type: 'doc', id: 'reference/mgmt/set-os', label: 'set_os' },
+                {
+                  type: 'category',
+                  label: 'Device Identity & Status',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/mgmt/get-version', label: 'get_version' },
+                    { type: 'doc', id: 'reference/mgmt/get-status', label: 'get_status' },
+                    { type: 'doc', id: 'reference/mgmt/get-current-region', label: 'get_current_region' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Network Configuration',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/mgmt/get-eth', label: 'get_eth' },
+                    { type: 'doc', id: 'reference/mgmt/get-wifi', label: 'get_wifi' },
+                    { type: 'doc', id: 'reference/mgmt/delete-wifi-profile', label: 'delete_wifi_profile' },
+                    { type: 'doc', id: 'reference/mgmt/set-wifi', label: 'set_wifi' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Certificate Management',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/mgmt/get-installed-certificate', label: 'get_installed_certificate' },
+                    { type: 'doc', id: 'reference/mgmt/delete-certificate', label: 'delete_certificate' },
+                    { type: 'doc', id: 'reference/mgmt/install-certificate', label: 'install_certificate' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'MQTT Endpoint Configuration',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/mgmt/get-endpoint-config', label: 'get_endpoint_config' },
+                    { type: 'doc', id: 'reference/mgmt/config-endpoint', label: 'config_endpoint' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Device Configuration',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/mgmt/get-config', label: 'get_config' },
+                    { type: 'doc', id: 'reference/mgmt/set-config', label: 'set_config' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'System Operations',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/mgmt/reboot', label: 'reboot' },
+                    { type: 'doc', id: 'reference/mgmt/set-os', label: 'set_os' },
+                  ],
+                },
               ],
             },
+            // ── Control Interface (CTRL) ─────────────────────────
             {
               type: 'category',
               label: 'Control Interface (CTRL)',
               collapsible: true,
-              collapsed: true,
+              collapsed: false,
               items: [
-                { type: 'doc', id: 'reference/ctrl/get-operating-mode', label: 'get_operating_mode' },
-                { type: 'doc', id: 'reference/ctrl/get-post-filter', label: 'get_post_filter' },
-                { type: 'doc', id: 'reference/ctrl/control-operation', label: 'control_operation' },
-                { type: 'doc', id: 'reference/ctrl/set-post-filter', label: 'set_post_filter' },
-                { type: 'doc', id: 'reference/ctrl/set-operating-mode', label: 'set_operating_mode' },
+                {
+                  type: 'category',
+                  label: 'Operating Mode',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/ctrl/get-operating-mode', label: 'get_operating_mode' },
+                    { type: 'doc', id: 'reference/ctrl/set-operating-mode', label: 'set_operating_mode' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Tag Filtering',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/ctrl/get-post-filter', label: 'get_post_filter' },
+                    { type: 'doc', id: 'reference/ctrl/set-post-filter', label: 'set_post_filter' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Inventory Control',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/ctrl/control-operation', label: 'control_operation' },
+                  ],
+                },
               ],
             },
+            // ── Events ──────────────────────────────────────────
+            {
+              type: 'category',
+              label: 'Events',
+              collapsible: true,
+              collapsed: false,
+              items: [
+                {
+                  type: 'category',
+                  label: 'Event Configuration',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/mgmt/config-events', label: 'config_events' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Device Health',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/events/heartbeatevt', label: 'heartBeatEVT' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Alerts',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/events/alerts', label: 'alerts' },
+                    { type: 'doc', id: 'reference/events/alert-short', label: 'alert_short' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'Exceptions',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/events/exceptionevt', label: 'exceptionEVT' },
+                  ],
+                },
+                {
+                  type: 'category',
+                  label: 'MQTT Connectivity',
+                  collapsible: true,
+                  collapsed: true,
+                  items: [
+                    { type: 'doc', id: 'reference/events/mqttconnevt', label: 'mqttConnEVT' },
+                  ],
+                },
+              ],
+            },
+            // ── Data Interface (DATA) ────────────────────────────
             {
               type: 'category',
               label: 'Data Interface (DATA)',
               collapsible: true,
-              collapsed: true,
+              collapsed: false,
               items: [
                 { type: 'doc', id: 'reference/data/dataevt', label: 'dataEVT' },
-              ],
-            },
-            {
-              type: 'category',
-              label: 'Events Reference',
-              collapsible: true,
-              collapsed: true,
-              items: [
-                { type: 'doc', id: 'reference/events/heartbeatevt', label: 'heartBeatEVT' },
-                { type: 'doc', id: 'reference/events/alerts', label: 'alerts' },
-                { type: 'doc', id: 'reference/events/alert-short', label: 'alert_short' },
-                { type: 'doc', id: 'reference/events/mqttconnevt', label: 'mqttConnEVT' },
               ],
             },
           ],

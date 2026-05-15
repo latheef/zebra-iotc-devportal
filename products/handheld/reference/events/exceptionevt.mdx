@@ -1,0 +1,116 @@
+---
+sidebar_position: 5
+title: "exceptionEVT"
+description: "Exception and error event reference for Zebra RFD40/RFD90 handheld RFID readers."
+---
+
+# exceptionEVT
+
+Exception and error events published when the device encounters runtime errors, RFID radio faults, network failures, configuration issues, or certificate problems.
+
+## Topic
+
+| | Topic |
+|---|---|
+| **Event** | `{tenantId}/MGMT/clients/event/{deviceSerial}` |
+
+## Direction
+
+Reader → Application
+
+## Enable Exception Events
+
+Exception events must be enabled via `config_events`:
+
+```json
+{
+  "command": "config_events",
+  "requestId": "abc123",
+  "eventConfiguration": {
+    "exceptions": true
+  }
+}
+```
+
+## Payload
+
+### RFID Radio Exception
+
+```json
+{
+  "eventName": "exceptionEVT",
+  "timestamp": "2026-05-14T11:22:33.000Z",
+  "eventNumber": 7,
+  "data": {
+    "exceptionType": "RFID_RADIO_ERROR",
+    "description": "RFID radio initialization failed",
+    "errorCode": 3
+  }
+}
+```
+
+### Network Exception
+
+```json
+{
+  "eventName": "exceptionEVT",
+  "timestamp": "2026-05-14T14:05:10.000Z",
+  "eventNumber": 12,
+  "data": {
+    "exceptionType": "NETWORK_ERROR",
+    "description": "Wi-Fi connection lost unexpectedly",
+    "errorCode": 1
+  }
+}
+```
+
+### Certificate Exception
+
+```json
+{
+  "eventName": "exceptionEVT",
+  "timestamp": "2026-05-14T09:15:00.000Z",
+  "eventNumber": 3,
+  "data": {
+    "exceptionType": "CERTIFICATE_ERROR",
+    "description": "TLS certificate validation failed",
+    "errorCode": 12
+  }
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `eventName` | string | Always `"exceptionEVT"` |
+| `timestamp` | string | Event timestamp in ISO 8601 format |
+| `eventNumber` | integer | Sequence number for the event |
+| `data` | object | Exception details |
+| `data.exceptionType` | string | Category of the exception (see table below) |
+| `data.description` | string | Human-readable description of the error |
+| `data.errorCode` | integer | Numeric error code for the exception |
+
+### Exception Types
+
+| `exceptionType` | Description |
+|---|---|
+| `RFID_RADIO_ERROR` | RFID radio hardware fault or initialization failure |
+| `NETWORK_ERROR` | Network interface error or unexpected connectivity loss |
+| `CONFIG_ERROR` | Invalid or incompatible configuration detected |
+| `CERTIFICATE_ERROR` | TLS/mTLS certificate validation or installation failure |
+| `MQTT_ERROR` | MQTT protocol or broker communication error |
+| `SYSTEM_ERROR` | General system-level runtime exception |
+
+## Notes
+
+- Exception events are enabled via `config_events` with `eventConfiguration.exceptions: true`. They are disabled by default.
+- Exception events are published on the same MGMT event topic as `heartBeatEVT`, `alerts`, and `mqttConnEVT`.
+- `eventNumber` is a monotonically increasing sequence counter that resets on device reboot.
+- Integrate exception events into monitoring pipelines to detect hardware faults and network instability proactively.
+
+## See Also
+
+- [config_events](../mgmt/config-events): Enable exception events
+- [alerts](alerts): Threshold-based alert events
+- [heartBeatEVT](heartbeatevt): Periodic device health reports
+- [mqttConnEVT](mqttconnevt): MQTT connection state events
+- [API Overview](../api-overview): Complete endpoint inventory

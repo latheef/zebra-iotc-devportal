@@ -24,7 +24,7 @@ Application → Reader → Application
 ```json
 {
   "command": "get_version",
-  "requestId": "1"
+  "requestId": "abcd123"
 }
 ```
 
@@ -38,17 +38,24 @@ Application → Reader → Application
 ```json
 {
   "command": "get_version",
-  "requestId": "1",
-  "statusCode": 0,
-  "statusMessage": "Success",
-  "model": "RFD90",
-  "serialNumber": "24042AR50033",
-  "sku": "RFD9030-G21B700-US",
-  "firmwareVersion": "2.1.0.0",
-  "detailedVersions": {
-    "iotcVersion": "1.3.2.0",
-    "radioVersion": "3.3.2.1",
-    "scannerVersion": "PAABLS00-006-R02"
+  "requestId": "abcd123",
+  "apiVersion": "V1.1",
+  "readerVersion": {
+    "firmwareVersion": "SAAFKS00-006-R02",
+    "model": "RFD40",
+    "serialNumber": "23053520102096",
+    "sku": "RFD4031-G10B700-US",
+    "companyName": "Zebra Technologies",
+    "manufacturerName": "Zebra Technologies",
+    "detailedVersions": {
+      "scannerFirmware": "PAAEOC20-003-R01",
+      "radioFirmware": "2.0.42.0",
+      "iotcVersion": "V1.1"
+    }
+  },
+  "response": {
+    "code": 0,
+    "description": "Success"
   }
 }
 ```
@@ -57,29 +64,34 @@ Application → Reader → Application
 |---|---|---|
 | `command` | string | Echo of the command name |
 | `requestId` | string | Echo of the request identifier |
-| `statusCode` | integer | `0` for success |
-| `statusMessage` | string | Human-readable status |
-| `model` | string | Hardware model (e.g., `RFD40`, `RFD90`) |
-| `serialNumber` | string | Device serial number |
-| `sku` | string | Full SKU part number |
-| `firmwareVersion` | string | Overall firmware version |
-| `detailedVersions` | object | Component-level version breakdown |
-| `detailedVersions.iotcVersion` | string | IoT Connector agent version |
-| `detailedVersions.radioVersion` | string | RFID radio firmware version |
-| `detailedVersions.scannerVersion` | string | Barcode scanner firmware version |
+| `apiVersion` | string | API version: `"V1.0"` or `"V1.1"` |
+| `readerVersion` | object | Device identity and version details |
+| `readerVersion.firmwareVersion` | string | Overall firmware version string |
+| `readerVersion.model` | string | Hardware model: `"RFD40"` or `"RFD90"` |
+| `readerVersion.serialNumber` | string | Device serial number |
+| `readerVersion.sku` | string | Full SKU part number |
+| `readerVersion.companyName` | string | Always `"Zebra Technologies"` |
+| `readerVersion.manufacturerName` | string | Always `"Zebra Technologies"` |
+| `readerVersion.detailedVersions` | object | Component-level version breakdown |
+| `readerVersion.detailedVersions.scannerFirmware` | string | Barcode scanner firmware version |
+| `readerVersion.detailedVersions.radioFirmware` | string | RFID radio firmware version |
+| `readerVersion.detailedVersions.iotcVersion` | string | IoT Connector version: always `"V1.1"` |
+| `response` | object | Standard response envelope |
+| `response.code` | integer | `0` for success |
+| `response.description` | string | Human-readable result description |
 
 ## Error Responses
 
-| Code | Name | Description |
-|---|---|---|
-| `1` | GeneralError | Unexpected internal error retrieving version data |
-| `4` | InvalidRequestId | `requestId` is missing or empty |
+| Code | Description |
+|---|---|
+| `0` | Success |
+| `1` | Failure |
 
 ## Notes
 
 - This is a read-only, stateless query with no side effects.
 - Use `get_version` after a firmware update (`set_os` + `reboot`) to confirm the new version is active.
-- The `detailedVersions` object may include additional fields in future firmware releases.
+- `readerVersion.detailedVersions.iotcVersion` determines which MQTT API commands and features are available.
 
 ## See Also
 
