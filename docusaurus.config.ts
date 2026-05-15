@@ -39,6 +39,21 @@ const config: Config = {
           editUrl:
             'https://github.com/latheef/zebra-iotc/tree/main/',
           breadcrumbs: true,
+          exclude: [
+            // Legacy files superseded by the current docs structure
+            'appendices.mdx',
+            'cloud-integration.mdx',
+            'faq.mdx',
+            'mqtt-reference.mdx',
+            'prerequisites.mdx',
+            'quick-start.mdx',
+            'troubleshooting.mdx',
+            'architecture/**',
+            'endpoints/**',
+            'fleet/management.mdx',
+            'fleet/provisioning.mdx',
+            'mqtt/**',
+          ],
         },
         blog: false,
         theme: {
