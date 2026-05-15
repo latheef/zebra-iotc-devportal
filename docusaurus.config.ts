@@ -123,32 +123,30 @@ const config: Config = {
       ],
     },
     footer: {
-      style: 'light',
+      style: 'dark',
       links: [
         {
           title: 'Documentation',
           items: [
-            { label: 'Getting Started', to: '/docs/getting-started/prerequisites' },
-            { label: 'API Reference', to: '/docs/reference/api-overview' },
+            { label: 'Getting Started', to: '/docs/foundations/introduction/about-iotc' },
+            { label: 'MQTT API Reference', href: 'https://aa5123.github.io/RFID-40-90-handled-reader-api-reference-documentatiion/' },
             { label: 'Troubleshooting', to: '/docs/reference/troubleshooting' },
           ],
         },
         {
-          title: 'Resources',
+          title: 'Zebra Resources',
           items: [
             { label: 'Developer Portal', href: 'https://developer.zebra.com' },
             { label: 'Support', href: 'https://www.zebra.com/us/en/support-downloads.html' },
-            { label: 'Community', href: 'https://developer.zebra.com/community' },
+            { label: 'zebra.com', href: 'https://www.zebra.com' },
           ],
         },
         {
-          title: 'Connect',
+          title: 'Community',
           items: [
             { label: 'GitHub', href: 'https://github.com/latheef/zebra-iotc-devportal' },
             { label: 'LinkedIn', href: 'https://www.linkedin.com/company/zebra-technologies' },
             { label: 'YouTube', href: 'https://www.youtube.com/@ZebraTechnologies' },
-            { label: 'X / Twitter', href: 'https://x.com/ZebraTechnology' },
-            { label: 'zebra.com', href: 'https://www.zebra.com' },
           ],
         },
       ],
