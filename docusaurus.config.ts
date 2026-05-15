@@ -7,10 +7,10 @@ const config: Config = {
   favicon: 'img/zebra-favicon.ico',
 
   url: 'https://latheef.github.io',
-  baseUrl: '/zebra-iotc-devportal/',
+  baseUrl: '/zebra-iotc/',
 
   organizationName: 'latheef',
-  projectName: 'zebra-iotc-devportal',
+  projectName: 'zebra-iotc',
   deploymentBranch: 'gh-pages',
   trailingSlash: false,
 
@@ -37,7 +37,7 @@ const config: Config = {
           path: 'products/handheld',
           routeBasePath: 'docs',
           editUrl:
-            'https://github.com/latheef/zebra-iotc-devportal/tree/main/',
+            'https://github.com/latheef/zebra-iotc/tree/main/',
           breadcrumbs: true,
         },
         blog: false,
@@ -144,7 +144,7 @@ const config: Config = {
         {
           title: 'Community',
           items: [
-            { label: 'GitHub', href: 'https://github.com/latheef/zebra-iotc-devportal' },
+            { label: 'GitHub', href: 'https://github.com/latheef/zebra-iotc' },
             { label: 'LinkedIn', href: 'https://www.linkedin.com/company/zebra-technologies' },
             { label: 'YouTube', href: 'https://www.youtube.com/@ZebraTechnologies' },
           ],
