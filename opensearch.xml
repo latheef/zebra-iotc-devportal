@@ -4,8 +4,8 @@
   <ShortName>Zebra IoT Connector — Handheld RFID</ShortName>
   <Description>Search Zebra IoT Connector — Handheld RFID</Description>
   <InputEncoding>UTF-8</InputEncoding>
-  <Image width="16" height="16" type="image/x-icon">https://latheef.github.io/zebra-iotc-devportal/img/zebra-favicon.ico</Image>
-  <Url type="text/html" method="get" template="https://latheef.github.io/zebra-iotc-devportal/search?q={searchTerms}"/>
-  <Url type="application/opensearchdescription+xml" rel="self" template="https://latheef.github.io/zebra-iotc-devportal/opensearch.xml" />
-  <moz:SearchForm>https://latheef.github.io/zebra-iotc-devportal/</moz:SearchForm>
+  <Image width="16" height="16" type="image/x-icon">https://latheef.github.io/zebra-iotc/img/zebra-favicon.ico</Image>
+  <Url type="text/html" method="get" template="https://latheef.github.io/zebra-iotc/search?q={searchTerms}"/>
+  <Url type="application/opensearchdescription+xml" rel="self" template="https://latheef.github.io/zebra-iotc/opensearch.xml" />
+  <moz:SearchForm>https://latheef.github.io/zebra-iotc/</moz:SearchForm>
 </OpenSearchDescription>
