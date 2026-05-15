@@ -1,1 +1,0 @@
-"use strict";(self.webpackChunkzebra_iotc_devportal=self.webpackChunkzebra_iotc_devportal||[]).push([[6402],{26402:(e,r,c)=>{c.d(r,{createArchitectureServices:()=>t.S});var t=c(45016);c(69302)}}]);
