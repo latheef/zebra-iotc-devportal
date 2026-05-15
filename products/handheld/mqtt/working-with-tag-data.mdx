@@ -6,7 +6,7 @@ description: "dataEVT payload structure, deduplication, signal analysis, and pro
 
 # Working with Tag Data
 
-Chapter 8 configured what the reader does during an inventory; power, modulation, filters, triggers. This chapter addresses what happens *after* the reader singulates a tag and publishes the result: the `dataEVT` payload arrives on your MQTT subscriber, and your system must ingest, interpret, and survive it.
+Chapter 8 configured what the reader does during an inventory: power, modulation, filters, triggers. This chapter addresses what happens *after* the reader singulates a tag and publishes the result: the `dataEVT` payload arrives on your MQTT subscriber, and your system must ingest, interpret, and survive it.
 
 The gap between "I can receive tag data" and "I can run a production system on tag data" is larger than most developers expect. A single RFD40 reader can produce **hundreds of tag reads per second** during active inventory. Each tag in the field is read repeatedly, not once, but every inventory cycle, multiple times per second. A 500-tag warehouse zone with one reader generates a sustained stream of 1,000–5,000 messages per second. A fleet of 20 readers multiplies that by 20.
 
@@ -203,10 +203,10 @@ Receive the full raw stream and deduplicate in your application layer. This pres
 | Simple inventory count (how many unique items?) | **Edge**; RSSI threshold + prefix filter | Minimize traffic. You only need the set of EPCs. |
 | Shipment verification (are all expected items present?) | **Cloud**; whitelist check against manifest | Receive all reads, match against expected EPC list in application. |
 | Asset tracking with dwell time | **Cloud**; retain full time-series | Need `firstSeenTime`/`lastSeenTime` per tag over extended periods. |
-| Dock door portal (high-speed line scan) | **Both**; edge prefix filter to scope population, cloud session dedup for unique counts | Reduce RF and network load via pre-filter, then deduplicate remaining stream in application. |
-| Analytics / ML training data | **Cloud only**; raw stream to data lake | Never discard data destined for analytics. Future models may need features you cannot predict. |
+| Dock door portal (high-speed line scan) | **Both** — edge prefix filter to scope population, cloud session dedup for unique counts | Reduce RF and network load via pre-filter, then deduplicate remaining stream in application. |
+| Analytics / ML training data | **Cloud only** — raw stream to data lake | Never discard data destined for analytics. Future models may need features you cannot predict. |
 
-> **⚠ WARNING:** Do not deduplicate in the MQTT broker itself (e.g., via broker plugins or retained messages). Broker-level deduplication adds unpredictable latency, complicates debugging, and creates a single point of failure for data correctness. Keep the broker as a dumb pipe. Deduplicate at the edge (reader) or in your application; nowhere in between.
+> **⚠ WARNING:** Do not deduplicate in the MQTT broker itself (e.g., via broker plugins or retained messages). Broker-level deduplication adds unpredictable latency, complicates debugging, and creates a single point of failure for data correctness. Keep the broker as a dumb pipe. Deduplicate at the edge (reader) or in your application — nowhere in between.
 
 ---
 
@@ -222,7 +222,7 @@ Three physical phenomena break the RSSI-to-distance mapping:
 
 **Multipath fading.** The reader's RF signal does not travel in a single straight line to the tag. It reflects off floors, ceilings, walls, metal shelving, conveyor structures, and every conductive surface in the environment. These reflected copies of the signal arrive at the tag at slightly different times and phases. When they arrive **in phase**, they add constructively: the tag receives more energy and backscatters a stronger signal. When they arrive **out of phase**, they cancel destructively; the tag receives less energy and may not respond at all. This creates a standing-wave pattern of strong and weak spots throughout the read zone. A tag at 3 meters may report stronger RSSI than a tag at 1 meter simply because it sits in a constructive interference zone.
 
-> In a metal-heavy warehouse, multipath fading can cause RSSI to vary by **20 dB or more** at the same physical distance. That is a 100× difference in received power; entirely caused by the tag's position relative to reflective surfaces, not by its distance from the reader.
+> In a metal-heavy warehouse, multipath fading can cause RSSI to vary by **20 dB or more** at the same physical distance. That is a 100× difference in received power, entirely caused by the tag's position relative to reflective surfaces, not by its distance from the reader.
 
 **Tag orientation and polarization.** A UHF RFID tag antenna is designed for maximum energy harvest when its polarization aligns with the reader antenna's polarization. When the tag is rotated (tilted, flipped, or perpendicular to the reader's field), the effective aperture shrinks and the backscattered signal weakens. A well-aligned tag at 5 meters can report stronger RSSI than a misaligned tag at 1 meter. Handheld readers with circular polarization mitigate this somewhat (Section 4.1), but do not eliminate it.
 

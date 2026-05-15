@@ -450,9 +450,9 @@ Exception rate by firmware version:
 └────────────────────────────────────────────────────────┘
 ```
 
-**View 2: Exception rate by site.** Plot exception count per hour, grouped by deployment site. A rising exception rate at a single site, while other sites remain stable; signals an environmental problem: Wi-Fi interference from new equipment, temperature issues from a broken HVAC system, or a failing access point creating intermittent `NETWORK_ERROR` exceptions.
+**View 2: Exception rate by site.** Plot exception count per hour, grouped by deployment site. A rising exception rate at a single site, while other sites remain stable, signals an environmental problem: Wi-Fi interference from new equipment, temperature issues from a broken HVAC system, or a failing access point creating intermittent `NETWORK_ERROR` exceptions.
 
-**View 3: Exception rate by device.** Plot exception count per device over a rolling 7-day window. Devices with sustained exception rates above 5 per hour (the threshold suggested in [Chapter 10, Section 10.3](/handheld/mqtt/monitoring-events)) are candidates for automated recovery (reboot) or manual investigation. A device with a rising trend toward that threshold, even if it hasn't crossed it yet; is a maintenance candidate.
+**View 3: Exception rate by device.** Plot exception count per device over a rolling 7-day window. Devices with sustained exception rates above 5 per hour (the threshold suggested in [Chapter 10, Section 10.3](/handheld/mqtt/monitoring-events)) are candidates for automated recovery (reboot) or manual investigation. A device with a rising trend toward that threshold, even if it has not yet crossed it, is a maintenance candidate.
 
 **Data pipeline:**
 
@@ -489,7 +489,7 @@ This histogram, updated every heartbeat interval, gives shift supervisors a proa
 | `DEGRADED` | 40 | Schedule battery replacement within 30 days |
 | `REPLACE` | 10 | Replace battery immediately; capacity severely reduced |
 
-A reader with `DEGRADED` battery health charges fully but drains faster than peers. Over weeks, its `chargePercentage` curve slopes more steeply than the fleet average. Tracking this per-device trend over time, using heartbeat `chargePercentage` values collected into a time-series database; identifies replacements before the device starts generating `BATTERY_LOW` alerts during shifts.
+A reader with `DEGRADED` battery health charges fully but drains faster than peers. Over weeks, its `chargePercentage` curve slopes more steeply than the fleet average. Tracking this per-device trend over time, using heartbeat `chargePercentage` values collected into a time-series database, identifies replacement candidates before devices start generating `BATTERY_LOW` alerts during shifts.
 
 **Data pipeline:**
 

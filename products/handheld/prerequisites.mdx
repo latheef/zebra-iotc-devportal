@@ -74,7 +74,7 @@ The reader sled communicates with the host mobile device over **Bluetooth Low En
 
 **123RFID Desktop** is Zebra's Windows-based configuration and diagnostic utility for RFID readers. It connects to the reader over USB (via the charging cradle) or over the network.
 
-**Why it is mandatory:** The regulatory region, which determines the reader's operating frequency, channel plan, and maximum transmit power; is configured exclusively through 123RFID Desktop. The MQTT API provides read-only access via `get_current_region` but cannot set the region. A reader without a configured region will reject any `control_operation` START command with response code `6` ("Region is not configured"). See Section 4.4 for the regulatory context.
+**Why it is mandatory:** The regulatory region, which determines the reader's operating frequency, channel plan, and maximum transmit power, is configured exclusively through 123RFID Desktop. The MQTT API provides read-only access via `get_current_region` but cannot set the region. A reader without a configured region will reject any `control_operation` START command with response code `6` ("Region is not configured"). See Section 4.4 for the regulatory context.
 
 **When you need it:**
 

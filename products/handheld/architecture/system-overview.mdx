@@ -26,7 +26,7 @@ The system has four components. Each owns a strict boundary of responsibility.
 | **Wi-Fi 6 (802.11ax)** | The reader's primary network interface for MQTT communication. Supports WPA2/WPA3 Personal and Enterprise, including EAP-TLS with mutual certificate authentication. 5 GHz and 2.4 GHz bands. |
 | **Battery** | PowerPrecision+ 7000 mAh Li-Ion. Provides 8–12 hours of typical operation. Battery status, charge level, and state-of-health are reported via `get_status` and `heartBeatEVT`. |
 
-The reader is a **sled** : it attaches to a host mobile device (typically a Zebra handheld computer or a compatible smartphone) via Bluetooth. The sled contains all RFID and wireless networking hardware. The host device provides the user interface and, optionally, a secondary network path. For MQTT communication, the reader uses its own **Wi-Fi radio** to connect directly to the network; the host device's network connection is not used for MQTT traffic.
+The reader is a **sled**: it attaches to a host mobile device (typically a Zebra handheld computer or a compatible smartphone) via Bluetooth. The sled contains all RFID and wireless networking hardware. The host device provides the user interface and, optionally, a secondary network path. For MQTT communication, the reader uses its own **Wi-Fi radio** to connect directly to the network; the host device's network connection is not used for MQTT traffic.
 
 > **Why Wi-Fi and not the host's network?** The reader maintains its own independent MQTT connection over Wi-Fi so that it can continue operating even if the Bluetooth link to the host device drops temporarily. This prevents a momentary Bluetooth disconnection from severing the cloud connection and losing in-flight tag data.
 
@@ -224,7 +224,7 @@ The Zebra RFID Connect API separates communication into four **MQTT interfaces**
 
 ### Why Four Interfaces?
 
-A single MQTT topic namespace could carry all traffic types; commands, responses, events, and tag data, but this would create three problems:
+A single MQTT topic namespace could carry all traffic types — commands, responses, events, and tag data — but this would create three problems:
 
 1. **Throughput coupling.** A high-volume `dataEVT` stream during active inventory would share a connection with low-frequency management commands. If the data channel saturates the connection, management commands (firmware update, reboot) could be delayed or dropped.
 2. **Security granularity.** An application that only needs tag data should not require broker permissions to send device management commands. Separate interfaces enable per-interface ACLs at the broker.
@@ -243,9 +243,9 @@ A single MQTT topic namespace could carry all traffic types; commands, responses
 
 **19 commands** | Channels: `cmnd`, `resp`, `event`
 
-The MGMT interface carries all commands that manage the device itself; everything that is not an active RFID operation. This includes querying device identity (`get_version`, `get_status`, `get_current_region`), configuring network connectivity (`set_wifi`, `config_endpoint`), managing security certificates (`install_certificate`), controlling events (`config_events`), updating firmware (`set_os`), and rebooting (`reboot`).
+The MGMT interface carries all commands that manage the device itself — everything that is not an active RFID operation. This includes querying device identity (`get_version`, `get_status`, `get_current_region`), configuring network connectivity (`set_wifi`, `config_endpoint`), managing security certificates (`install_certificate`), controlling events (`config_events`), updating firmware (`set_os`), and rebooting (`reboot`).
 
-MGMT also carries the **event channel**; the outbound topic where the reader publishes asynchronous events: `heartBeatEVT`, `alerts`, `alert_short`, `exceptionEVT`, and `mqttConnEVT`. These events fire without a preceding command and are essential for monitoring fleet health.
+MGMT also carries the **event channel** — the outbound topic where the reader publishes asynchronous events: `heartBeatEVT`, `alerts`, `alert_short`, `exceptionEVT`, and `mqttConnEVT`. These events fire without a preceding command and are essential for monitoring fleet health.
 
 **Topic pattern:**
 ```
@@ -260,7 +260,7 @@ MGMT also carries the **event channel**; the outbound topic where the reader pub
 
 **5 commands** | Channels: `cmnd`, `resp`
 
-The CTRL interface governs active RFID operations. It controls *what the radio does right now*: starting and stopping inventory scans (`control_operation`), configuring how the radio operates (`set_operating_mode`; profiles, transmit power, link profiles, select filters, access operations), and filtering tag data at the source (`set_post_filter`).
+The CTRL interface governs active RFID operations. It controls *what the radio does right now*: starting and stopping inventory scans (`control_operation`), configuring how the radio operates (`set_operating_mode`: profiles, transmit power, link profiles, select filters, access operations), and filtering tag data at the source (`set_post_filter`).
 
 CTRL is separated from MGMT because RFID operations are **real-time and latency-sensitive**. A `control_operation` START command must reach the reader without queuing behind a bulk configuration upload on the MGMT connection. The separate connection guarantees that operational commands have their own TCP socket and MQTT session.
 

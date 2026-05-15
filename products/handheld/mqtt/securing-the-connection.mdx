@@ -22,7 +22,7 @@ These are separate layers that protect different things:
 
 ## 7.1 TLS Overview for MQTT
 
-TLS (Transport Layer Security) wraps the MQTT TCP connection in an encrypted tunnel. Without it, every MQTT payload, including Wi-Fi credentials sent via `set_wifi`, private keys sent via `install_certificate`, and tag data in `dataEVT`; crosses the network as plaintext readable by any observer.
+TLS (Transport Layer Security) wraps the MQTT TCP connection in an encrypted tunnel. Without it, every MQTT payload — including Wi-Fi credentials sent via `set_wifi`, private keys sent via `install_certificate`, and tag data in `dataEVT` — crosses the network as plaintext readable by any observer.
 
 > **⚠ WARNING:** Port 1883 (unencrypted MQTT) transmits all payloads in cleartext: including credentials, private keys, and business-critical tag data. Use port 1883 **only** on isolated development networks with no exposure to untrusted parties. Production deployments must use port 8883 with TLS.
 

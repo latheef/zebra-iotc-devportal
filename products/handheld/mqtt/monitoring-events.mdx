@@ -158,7 +158,7 @@ Heartbeat events must be explicitly enabled through the `config_events` command.
 | 60 seconds | 25–100 readers | Standard fleet monitoring | Moderate |
 | 300 seconds | 100+ readers | Large deployments, background health checks | Low |
 
-The heartbeat interval directly affects your offline detection threshold (covered below) and your broker's inbound message rate. For a fleet of 200 readers at a 30-second interval, the broker processes ~400 heartbeat messages per minute; manageable, but worth factoring into capacity planning.
+The heartbeat interval directly affects your offline detection threshold (covered below) and your broker's inbound message rate. For a fleet of 200 readers at a 30-second interval, the broker processes ~400 heartbeat messages per minute, which is manageable but worth factoring into capacity planning.
 
 ### Offline Detection with Heartbeat Absence
 
@@ -180,7 +180,7 @@ for each reader in fleet:
 
 ### Battery Monitoring via Heartbeat
 
-Heartbeat battery data and battery *alerts* (Section 10.2) serve different purposes. Heartbeats report battery state periodically; useful for trend charts, charging rotation planning, and identifying devices with declining battery health over weeks. Alerts fire only when a threshold is crossed; useful for immediate action. Use both.
+Heartbeat battery data and battery *alerts* (Section 10.2) serve different purposes. Heartbeats report battery state periodically — useful for trend charts, charging rotation planning, and identifying devices with declining battery health over weeks. Alerts fire only when a threshold is crossed — useful for immediate action. Use both.
 
 A practical pattern: collect `chargePercentage` from heartbeats into a time-series database, plot daily charge curves per device, and identify units whose batteries drain faster than peers. A battery that drains from 100% to 20% in 4 hours instead of the fleet average of 8 hours likely needs replacement; the heartbeat trend reveals this before the `BATTERY_LOW` alert fires.
 
@@ -393,7 +393,7 @@ A single exception is noise. A pattern of exceptions is a signal. The diagnostic
 
 ## 10.4 Connection Events
 
-The `mqttConnEVT` event reports changes to the reader's MQTT connection state; connecting, disconnecting, reconnecting, and connection failures. Each event identifies which endpoint changed state and why.
+The `mqttConnEVT` event reports changes to the reader's MQTT connection state: connecting, disconnecting, reconnecting, and connection failures. Each event identifies which endpoint changed state and why.
 
 ### Connection Event Payload
 

@@ -213,7 +213,7 @@ For fleet-scale provisioning, use the Azure Device Provisioning Service (DPS) wi
 | `{tenant}/MGMT/clients/resp/{serial}` | `devices/{deviceId}/messages/events/` | Responses also route through D2C |
 | `{tenant}/MGMT/clients/cmnd/{serial}` | `devices/{deviceId}/messages/devicebound/#` | C2D messages; device subscribes |
 
-The immediate problem is visible: Azure collapses all device-to-cloud messages onto a single topic path (`devices/{deviceId}/messages/events/`). Heartbeat events, tag data, command responses, and exception alerts all enter Azure through the same D2C channel. Differentiation requires **message properties**; key-value pairs attached to the MQTT message as topic suffixes:
+The immediate problem is visible: Azure collapses all device-to-cloud messages onto a single topic path (`devices/{deviceId}/messages/events/`). Heartbeat events, tag data, command responses, and exception alerts all enter Azure through the same D2C channel. Differentiation requires **message properties** — key-value pairs attached to the MQTT message as topic suffixes:
 
 ```
 devices/RFD40-212735201D0053/messages/events/$.ct=application%2Fjson&interfaceType=MGMT&channelType=event
@@ -292,7 +292,7 @@ If your organization already uses Azure IoT Hub for other device fleets and need
 
 ## 13.3 Self-Hosted Brokers
 
-Self-hosted brokers give you complete control over configuration, security, and scaling; at the cost of complete responsibility for operations, high availability, and capacity planning. This section addresses the three questions that determine whether a self-hosted deployment survives production: which broker, how to configure it for RFID workloads, and when to scale beyond a single instance.
+Self-hosted brokers give you complete control over configuration, security, and scaling, but at the cost of complete responsibility for operations, high availability, and capacity planning. This section addresses the three questions that determine whether a self-hosted deployment survives production: which broker, how to configure it for RFID workloads, and when to scale beyond a single instance.
 
 ### Mosquitto: Development and Small Deployments
 
@@ -300,7 +300,7 @@ Eclipse Mosquitto is the most widely deployed open-source MQTT broker. It is lig
 
 **Mosquitto's strengths for Zebra RFID development:**
 
-- Zero-configuration startup; install, run, connect readers.
+- Zero-configuration startup: install, run, connect readers.
 - Full MQTT 3.1.1 and 5.0 support, including all QoS levels, retained messages, and persistent sessions.
 - TLS and client certificate authentication.
 - ACL-based topic authorization.
@@ -337,7 +337,7 @@ This configuration is appropriate for a lab with 5–20 readers running intermit
 
 > **⚠ WARNING:** A single-instance Mosquitto broker is not appropriate for production RFID workloads with more than approximately 50 readers. The failure modes described below are gradual; performance degrades over weeks before a hard failure, which makes them dangerous. By the time the broker stops accepting connections, the underlying resource exhaustion has been building for days.
 
-**Failure mode 1: Memory growth under sustained QoS 0 load.** During continuous inventory, each reader produces 10–50 `dataEVT` messages per second. With 200 readers, that is 2,000–10,000 messages per second flowing through the broker. Mosquitto processes messages single-threaded. When subscriber processing falls behind publisher ingestion, even briefly, due to a garbage collection pause in your consuming application or a network hiccup; messages queue in the broker's memory. With no backpressure mechanism, memory grows until the OS kills the process or the broker becomes unresponsive.
+**Failure mode 1: Memory growth under sustained QoS 0 load.** During continuous inventory, each reader produces 10–50 `dataEVT` messages per second. With 200 readers, that is 2,000–10,000 messages per second flowing through the broker. Mosquitto processes messages single-threaded. When subscriber processing falls behind publisher ingestion — even briefly, due to a garbage collection pause in your consuming application or a network hiccup — messages queue in the broker's memory. With no backpressure mechanism, memory grows until the OS kills the process or the broker becomes unresponsive.
 
 **Failure mode 2: No clustering.** Mosquitto is a single-instance broker. If the instance fails, all readers disconnect and buffer messages locally until they reconnect. There is no failover. In a production deployment, this means your fleet monitoring, tag data pipeline, and command channel are all offline until the broker restarts. The blast radius is 100% of the fleet.
 
@@ -363,7 +363,7 @@ When the deployment crosses the Mosquitto boundary (roughly 50+ readers, sustain
 
 Regardless of which enterprise broker you choose, RFID workloads have specific configuration requirements that differ from general-purpose IoT deployments:
 
-**1. QoS 0 memory management.** The majority of RFID message volume is tag data; `dataEVT` messages published at QoS 0 on the DATA interface. QoS 0 messages are fire-and-forget: they do not require persistent storage, acknowledgment tracking, or retry queues. Configure the broker to treat QoS 0 messages as transient; allocate memory buffers for in-flight routing but do not persist them to disk.
+**1. QoS 0 memory management.** The majority of RFID message volume is tag data — `dataEVT` messages published at QoS 0 on the DATA interface. QoS 0 messages are fire-and-forget: they do not require persistent storage, acknowledgment tracking, or retry queues. Configure the broker to treat QoS 0 messages as transient; allocate memory buffers for in-flight routing but do not persist them to disk.
 
 For HiveMQ, configure the `<mqtt>` section:
 

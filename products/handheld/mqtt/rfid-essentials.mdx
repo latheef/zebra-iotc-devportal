@@ -24,13 +24,13 @@ Different countries allocate different slices of this band for RFID use. Section
 
 UHF RFID communication is **half-duplex** and **reader-initiated**. The reader always talks first. Here is the complete cycle:
 
-**Step 1: The reader transmits.** The reader's antenna radiates a continuous-wave (CW) RF signal at the operating frequency. This signal carries energy outward in a directed beam. The signal serves two purposes simultaneously: it **powers** passive tags and it **carries commands** encoded as modulated pulses (using PIE; Pulse Interval Encoding).
+**Step 1: The reader transmits.** The reader's antenna radiates a continuous-wave (CW) RF signal at the operating frequency. This signal carries energy outward in a directed beam. The signal serves two purposes simultaneously: it **powers** passive tags and it **carries commands** encoded as modulated pulses (using PIE — Pulse Interval Encoding).
 
 **Step 2: The tag backscatters.** A passive UHF RFID tag has no battery. When the reader's RF signal hits the tag antenna, the antenna harvests enough energy to power the tag's integrated circuit (IC). The IC processes the reader's command, then responds by rapidly switching the **impedance** of its antenna: alternating between absorbing and reflecting the incoming signal. This modulated reflection is called **backscatter**. Think of it like a mirror that flickers on and off in a pattern; the flickering *is* the data.
 
 **Step 3: The reader decodes.** The reader's antenna picks up the faint backscattered signal. The reader's RF front-end separates this signal from the much stronger transmitted signal, demodulates it, and decodes the tag's response, typically an EPC identifier and optional metadata.
 
-> **Why this matters to your code:** The backscatter mechanism explains two things you will encounter in practice. First, **read range is asymmetric** : the limiting factor is usually whether the tag receives enough energy to power on (the "forward link"), not whether the reader can hear the response. Second, **signal strength (RSSI) varies with distance, orientation, and environment**, which is why RSSI is reported per-read in `dataEVT` and must be interpreted carefully.
+> **Why this matters to your code:** The backscatter mechanism explains two things you will encounter in practice. First, **read range is asymmetric**: the limiting factor is usually whether the tag receives enough energy to power on (the "forward link"), not whether the reader can hear the response. Second, **signal strength (RSSI) varies with distance, orientation, and environment**, which is why RSSI is reported per-read in `dataEVT` and must be interpreted carefully.
 
 ### Read Range, Orientation, and Environmental Factors
 
